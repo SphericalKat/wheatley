@@ -1,0 +1,31 @@
+{
+  "name": "wheatley",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "ultracite": "8.3.1"
+  },
+  "packageManager": "pnpm@12.23.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.23.0",
+      "onFail": "download"
+    }
+  }
+}
