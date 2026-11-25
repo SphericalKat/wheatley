@@ -100,6 +100,10 @@ export const AGENT_DB_FILE = "agent.sqlite";
 /** The working directory of the Agent's Tools, inside the Agent folder. */
 export const WORKSPACE_DIR = "workspace";
 
+/** How the model sees a Trigger result that was delivered to its Chat (ADR 0010). */
+const deliveredContext = (text: string): string =>
+  `A Trigger Run sent this message to this Chat:\n\n${text}`;
+
 const isCliChat = (chat: ChatKey | null): boolean =>
   chat?.bindingId === CLI_CHAT.bindingId && chat.chatId === CLI_CHAT.chatId;
 
@@ -717,8 +721,9 @@ export class Agent {
   };
 
   /**
-   * Copies a delivered Trigger result into the current Conversation of its target Chat, so the Chat history shows it
-   * (ADR 0010). The CLI Chat records Trigger results when the Run ends, so this skips it.
+   * Copies a delivered Trigger result into the current Conversation of its target Chat, so the Chat history and the
+   * model context of its next Run show it (ADR 0010). The CLI Chat records Trigger results when the Run ends, so this
+   * skips it.
    */
   readonly #recordDelivered = async (entry: OutboxEntry): Promise<void> => {
     const { delivery } = entry;
@@ -738,6 +743,11 @@ export class Agent {
       source: delivery.source,
       text: delivery.text,
     });
+    await this.#requirePi().addContext(
+      conversationId,
+      deliveredContext(delivery.text),
+      `delivered:${entry.deliveryId}`
+    );
     await this.#archive(
       { bindingId: chat.bindingId, chatId: chat.chatId, kind: "chat" },
       {
@@ -1090,6 +1100,11 @@ export class Agent {
       const conversationId = await this.#chatConversation(CLI_CHAT);
 
       this.#recordMessage(CLI_CHAT, conversationId, message);
+      await this.#requirePi().addContext(
+        conversationId,
+        deliveredContext(text),
+        `delivered:${message.messageId}`
+      );
       await this.#archive(run.origin, {
         at: Date.parse(at),
         conversationId,

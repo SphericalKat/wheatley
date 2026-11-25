@@ -43,6 +43,9 @@ const RUN_ENTRY_PAGE = 500;
 /** The memo of a compaction task that holds the ID of its flush fork, so a rerun after a crash reuses the fork. */
 const FLUSH_FORK_MEMO = "wheatley.flush.fork";
 
+/** The transcript entry of text that Wheatley adds to a Conversation's context without a Run. */
+const CONTEXT_ENTRY_KIND = "wheatley.context";
+
 /** Wakes a Tool call that waits for an Approval. The value carries nothing: the gate reads the decision itself. */
 const ApprovalWake = defineSignal({
   name: "wheatley.approval.wake",
@@ -158,6 +161,16 @@ export interface PiAdapter {
     text: string,
     requestId: string
   ) => Promise<string>;
+  /**
+   * Adds `text` to the Conversation's model context without a Run, for example a delivered Trigger result. The model
+   * sees it as a user message from the next model request. A busy Conversation places it at the next boundary.
+   * `requestId` deduplicates as for `submit`.
+   */
+  readonly addContext: (
+    conversationId: string,
+    text: string,
+    requestId: string
+  ) => Promise<void>;
   /** Resolves when a submission settles, also for a submission from before a restart. */
   readonly wait: (submissionId: string) => Promise<PiRunOutcome>;
   /** Stops the Conversation's work and resolves once it is idle. Queued inputs end as `stopped`. */
@@ -298,6 +311,7 @@ export const openPiAdapter = async (
   options: PiAdapterOptions
 ): Promise<PiAdapter> => {
   const { hooks, log } = options;
+  const clock = options.now ?? Date.now;
   const toolNames = providerToolNames(options.tools.map((tool) => tool.name));
   const specs = new Map(options.tools.map((tool) => [tool.name, tool]));
 
@@ -543,6 +557,22 @@ export const openPiAdapter = async (
   };
 
   return {
+    addContext: async (conversationId, text, requestId) => {
+      const handle = await conversation(conversationId);
+
+      await handle.submit(
+        {
+          entry: {
+            data: { text },
+            kind: CONTEXT_ENTRY_KIND,
+            model: [{ content: text, role: "user", timestamp: clock() }],
+          },
+          requestId,
+          type: "write",
+        },
+        context
+      );
+    },
     close: async () => {
       await harness.close(context);
     },
