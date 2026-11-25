@@ -322,6 +322,9 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+      '@wheatley/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
 
 packages:
 

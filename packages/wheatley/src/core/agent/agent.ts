@@ -25,11 +25,16 @@ import type {
 import type { Logger, SecretReader, ToolResult } from "@wheatley/sdk";
 
 import type { ApprovalGate } from "../../contracts/approval-gate.js";
-import type { DeliveryOutbox } from "../../contracts/delivery-outbox.js";
+import type {
+  DeliveryOutbox,
+  OutboxEntry,
+} from "../../contracts/delivery-outbox.js";
 import { SeamError } from "../../contracts/errors.js";
 import type {
   AgentExtensions,
   ExtensionCatalog,
+  ToolDescriptor,
+  ToolProvider,
 } from "../../contracts/extension-catalog.js";
 import type {
   MaintenanceRunner,
@@ -80,6 +85,12 @@ export const DEFAULT_APPROVAL_TIMEOUT = "15m";
 /** The default limit of concurrent Runs of one Agent without `maxConcurrentRuns`. */
 export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
 
+/** The time limit of one Tool call (ADR 0006). An Approval wait happens before the call and does not count. */
+export const TOOL_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** The most Tool calls that one Agent runs at the same time (ADR 0006). Later calls wait for a slot. */
+export const MAX_CONCURRENT_TOOL_CALLS = 8;
+
 /** The file name of the pi-durable storage inside the Agent folder (ADR 0001). */
 export const HARNESS_FILE = "harness.sqlite";
 
@@ -110,11 +121,67 @@ const deliveryFor = (
     ? null
     : { bindingId: chat.bindingId, chatId: chat.chatId, source };
 
+/**
+ * Adds module Tools after the catalog Tools. Throws if a module Tool has the name of another Tool, because the model
+ * could not tell the two apart.
+ */
+const withModuleTools = (
+  extensions: AgentExtensions,
+  providers: readonly ToolProvider[]
+): AgentExtensions => {
+  if (providers.length === 0) {
+    return extensions;
+  }
+
+  const names = new Set(extensions.tools().map((tool) => tool.name));
+
+  for (const provider of providers) {
+    for (const tool of provider.tools()) {
+      if (names.has(tool.name)) {
+        throw new Error(`Two providers offer the Tool ${tool.name}`);
+      }
+
+      names.add(tool.name);
+    }
+  }
+
+  const owner = (name: string): ToolProvider | undefined =>
+    providers.find((provider) =>
+      provider.tools().some((tool) => tool.name === name)
+    );
+
+  return {
+    ...extensions,
+    executeTool: async (name, input, ctx) => {
+      const provider = owner(name);
+
+      return provider === undefined
+        ? await extensions.executeTool(name, input, ctx)
+        : await provider.execute(name, input, ctx);
+    },
+    tools: () => [
+      ...extensions.tools(),
+      ...providers.flatMap((provider) => provider.tools()),
+    ],
+  };
+};
+
+/** A Tool list that the Agent replaces once its modules mount. */
+interface ToolListRef {
+  tools: () => readonly ToolDescriptor[];
+}
+
 /** What hosted modules get from the Agent besides their own context. */
 export interface AgentHost {
   readonly maintenance: MaintenanceRunner;
   readonly triggers: TriggerRunner;
   readonly approvals: ApprovalGate;
+  /** The Agent's chat entry points for Frontend Bindings. They throw `agent_unavailable` until the Harness opens. */
+  readonly chat: Pick<Agent, "send" | "command">;
+  /** The Plugins, MCP Servers, Skills, and Frontends from the `ExtensionCatalog`, without module Tools. */
+  readonly extensions: AgentExtensions;
+  /** Copies a delivered Trigger result into the target Chat's current Conversation (ADR 0010, copy-on-confirm). */
+  readonly recordDelivered: (entry: OutboxEntry) => Promise<void>;
 }
 
 /** A module that the Agent hosts: it runs its migrations, creates it, mounts its JSON-RPC handlers, and starts it. */
@@ -130,6 +197,10 @@ export interface HostedModule {
 /** A created hosted module without its typed API. */
 export interface MountedModule {
   readonly rpc: RpcHandlerMap;
+  /** Tools that the module adds after the `ExtensionCatalog` Tools, for example the Memory and Trigger Tools. */
+  readonly tools?: ToolProvider;
+  /** The status of the Frontend Bindings that the module runs, for Agent health. */
+  readonly frontends?: () => readonly BindingStatus[];
   readonly start?: () => Promise<void>;
   readonly stop?: () => Promise<void>;
 }
@@ -162,6 +233,14 @@ export interface AgentOptions {
   /** True if a Trigger Run called `suppress_delivery`. */
   readonly isDeliverySuppressed?: (runId: string) => Promise<boolean>;
   readonly modules?: readonly HostedModule[];
+  /**
+   * Applies the migrations of every module to `agent.sqlite`, for example with a pre-migration backup. It rejects if
+   * the Agent must not start, and the Supervisor then marks the Agent `degraded`. The default runs them directly.
+   */
+  readonly migrate?: (
+    db: DatabaseSync,
+    namespaces: readonly MigrationNamespace[]
+  ) => Promise<void>;
   /** `/restart` asks the Supervisor to restart this Agent. */
   readonly onRestartRequested: () => void;
   /** The Harness failed after a storage error. The Supervisor restarts the Agent. */
@@ -252,9 +331,12 @@ export class Agent {
   readonly #options: AgentOptions;
   readonly #db: DatabaseSync;
   readonly #store: AgentStore;
-  readonly #extensions: AgentExtensions;
+  /** The catalog extensions, merged with module Tools once the modules mount. */
+  #extensions: AgentExtensions;
+  readonly #moduleFrontends: (() => readonly BindingStatus[])[] = [];
   readonly #gate: ApprovalGate;
   readonly #runSlots: ConcurrencyGate;
+  readonly #toolSlots = new ConcurrencyGate(() => MAX_CONCURRENT_TOOL_CALLS);
   readonly #workspaceDir: string;
   readonly #active = new Map<string, ActiveRun>();
   readonly #runByConversation = new Map<string, string>();
@@ -295,10 +377,14 @@ export class Agent {
     let agent: Agent | undefined;
 
     try {
-      runMigrations(db, [
+      const namespaces: MigrationNamespace[] = [
         { migrations: coreMigrations, namespace: CORE_NAMESPACE },
         ...(options.modules ?? []).map((module) => module.migrations),
-      ]);
+      ];
+
+      await (options.migrate === undefined
+        ? Promise.try(() => runMigrations(db, namespaces))
+        : options.migrate(db, namespaces));
 
       const abort = new AbortController();
 
@@ -324,15 +410,20 @@ export class Agent {
 
       const gateFactory = options.approvals ?? createPolicyOnlyGate;
 
+      // Module Tools join the Tool list after the modules mount, so the default action reads the Agent's merged list.
+      const merged: ToolListRef = { tools: extensions.tools };
+
       const gate = gateFactory({
         agentName: options.name,
         clock: options.clock,
+        db,
         defaultAction: (toolName) =>
-          extensions
+          merged
             .tools()
             .find((tool) => tool.name === toolName && tool.source === "builtin")
             ?.defaultAction,
         events: options.events,
+        log: options.log,
         policy: options.config.permissionPolicy ?? [],
         timeoutMs: timeout === null ? null : parseDuration(timeout),
         wake: async (calls) => {
@@ -346,6 +437,7 @@ export class Agent {
         await extensions.close();
       });
       await agent.#mountModules();
+      merged.tools = agent.#extensions.tools;
 
       harness.adapter = await agent.#openPi();
       await agent.#startModules();
@@ -389,7 +481,10 @@ export class Agent {
 
     return {
       activeRuns: this.#active.size,
-      frontends: [{ id: CLI_BINDING_ID, state: "ready", type: "cli" }],
+      frontends: [
+        { id: CLI_BINDING_ID, state: "ready", type: "cli" },
+        ...this.#moduleFrontends.flatMap((frontends) => frontends()),
+      ],
       mcpServers: health.mcpServers,
       plugins: health.plugins,
       skillWarnings: health.skillWarnings,
@@ -587,9 +682,14 @@ export class Agent {
 
     const host: AgentHost = {
       approvals: this.#gate,
+      chat: { command: this.command, send: this.send },
+      extensions: this.#extensions,
       maintenance: this.maintenance,
+      recordDelivered: this.#recordDelivered,
       triggers: this.triggers,
     };
+
+    const moduleTools: ToolProvider[] = [];
 
     for (const module of this.#options.modules ?? []) {
       // oxlint-disable-next-line no-await-in-loop -- Modules are created one at a time in configuration order.
@@ -601,8 +701,52 @@ export class Agent {
         this.#stops.push(mounted.stop);
       }
 
+      if (mounted.tools !== undefined) {
+        moduleTools.push(mounted.tools);
+        this.#stops.push(mounted.tools.close);
+      }
+
+      if (mounted.frontends !== undefined) {
+        this.#moduleFrontends.push(mounted.frontends);
+      }
+
       this.#pendingStarts.push(mounted.start);
     }
+
+    this.#extensions = withModuleTools(this.#extensions, moduleTools);
+  };
+
+  /**
+   * Copies a delivered Trigger result into the current Conversation of its target Chat, so the Chat history shows it
+   * (ADR 0010). The CLI Chat records Trigger results when the Run ends, so this skips it.
+   */
+  readonly #recordDelivered = async (entry: OutboxEntry): Promise<void> => {
+    const { delivery } = entry;
+
+    if (delivery.kind !== "message" || isCliChat(entry)) {
+      return;
+    }
+
+    const chat: ChatKey = { bindingId: entry.bindingId, chatId: entry.chatId };
+    const conversationId = await this.#chatConversation(chat);
+    const at = this.#now();
+
+    this.#recordMessage(chat, conversationId, {
+      at,
+      messageId: entry.deliveryId,
+      role: "assistant",
+      source: delivery.source,
+      text: delivery.text,
+    });
+    await this.#archive(
+      { bindingId: chat.bindingId, chatId: chat.chatId, kind: "chat" },
+      {
+        at: Date.parse(at),
+        conversationId,
+        role: "assistant",
+        text: delivery.text,
+      }
+    );
   };
 
   readonly #startModules = async (): Promise<void> => {
@@ -1203,23 +1347,39 @@ export class Agent {
       });
     }
 
-    const signals =
-      run === undefined ? [signal] : [signal, run.controller.signal];
+    // ADR 0006: every Tool call runs within a per-call time limit and the Agent's Tool concurrency limit.
+    const signals = [
+      signal,
+      AbortSignal.timeout(TOOL_TIMEOUT_MS),
+      ...(run === undefined ? [] : [run.controller.signal]),
+    ];
 
-    const result = await this.#extensions.executeTool(
-      call.toolName,
-      call.input,
-      {
-        agentName: this.name,
-        chat: run?.chat ?? null,
-        conversationId: call.conversationId,
-        log: this.#options.log,
-        runId,
-        signal: AbortSignal.any(signals),
-        toolCallId: call.toolCallId,
-        workspaceDir: this.#workspaceDir,
+    const toolSignal = AbortSignal.any(signals);
+    let result: ToolResult;
+
+    try {
+      const lease = await this.#toolSlots.acquire("tools", toolSignal);
+
+      try {
+        result = await this.#extensions.executeTool(call.toolName, call.input, {
+          agentName: this.name,
+          chat: run?.chat ?? null,
+          conversationId: call.conversationId,
+          log: this.#options.log,
+          runId,
+          signal: toolSignal,
+          toolCallId: call.toolCallId,
+          workspaceDir: this.#workspaceDir,
+        });
+      } finally {
+        lease.release();
       }
-    );
+    } catch (error) {
+      result = {
+        content: [{ text: errorMessage(error), type: "text" }],
+        isError: true,
+      };
+    }
 
     if (runId !== "") {
       const outputPreview = preview(

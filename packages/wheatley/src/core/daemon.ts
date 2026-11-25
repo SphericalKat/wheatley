@@ -33,6 +33,18 @@ export interface DaemonOptions extends DeploymentOptions {
   readonly host?: string;
   /** Overrides the Unix socket path. `null` disables the socket. */
   readonly socketPath?: string | null;
+  /** The bundled dashboard folder that the Control Server serves on `/`. */
+  readonly staticDir?: string;
+  /**
+   * Attaches Deployment-scoped services, such as the Webhook Ingress, after the Deployment reads `config.yaml` and
+   * before any Agent starts. The daemon calls the returned `close` after it stops every Agent.
+   */
+  readonly attach?: (deployment: Deployment) => Promise<AttachedServices>;
+}
+
+/** Deployment-scoped services that `DaemonOptions.attach` started. */
+export interface AttachedServices {
+  readonly close: () => Promise<void>;
 }
 
 /** A running daemon. */
@@ -81,7 +93,15 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
       ),
   });
 
-  await deployment.start();
+  const attached = await options.attach?.(deployment);
+
+  try {
+    await deployment.start();
+  } catch (error) {
+    await deployment.close();
+    await attached?.close();
+    throw error;
+  }
 
   const server = await ControlServer.listen({
     allowedOrigins: settings?.allowedOrigins ?? [],
@@ -90,6 +110,7 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
     log: deployment.logs.logger("control-server"),
     port: options.port ?? settings?.port ?? DEFAULT_DAEMON_PORT,
     router,
+    staticDir: options.staticDir,
     socketPath:
       options.socketPath === null
         ? undefined
@@ -117,6 +138,7 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
       }
 
       await deployment.close();
+      await attached?.close();
     },
     deployment,
     server,

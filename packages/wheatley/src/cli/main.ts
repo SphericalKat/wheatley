@@ -1,6 +1,11 @@
+import { createConnection } from "node:net";
+import path from "node:path";
 import { parseArgs } from "node:util";
 
+import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
 import { errorMessage } from "../core/error-message.js";
+import { createOpsCommands, hostCliDeps } from "../ops/cli.js";
+import type { OpsCliDeps } from "../ops/cli.js";
 import { runAsk } from "./ask.js";
 import { runChat } from "./chat.js";
 import { runDaemon } from "./daemon.js";
@@ -20,6 +25,9 @@ Commands:
   chat      Chat with an Agent in its CLI Chat
   ask       Send one prompt to an Agent and print the reply
   status    Show the health of the Deployment
+  service   Install or control the Wheatley service: install, start, stop, restart, status
+  update    Update Wheatley within its major version (--check, --manager npm|pnpm)
+  restore   List the backups of an Agent, or restore agent.sqlite: restore <agent> [backup]
 
 Options:
   --home <dir>       The Deployment home (default: $WHEATLEY_HOME or ~/.wheatley)
@@ -34,7 +42,56 @@ Options:
 /** Embedding overrides of `runCli`. */
 export interface CliOverrides {
   readonly daemon?: DaemonCommandOptions["overrides"];
+  /** Replaces host dependencies of `service`, `update`, and `restore`, for example a fake command runner. */
+  readonly ops?: Partial<OpsCliDeps>;
 }
+
+/** Resolves `true` if a daemon accepts connections on the Unix socket of `home`. */
+export const isDaemonRunning = async (home: string): Promise<boolean> => {
+  const { promise, resolve } = Promise.withResolvers<boolean>();
+  const socket = createConnection(path.join(home, DAEMON_SOCKET_FILE));
+
+  socket.once("connect", () => {
+    socket.destroy();
+    resolve(true);
+  });
+  socket.once("error", () => {
+    resolve(false);
+  });
+
+  return await promise;
+};
+
+const OPS_COMMANDS = ["service", "update", "restore"] as const;
+
+type OpsCommandName = (typeof OPS_COMMANDS)[number];
+
+const isOpsCommand = (command: string | undefined): command is OpsCommandName =>
+  OPS_COMMANDS.some((name) => name === command);
+
+/** Runs `service`, `update`, or `restore` with the ops line-based output. */
+const runOpsCommand = async (
+  command: OpsCommandName,
+  argv: readonly string[],
+  io: CliIo,
+  home: string,
+  overrides: Partial<OpsCliDeps> | undefined
+): Promise<number> => {
+  const commands = createOpsCommands({
+    ...hostCliDeps(async () => await isDaemonRunning(home)),
+    homeDir: home,
+    ...overrides,
+  });
+
+  return await commands[command](argv, {
+    err: (line) => {
+      io.stderr(`${line}\n`);
+    },
+    out: (line) => {
+      io.stdout(`${line}\n`);
+    },
+  });
+};
 
 const readPrompt = async (
   io: CliIo,
@@ -67,6 +124,19 @@ export const runCli = async (
   io: CliIo,
   overrides: CliOverrides = {}
 ): Promise<number> => {
+  const [first, ...opsArgs] = argv;
+
+  // The ops commands parse their own flags, so they skip the root parser.
+  if (isOpsCommand(first)) {
+    return await runOpsCommand(
+      first,
+      opsArgs,
+      io,
+      resolveHome(undefined, io.env),
+      overrides.ops
+    );
+  }
+
   let parsed: ReturnType<typeof parseCliArgs>;
 
   try {

@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import { chmod, rm } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { IncomingMessage, Server } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIPv4 } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
@@ -13,6 +13,7 @@ import type { WebSocket } from "ws";
 import type { EventBus } from "../events.js";
 import type { Router } from "../rpc/router.js";
 import { Connection } from "./connection.js";
+import { serveStaticFile } from "./static-files.js";
 
 /** The WebSocket path of the JSON-RPC protocol (ADR 0005). */
 export const WS_PATH = "/ws";
@@ -53,6 +54,8 @@ export interface ControlServerOptions {
   /** The Wheatley version for `system.hello`. */
   readonly version: string;
   readonly log: Logger;
+  /** The bundled dashboard folder that the TCP listener serves on `/`. Without it, `/` answers with a plain text note. */
+  readonly staticDir?: string;
 }
 
 /**
@@ -140,17 +143,7 @@ export class ControlServer {
 
   readonly #createHttpServer = (checkOrigin: boolean): Server => {
     const server = createServer((request, response) => {
-      const status =
-        request.method === "GET" && request.url === "/" ? 200 : 404;
-
-      response.writeHead(status, {
-        "content-type": "text/plain; charset=utf-8",
-      });
-      response.end(
-        status === 200
-          ? `Wheatley daemon. Connect with JSON-RPC over WebSocket at ${WS_PATH}.\n`
-          : "Not found\n"
-      );
+      void this.#serveHttp(request, response);
     });
 
     server.on("upgrade", (request, socket, head) => {
@@ -159,6 +152,37 @@ export class ControlServer {
     this.#servers.push(server);
 
     return server;
+  };
+
+  readonly #serveHttp = async (
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> => {
+    const { staticDir } = this.#options;
+
+    try {
+      if (
+        staticDir !== undefined &&
+        (await serveStaticFile(staticDir, request, response))
+      ) {
+        return;
+      }
+    } catch (error) {
+      this.#options.log.warn("A dashboard file could not be served", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const status = request.method === "GET" && request.url === "/" ? 200 : 404;
+
+    response.writeHead(status, {
+      "content-type": "text/plain; charset=utf-8",
+    });
+    response.end(
+      status === 200
+        ? `Wheatley daemon. Connect with JSON-RPC over WebSocket at ${WS_PATH}.\n`
+        : "Not found\n"
+    );
   };
 
   readonly #allowedOrigin = (origin: string): boolean => {

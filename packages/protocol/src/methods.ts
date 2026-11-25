@@ -226,7 +226,9 @@ export const methods = {
 
   "events.subscribe": method(
     params({
+      /** Omitted: the events of every Agent. */
       agents: Type.Optional(Type.Array(AgentNameSchema)),
+      /** Omitted: every topic. */
       topics: Type.Optional(Type.Array(EventTopicSchema)),
     }),
     Type.Object({ subscriptionId: IdSchema })
