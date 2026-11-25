@@ -84,3 +84,17 @@ Ultracite (`oxlint` and `oxfmt`) enforces most format and lint rules automatical
 - Use `async`/`await` in async tests instead of `done` callbacks.
 - Do not commit `.only` or `.skip` in tests.
 - Keep test suites flat and avoid deep `describe` levels.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `SphericalKat/wheatley` via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`GLOSSARY.md` and `docs/adr/` at the repo root). See `docs/agents/domain.md`.
