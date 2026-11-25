@@ -25,10 +25,11 @@ export interface RouterSources {
   /** Deployment-wide handler maps. The router checks them first. */
   readonly deployment: readonly RpcHandlerMap[];
   /**
-   * The handler maps of one Agent. Throws `SeamError("agent_not_found")` for an unknown Agent and
-   * `SeamError("agent_unavailable")` for an Agent that is not running.
+   * The handler maps of one Agent. It can wait for an Agent that is starting or restarting. Rejects with
+   * `SeamError("agent_not_found")` for an unknown Agent and `SeamError("agent_unavailable")` for an Agent that is not
+   * running.
    */
-  readonly agent: (name: string) => readonly RpcHandlerMap[];
+  readonly agent: (name: string) => Promise<readonly RpcHandlerMap[]>;
   /** The names of the running Agents, for methods whose `agent` param is optional. */
   readonly runningAgents: () => readonly string[];
 }
@@ -137,11 +138,16 @@ export const createRouter = (sources: RouterSources) => {
     request: RoutedRequest<M>,
     ctx: RpcContext
   ): Promise<MethodResult<M>> => {
-    const calls = sources.runningAgents().flatMap((name) => {
-      const handler = handlerIn(sources.agent(name), request.method);
+    const handlers = await Promise.all(
+      sources.runningAgents().map(async (name) => ({
+        handler: handlerIn(await sources.agent(name), request.method),
+        name,
+      }))
+    );
 
-      return handler === undefined ? [] : [{ handler, name }];
-    });
+    const calls = handlers.flatMap(({ handler, name }) =>
+      handler === undefined ? [] : [{ handler, name }]
+    );
 
     const results = await Promise.all(
       calls.map(
@@ -177,7 +183,7 @@ export const createRouter = (sources: RouterSources) => {
 
       if (namesAgent(request.params)) {
         const handler = handlerIn(
-          sources.agent(request.params.agent),
+          await sources.agent(request.params.agent),
           request.method
         );
 

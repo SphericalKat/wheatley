@@ -78,8 +78,8 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
   const agentRpc = new WeakMap<object, readonly RpcHandlerMap[]>();
 
   const router = createRouter({
-    agent: (name) => {
-      const agent = deployment.agent(name);
+    agent: async (name) => {
+      const agent = await deployment.readyAgent(name);
       const cached = agentRpc.get(agent);
 
       if (cached !== undefined) {
