@@ -7,7 +7,7 @@ name: wheatley
 
 services:
   wheatley:
-    image: ghcr.io/sphericalkat/wheatley:${WHEATLEY_TAG:-1}
+    image: ghcr.io/sphericalkat/wheatley:${WHEATLEY_TAG:-0}
     build:
       context: ..
       dockerfile: docker/Dockerfile
