@@ -167,12 +167,13 @@ describe("runMigrations", () => {
     expect(error.cause).toBeInstanceOf(Error);
   });
 
-  it("fails a migration that ends the runner's transaction", () => {
+  it("fails a migration that commits itself and keeps none of its changes", () => {
     const committing: MigrationNamespace = {
       migrations: [
         {
           name: "commits itself",
           up: (handle) => {
+            handle.exec("CREATE TABLE memory_x (id INTEGER)");
             handle.exec("COMMIT");
           },
           version: 1,
@@ -184,6 +185,100 @@ describe("runMigrations", () => {
     expect(
       catchMigrationError(() => runMigrations(db, [committing])).code
     ).toBe("migration_failed");
+    expect(tableNames(db)).toStrictEqual(["wheatley_migrations"]);
+  });
+
+  it("keeps child rows when a migration rebuilds a referenced table", () => {
+    const rebuild: MigrationNamespace = {
+      migrations: [
+        {
+          name: "create parent and child",
+          up: (handle) => {
+            handle.exec(`
+              CREATE TABLE t_parent (id INTEGER PRIMARY KEY, name TEXT);
+              CREATE TABLE t_child (
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER NOT NULL REFERENCES t_parent (id) ON DELETE CASCADE
+              );
+              INSERT INTO t_parent VALUES (1, 'a');
+              INSERT INTO t_child VALUES (1, 1);
+            `);
+          },
+          version: 1,
+        },
+        {
+          name: "rebuild parent",
+          up: (handle) => {
+            handle.exec(`
+              CREATE TABLE t_parent_new (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '');
+              INSERT INTO t_parent_new SELECT id, name FROM t_parent;
+              DROP TABLE t_parent;
+              ALTER TABLE t_parent_new RENAME TO t_parent;
+            `);
+          },
+          version: 2,
+        },
+      ],
+      namespace: "t",
+    };
+
+    runMigrations(db, [rebuild]);
+
+    expect(
+      db
+        .prepare("SELECT id, parent_id FROM t_child")
+        .all()
+        .map((row) => ({ ...row }))
+    ).toStrictEqual([{ id: 1, parent_id: 1 }]);
+    expect({ ...db.prepare("PRAGMA foreign_keys").get() }).toStrictEqual({
+      foreign_keys: 1,
+    });
+  });
+
+  it("fails a migration that leaves a foreign key violation", () => {
+    const orphaning: MigrationNamespace = {
+      migrations: [
+        {
+          name: "orphan row",
+          up: (handle) => {
+            handle.exec(`
+              CREATE TABLE t_parent (id INTEGER PRIMARY KEY);
+              CREATE TABLE t_child (parent_id INTEGER REFERENCES t_parent (id));
+              INSERT INTO t_child VALUES (7);
+            `);
+          },
+          version: 1,
+        },
+      ],
+      namespace: "t",
+    };
+
+    expect(catchMigrationError(() => runMigrations(db, [orphaning])).code).toBe(
+      "migration_failed"
+    );
+    expect(tableNames(db)).toStrictEqual(["wheatley_migrations"]);
+  });
+
+  it("skips a migration that another connection applied after the plan", () => {
+    const other = openAgentDatabase(path.join(dir, "agent.sqlite"));
+    let otherApplied: PlannedMigration[] = [];
+
+    try {
+      // `now` runs after the plan and before each migration's transaction.
+      const applied = runMigrations(db, [memory], () => {
+        if (otherApplied.length === 0) {
+          otherApplied = runMigrations(other, [memory]);
+        }
+
+        return new Date(0);
+      });
+
+      expect(otherApplied).toHaveLength(2);
+      expect(applied).toStrictEqual([]);
+      expect(planMigrations(db, [memory])).toStrictEqual([]);
+    } finally {
+      other.close();
+    }
   });
 });
 

@@ -1,3 +1,4 @@
+import { constants } from "node:sqlite";
 import type { DatabaseSync } from "node:sqlite";
 
 /** One schema change for `agent.sqlite`. */
@@ -7,8 +8,10 @@ export interface Migration {
   /** A short description. The runner stores it and refuses to start if a stored name differs. */
   readonly name: string;
   /**
-   * Applies the change. The runner calls it inside a transaction that it owns, so it must not run `BEGIN`, `COMMIT`,
-   * `ROLLBACK`, or `VACUUM`. A throw rolls back this migration only.
+   * Applies the change. The runner calls it inside a transaction that it owns, with foreign key enforcement off, so a
+   * migration can rebuild a referenced table (create, copy, drop, rename) without cascades. The runner denies
+   * `BEGIN`, `COMMIT`, and `ROLLBACK` while it runs, and SQLite rejects `VACUUM` inside a transaction. A throw rolls
+   * back this migration only.
    */
   readonly up: (db: DatabaseSync) => void;
 }
@@ -38,7 +41,7 @@ export type MigrationErrorCode =
   | "newer_schema"
   /** A stored migration name differs from the declared name of the same version. */
   | "history_mismatch"
-  /** A migration threw or ended the runner's transaction. */
+  /** A migration threw, tried to end the runner's transaction, or left a foreign key violation. */
   | "migration_failed";
 
 /** The error that `planMigrations` and `runMigrations` throw. */
@@ -211,25 +214,58 @@ export const planMigrations = (
   );
 };
 
-const applyOne = (
+const isApplied = (db: DatabaseSync, planned: PlannedMigration): boolean =>
+  db
+    .prepare(`SELECT 1 FROM ${LEDGER} WHERE namespace = ? AND version = ?`)
+    .get(planned.namespace, planned.version) !== undefined;
+
+const foreignKeysOn = (db: DatabaseSync): boolean =>
+  db.prepare("PRAGMA foreign_keys").get()?.foreign_keys === 1;
+
+/** Denies statements that end the runner's transaction, so a migration cannot commit half of its work. */
+const denyTransactionControl = (actionCode: number): number =>
+  actionCode === constants.SQLITE_TRANSACTION
+    ? constants.SQLITE_DENY
+    : constants.SQLITE_OK;
+
+const runInTransaction = (
   db: DatabaseSync,
   migration: Migration,
   planned: PlannedMigration,
   appliedAt: string
-): void => {
+): boolean => {
   db.exec("BEGIN IMMEDIATE");
 
   try {
-    migration.up(db);
+    // Another connection can apply the migration between the plan and this lock.
+    if (isApplied(db, planned)) {
+      db.exec("ROLLBACK");
 
-    if (!db.isTransaction) {
-      throw new Error("The migration ended the runner's transaction");
+      return false;
+    }
+
+    db.setAuthorizer(denyTransactionControl);
+
+    try {
+      migration.up(db);
+    } finally {
+      db.setAuthorizer(null);
+    }
+
+    const violations = db.prepare("PRAGMA foreign_key_check").all();
+
+    if (violations.length > 0) {
+      throw new Error(
+        `The migration left ${violations.length} foreign key violations`
+      );
     }
 
     db.prepare(
       `INSERT INTO ${LEDGER} (namespace, version, name, applied_at) VALUES (?, ?, ?, ?)`
     ).run(planned.namespace, planned.version, planned.name, appliedAt);
     db.exec("COMMIT");
+
+    return true;
   } catch (error) {
     if (db.isTransaction) {
       db.exec("ROLLBACK");
@@ -245,12 +281,37 @@ const applyOne = (
 };
 
 /**
+ * Applies one migration with foreign key enforcement off. SQLite ignores `PRAGMA foreign_keys` inside a transaction,
+ * so the runner switches it before `BEGIN` and restores it afterward. Resolves `false` if the migration was already
+ * applied.
+ */
+const applyOne = (
+  db: DatabaseSync,
+  migration: Migration,
+  planned: PlannedMigration,
+  appliedAt: string
+): boolean => {
+  const restoreForeignKeys = foreignKeysOn(db);
+  db.exec("PRAGMA foreign_keys = OFF");
+
+  try {
+    return runInTransaction(db, migration, planned, appliedAt);
+  } finally {
+    if (restoreForeignKeys) {
+      db.exec("PRAGMA foreign_keys = ON");
+    }
+  }
+};
+
+/**
  * Applies every pending migration and returns the applied ones, in order.
  *
  * Order: namespaces in the given order, versions ascending within a namespace. Each migration runs in its own
  * `BEGIN IMMEDIATE` transaction together with its ledger row in `wheatley_migrations`, so a failed migration leaves
- * the database at the previous migration. A second call applies nothing. Throws the errors of `planMigrations`, and
- * `migration_failed` with the original error as `cause` if a migration throws; migrations before it stay applied.
+ * the database at the previous migration. Before it commits, the runner runs `PRAGMA foreign_key_check` and fails the
+ * migration on any violation. A migration that another connection applied after the plan is skipped and not returned.
+ * A second call applies nothing. Throws the errors of `planMigrations`, and `migration_failed` with the original error
+ * as `cause` if a migration fails; migrations before it stay applied.
  */
 export const runMigrations = (
   db: DatabaseSync,
@@ -273,6 +334,8 @@ export const runMigrations = (
     namespaces.map((namespace) => [namespace.namespace, namespace.migrations])
   );
 
+  const applied: PlannedMigration[] = [];
+
   for (const planned of pending) {
     const migration = byNamespace.get(planned.namespace)?.[planned.version - 1];
 
@@ -287,8 +350,10 @@ export const runMigrations = (
       );
     }
 
-    applyOne(db, migration, planned, now().toISOString());
+    if (applyOne(db, migration, planned, now().toISOString())) {
+      applied.push(planned);
+    }
   }
 
-  return pending;
+  return applied;
 };
