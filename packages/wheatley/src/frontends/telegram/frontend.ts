@@ -10,7 +10,7 @@ import {
   validateTelegramConfig,
 } from "./config.js";
 
-/** The `type` of Telegram Frontend Bindings in `config.yaml`, and the module name of this track. */
+/** The `type` of Telegram Frontend Bindings in `config.yaml`. */
 export const TELEGRAM_FRONTEND_TYPE = "telegram";
 
 /**
@@ -68,9 +68,7 @@ export const createTelegramFrontend = (
         );
       }
 
-      return createTelegramBinding(config, ctx, {
-        client: await createClient(token),
-      });
+      return createTelegramBinding(config, ctx, await createClient(token));
     },
     type: TELEGRAM_FRONTEND_TYPE,
   };

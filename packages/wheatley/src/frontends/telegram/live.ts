@@ -2,6 +2,7 @@ import type { Logger, RunEvent } from "@wheatley/sdk";
 
 import type { TelegramTarget } from "./chat-key.js";
 import type { TelegramClient } from "./client.js";
+import { SerialQueue } from "./serial-queue.js";
 
 /** Telegram shows a typing indicator for about five seconds, so the Frontend repeats it before then. */
 const TYPING_REPEAT_MS = 4000;
@@ -37,7 +38,7 @@ interface RunState {
   expiry: ReturnType<typeof setTimeout> | undefined;
   closed: boolean;
   /** Draft API calls of this Run, one at a time. */
-  chain: Promise<void>;
+  readonly calls: SerialQueue;
 }
 
 const draftText = (text: string): string =>
@@ -123,7 +124,7 @@ export class LiveRuns {
     state.closed = true;
     clearTimers(state);
     this.#runs.delete(runId);
-    await state.chain;
+    await state.calls.idle();
 
     return state.messageId === undefined
       ? undefined
@@ -148,7 +149,7 @@ export class LiveRuns {
     }
 
     const state: RunState = {
-      chain: Promise.resolve(),
+      calls: new SerialQueue(),
       closed: false,
       expiry: undefined,
       flush: undefined,
@@ -171,7 +172,7 @@ export class LiveRuns {
 
   readonly #sendTyping = async (state: RunState): Promise<void> => {
     try {
-      await this.#client.sendTyping(state.target.chatId, state.target.threadId);
+      await this.#client.sendTyping(state.target);
     } catch (error) {
       this.#log.debug("Telegram typing indicator failed", {
         error: String(error),
@@ -216,12 +217,10 @@ export class LiveRuns {
 
     state.flush = setTimeout(() => {
       state.flush = undefined;
-      const previous = state.chain;
-      // `#flush` never rejects, so the chain never rejects.
-      state.chain = (async (): Promise<void> => {
-        await previous;
+      // `#flush` never rejects.
+      void state.calls.run(async () => {
         await this.#flush(state);
-      })();
+      });
     }, wait);
   };
 
@@ -235,11 +234,7 @@ export class LiveRuns {
 
     try {
       if (state.messageId === undefined) {
-        state.messageId = await this.#client.sendMessage(
-          state.target.chatId,
-          state.target.threadId,
-          text
-        );
+        state.messageId = await this.#client.sendMessage(state.target, text);
       } else if (text !== state.shown) {
         await this.#client.editMessageText(
           state.target.chatId,

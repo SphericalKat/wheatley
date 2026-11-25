@@ -17,13 +17,22 @@ export interface ChatLocation {
   readonly is_topic_message?: boolean;
 }
 
-/** Returns the Wheatley Chat ID: `<chat_id>`, or `<chat_id>:topic:<thread_id>` for a forum topic message. */
-export const chatKeyOf = (location: ChatLocation): string => {
+/** Returns where a message lives: its chat, plus its forum topic for a forum topic message. */
+export const targetOf = (location: ChatLocation): TelegramTarget => {
   const thread = location.message_thread_id;
 
   return location.is_topic_message === true && thread !== undefined
-    ? `${location.chat.id}:topic:${thread}`
-    : String(location.chat.id);
+    ? { chatId: location.chat.id, threadId: thread }
+    : { chatId: location.chat.id };
+};
+
+/** Returns the Wheatley Chat ID: `<chat_id>`, or `<chat_id>:topic:<thread_id>` for a forum topic message. */
+export const chatKeyOf = (location: ChatLocation): string => {
+  const { chatId, threadId } = targetOf(location);
+
+  return threadId === undefined
+    ? String(chatId)
+    : `${chatId}:topic:${threadId}`;
 };
 
 /** Parses a Wheatley Chat ID of this Frontend. Returns `undefined` for an ID in another format. */

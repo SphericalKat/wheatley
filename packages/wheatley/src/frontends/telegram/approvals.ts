@@ -14,6 +14,7 @@ import { Value } from "typebox/value";
 
 import type { InlineButton } from "./client.js";
 import { escapeHtml } from "./markdown.js";
+import { SerialQueue } from "./serial-queue.js";
 
 const STORE_FILE = "approvals.json";
 const CALLBACK_PREFIX = "ap";
@@ -137,7 +138,7 @@ export const approvalResolvedText = (
 export class ApprovalPromptStore {
   readonly #path: string;
   #prompts = new Map<string, ApprovalPrompt>();
-  #writes: Promise<void> = Promise.resolve();
+  readonly #writes = new SerialQueue();
 
   constructor(dataDir: string) {
     this.#path = path.join(dataDir, STORE_FILE);
@@ -192,7 +193,7 @@ export class ApprovalPromptStore {
   };
 
   readonly #persist = async (): Promise<void> => {
-    const write = async (): Promise<void> => {
+    await this.#writes.run(async () => {
       const temporary = `${this.#path}.tmp`;
       await writeFile(
         temporary,
@@ -200,17 +201,6 @@ export class ApprovalPromptStore {
         "utf-8"
       );
       await rename(temporary, this.#path);
-    };
-
-    const previous = this.#writes;
-
-    const current = (async (): Promise<void> => {
-      // A failed earlier write already rejected for its own caller.
-      await Promise.allSettled([previous]);
-      await write();
-    })();
-
-    this.#writes = current;
-    await current;
+    });
   };
 }

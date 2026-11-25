@@ -2,10 +2,11 @@ import type { InlineKeyboardMarkup } from "grammy/types";
 
 import { TelegramApiError } from "./client.js";
 import type { TelegramClient, TelegramUpload, TextOptions } from "./client.js";
+import { HTTP_BAD_REQUEST } from "./http-status.js";
 
 const ALLOWED_UPDATES = ["message", "callback_query"] as const;
 
-const FILE_ROOT = "https://api.telegram.org/file/bot";
+const DEFAULT_API_ROOT = "https://api.telegram.org";
 
 const markupOf = (
   options: TextOptions | undefined
@@ -21,15 +22,23 @@ const markupOf = (
         ),
       };
 
+/** Options of `createGrammyClient`. */
+export interface GrammyClientOptions {
+  /** The Bot API server, without a trailing slash. The default is `https://api.telegram.org`. */
+  readonly apiRoot?: string;
+}
+
 /**
  * Creates a `TelegramClient` backed by grammY. It imports `grammy` on the first call, so Deployments without a Telegram
  * binding never load it (ADR 0012).
  */
 export const createGrammyClient = async (
-  token: string
+  token: string,
+  clientOptions: GrammyClientOptions = {}
 ): Promise<TelegramClient> => {
   const { Bot, GrammyError, InputFile } = await import("grammy");
-  const bot = new Bot(token);
+  const apiRoot = clientOptions.apiRoot ?? DEFAULT_API_ROOT;
+  const bot = new Bot(token, { client: { apiRoot } });
   const { api } = bot;
 
   const toApiError = (cause: unknown): TelegramApiError => {
@@ -74,14 +83,14 @@ export const createGrammyClient = async (
 
       if (file.file_path === undefined) {
         throw new TelegramApiError("Telegram returned no file path", {
-          code: 400,
+          code: HTTP_BAD_REQUEST,
         });
       }
 
       const filePath = file.file_path;
 
       const response = await call(
-        async () => await fetch(`${FILE_ROOT}${token}/${filePath}`)
+        async () => await fetch(`${apiRoot}/file/bot${token}/${filePath}`)
       );
 
       if (!response.ok || response.body === null) {
@@ -107,7 +116,7 @@ export const createGrammyClient = async (
 
       return { id: me.id, username: me.username };
     },
-    sendFile: async (chatId, threadId, kind, file) => {
+    sendFile: async ({ chatId, threadId }, kind, file) => {
       const other = { message_thread_id: threadId };
 
       if (kind === "photo") {
@@ -124,7 +133,7 @@ export const createGrammyClient = async (
 
       return document.message_id;
     },
-    sendMessage: async (chatId, threadId, text, options) => {
+    sendMessage: async ({ chatId, threadId }, text, options) => {
       const sent = await call(
         async () =>
           await api.sendMessage(chatId, text, {
@@ -136,7 +145,7 @@ export const createGrammyClient = async (
 
       return sent.message_id;
     },
-    sendTyping: async (chatId, threadId) => {
+    sendTyping: async ({ chatId, threadId }) => {
       await call(
         async () =>
           await api.sendChatAction(chatId, "typing", {

@@ -1,6 +1,8 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
 
+import type { TelegramTarget } from "./chat-key.js";
+
 /*
  * The Telegram Bot API subset that the Telegram Frontend uses. `grammy-client.ts` implements it with grammY, and
  * tests replace it with a fake. The update schemas list only the fields that the Frontend reads and accept any other
@@ -154,10 +156,14 @@ export class TelegramApiError extends Error {
 /**
  * The Telegram Bot API as the Frontend uses it.
  *
+ * Ordering: each call resolves after Telegram confirms it. The client sends calls in the order that the caller makes
+ * them and does not queue or reorder them, so a caller that needs order awaits each call before the next.
+ *
  * Errors: every method rejects with a `TelegramApiError`, with `code` set for an error response of the Bot API and
  * unset for a network error or an aborted call.
  */
 export interface TelegramClient {
+  /** Resolves with the bot account. Rejects with code 401 for a revoked or invalid token. */
   readonly getMe: () => Promise<BotIdentity>;
   /**
    * Removes any webhook and long-polls for updates. Calls `onUpdate` for each update, one at a time, in order, and
@@ -174,16 +180,22 @@ export interface TelegramClient {
   readonly stopPolling: () => Promise<void>;
   /** Makes Telegram send updates to `url` with the `X-Telegram-Bot-Api-Secret-Token` header set to `secretToken`. */
   readonly setWebhook: (url: string, secretToken: string) => Promise<void>;
+  /**
+   * Replaces the command menu of the bot for all chats. Each `command` is 1 to 32 lowercase letters, digits, or
+   * underscores, and each `description` is 1 to 256 characters. Rejects with code 400 for a value outside these limits.
+   */
   readonly setMyCommands: (
     commands: readonly {
       readonly command: string;
       readonly description: string;
     }[]
   ) => Promise<void>;
-  /** Resolves with the `message_id` of the sent message. */
+  /**
+   * Sends a text message to `target`. Resolves with the `message_id` of the sent message. Rejects with code 400 if
+   * Telegram cannot parse the HTML of `parseMode: "HTML"`, or if the chat or topic does not exist.
+   */
   readonly sendMessage: (
-    chatId: number,
-    threadId: number | undefined,
+    target: TelegramTarget,
     text: string,
     options?: TextOptions
   ) => Promise<number>;
@@ -194,24 +206,27 @@ export interface TelegramClient {
     text: string,
     options?: TextOptions
   ) => Promise<void>;
-  /** Shows the typing indicator for about five seconds. */
-  readonly sendTyping: (
-    chatId: number,
-    threadId: number | undefined
-  ) => Promise<void>;
-  /** Resolves with the `message_id` of the sent message. */
+  /** Shows the typing indicator at `target` for about five seconds. */
+  readonly sendTyping: (target: TelegramTarget) => Promise<void>;
+  /**
+   * Uploads one file to `target`. Resolves with the `message_id` of the sent message, after Telegram stores the file.
+   * Two calls in a row arrive in the order of the calls if the caller awaits the first before the second.
+   */
   readonly sendFile: (
-    chatId: number,
-    threadId: number | undefined,
+    target: TelegramTarget,
     kind: UploadKind,
     file: TelegramUpload
   ) => Promise<number>;
+  /**
+   * Confirms a button press, which stops the loading indicator of the button. Shows `text` as a short notice if it is
+   * set. Rejects with code 400 if the press is older than about 15 minutes or was already confirmed.
+   */
   readonly answerCallbackQuery: (
     callbackQueryId: string,
     text?: string
   ) => Promise<void>;
   /**
-   * Streams the contents of a file that a user sent. Rejects with code 400 if Telegram cannot serve the file, for
+   * Streams the contents of a file that a Sender sent. Rejects with code 400 if Telegram cannot serve the file, for
    * example because it is larger than 20 MB.
    */
   readonly downloadFile: (fileId: string) => Promise<AsyncIterable<Uint8Array>>;

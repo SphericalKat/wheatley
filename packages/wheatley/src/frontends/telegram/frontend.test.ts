@@ -542,8 +542,11 @@ it("stages inbound files up to the attachment limit and reports larger files", a
   ]);
 });
 
-it("sends outbound attachments after the text and refuses attachments over the limit", async () => {
-  const { binding, client } = await harness({ ctx: { maxAttachmentBytes: 4 } });
+it("sends outbound attachments after the text and reports attachments over the limit", async () => {
+  const { binding, client, logs } = await harness({
+    ctx: { maxAttachmentBytes: 4 },
+  });
+
   const chatId = String(DM_CHAT);
   const data = encoder.encode("png!");
 
@@ -557,25 +560,26 @@ it("sends outbound attachments after the text and refuses attachments over the l
     })
   );
 
-  const error = await rejection(
-    binding.deliver(
-      message({
-        attachments: [
-          {
-            data: encoder.encode("12345"),
-            filename: "big.txt",
-            kind: "bytes",
-            mimeType: "text/plain",
-          },
-        ],
-        chatId,
-        messageId: "out-big",
-      })
-    )
+  await binding.deliver(
+    message({
+      attachments: [
+        {
+          data: encoder.encode("12345"),
+          filename: "big.txt",
+          kind: "bytes",
+          mimeType: "text/plain",
+        },
+      ],
+      chatId,
+      messageId: "out-big",
+      text: "Here is the log",
+    })
   );
 
   expect(client.sent.map((sent) => sent.text)).toStrictEqual([
     "Here is the chart",
+    "Here is the log",
+    "Skipped big.txt: files over 4 bytes are not supported.",
   ]);
   expect(client.files).toStrictEqual([
     {
@@ -585,7 +589,12 @@ it("sends outbound attachments after the text and refuses attachments over the l
       threadId: undefined,
     },
   ]);
-  expect(error.kind).toBe("permanent");
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      fields: { chatId, filenames: ["big.txt"] },
+      level: "warn",
+    })
+  );
 });
 
 it("shows Approvals with four buttons and passes button presses to the sink", async () => {

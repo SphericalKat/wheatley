@@ -1,3 +1,4 @@
+import type { TelegramTarget } from "./chat-key.js";
 import type {
   BotIdentity,
   TelegramClient,
@@ -113,8 +114,7 @@ export class FakeTelegramClient implements TelegramClient {
   };
 
   readonly sendMessage = async (
-    chatId: number,
-    threadId: number | undefined,
+    { chatId, threadId }: TelegramTarget,
     text: string,
     options?: TextOptions
   ): Promise<number> => {
@@ -136,17 +136,16 @@ export class FakeTelegramClient implements TelegramClient {
     this.edits.push({ chatId, messageId, options, text });
   };
 
-  readonly sendTyping = async (
-    chatId: number,
-    threadId: number | undefined
-  ): Promise<void> => {
+  readonly sendTyping = async ({
+    chatId,
+    threadId,
+  }: TelegramTarget): Promise<void> => {
     await Promise.resolve();
     this.typing.push({ chatId, threadId });
   };
 
   readonly sendFile = async (
-    chatId: number,
-    threadId: number | undefined,
+    { chatId, threadId }: TelegramTarget,
     kind: UploadKind,
     file: TelegramUpload
   ): Promise<number> => {

@@ -15,6 +15,8 @@ import type {
 /** Telegram sends photos larger than this as documents only. */
 const MAX_PHOTO_BYTES = 10_000_000;
 
+const BYTES_PER_MIB = 1_048_576;
+
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const UNSAFE_FILENAME = /[^\w.-]+/gu;
@@ -162,6 +164,19 @@ export const stageIncomingFiles = async (
   }
 
   return { attachments, tooLarge };
+};
+
+/** The notice for files that exceed the attachment limit, for example `Skipped a.bin: files over 10 MiB are not supported.` */
+export const skippedFilesText = (
+  filenames: readonly string[],
+  maxBytes: number
+): string => {
+  const limit =
+    maxBytes >= BYTES_PER_MIB
+      ? `${Math.floor(maxBytes / BYTES_PER_MIB)} MiB`
+      : `${maxBytes} bytes`;
+
+  return `Skipped ${filenames.join(", ")}: files over ${limit} are not supported.`;
 };
 
 /** The size of an outbound attachment in bytes. */
