@@ -4,10 +4,18 @@
   "private": true,
   "description": "Wheatley daemon and CLI",
   "license": "ISC",
+  "bin": {
+    "wheatley": "bin/wheatley.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "tsc -p tsconfig.build.json && node scripts/bundle-dashboard.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
