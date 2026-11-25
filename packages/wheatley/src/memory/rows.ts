@@ -42,12 +42,25 @@ const hasKind = (
   return kind.startsWith("text") ? isText(value) : isNumber(value);
 };
 
-/**
- * Returns true if `row` has every column of `columns` with its storage class. Use it to narrow query results, for
- * example `rows.filter((row) => hasColumns(row, columns))`.
- */
-export const hasColumns = <Columns extends ColumnKinds>(
+const hasColumns = <Columns extends ColumnKinds>(
   row: SqlRow,
   columns: Columns
 ): row is SqlRow & RowOf<Columns> =>
   Object.entries(columns).every(([column, kind]) => hasKind(row[column], kind));
+
+/**
+ * Returns `row` typed with `columns`. The rows come from the module's own STRICT tables, so a mismatch means that the
+ * query and the schema differ. Throws an `Error` that names the columns for a mismatch.
+ */
+export const rowOf = <Columns extends ColumnKinds>(
+  row: SqlRow,
+  columns: Columns
+): SqlRow & RowOf<Columns> => {
+  if (!hasColumns(row, columns)) {
+    throw new Error(
+      `A Memory query row does not match the expected columns ${JSON.stringify(columns)}`
+    );
+  }
+
+  return row;
+};

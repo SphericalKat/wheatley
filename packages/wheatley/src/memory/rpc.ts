@@ -5,7 +5,7 @@ import type { MemoryConsolidation } from "./consolidation.js";
 import { memoryFileName } from "./names.js";
 
 /** The default number of hits of `memory.search`. */
-const DEFAULT_SEARCH_LIMIT = 20;
+const RPC_SEARCH_LIMIT = 20;
 
 /** The default number of entries of `memory.consolidationLog`. */
 const DEFAULT_LOG_LIMIT = 20;
@@ -54,7 +54,7 @@ export const createMemoryRpcHandlers = (
   "memory.search": async (params) => ({
     hits: [
       ...(await store.search(params.query, {
-        limit: params.limit ?? DEFAULT_SEARCH_LIMIT,
+        limit: params.limit ?? RPC_SEARCH_LIMIT,
         scope: params.scope ?? "all",
       })),
     ],

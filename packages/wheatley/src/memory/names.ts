@@ -11,12 +11,9 @@ export const MEMORY_DIR_NAME = "memory";
 const NAME = /^(?:MEMORY|[a-z0-9][a-z0-9-]{0,63})$/u;
 const FILE_NAME = /^(?<name>MEMORY|[a-z0-9][a-z0-9-]{0,63})\.md$/u;
 
-/** Returns true if `name` is `MEMORY` or a valid topic slug. */
-export const isMemoryName = (name: string): boolean => NAME.test(name);
-
 /** Throws `SeamError("invalid_name")` unless `name` is `MEMORY` or a valid topic slug. */
 export const assertMemoryName = (name: string): void => {
-  if (!isMemoryName(name)) {
+  if (!NAME.test(name)) {
     throw new SeamError(
       "invalid_name",
       `Invalid Memory name: ${name}. Use MEMORY or a slug that matches ^[a-z0-9][a-z0-9-]{0,63}$.`

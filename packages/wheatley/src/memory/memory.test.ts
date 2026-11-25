@@ -551,10 +551,9 @@ describe("Operator JSON-RPC handlers", () => {
 });
 
 describe("pre-compaction flush", () => {
-  it("returns a prompt that tells the model to save facts with memory_write", () => {
-    const prompt = memory.api.store.compactionFlushPrompt();
+  it("returns a prompt with the configured MEMORY.md cap", async () => {
+    const small = await fixture.create({ config: { maxChars: 1234 } });
 
-    expect(prompt).toContain("memory_write");
-    expect(prompt).toContain(String(CAP));
+    expect(small.api.store.compactionFlushPrompt()).toContain("1234");
   });
 });

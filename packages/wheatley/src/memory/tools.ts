@@ -19,10 +19,11 @@ import type {
 } from "../contracts/extension-catalog.js";
 import type { MemoryStore } from "../contracts/memory-store.js";
 import { canonicalToolName } from "../contracts/tool-names.js";
+import { errorMessage, fileSizeLine } from "./format.js";
 import { MEMORY_NAME, memoryFileName } from "./names.js";
 
-/** The default number of `memory_search` hits. */
-const DEFAULT_SEARCH_LIMIT = 10;
+/** The default number of `memory_search` hits. It is lower than the Operator default to save model context. */
+const TOOL_SEARCH_LIMIT = 10;
 
 /** The maximum number of `memory_search` hits. */
 const MAX_SEARCH_LIMIT = 50;
@@ -94,15 +95,15 @@ interface MemoryTool<Schema extends TSchema> {
   readonly run: (input: Static<Schema>) => Promise<ToolResult>;
 }
 
-/** Erases the input type of a `MemoryTool` behind a validating handler. */
-interface RegisteredTool {
+/** A `MemoryTool` with its descriptor and a handler that validates untyped input. */
+interface DefinedTool {
   readonly descriptor: ToolDescriptor;
   readonly execute: (input: JsonValue) => Promise<ToolResult>;
 }
 
-const register = <Schema extends TSchema>(
+const defineTool = <Schema extends TSchema>(
   tool: MemoryTool<Schema>
-): RegisteredTool => ({
+): DefinedTool => ({
   descriptor: {
     defaultAction: "allow",
     description: tool.description,
@@ -126,14 +127,14 @@ const register = <Schema extends TSchema>(
   },
 });
 
-const searchTool = (store: MemoryStore): RegisteredTool =>
-  register({
+const searchTool = (store: MemoryStore): DefinedTool =>
+  defineTool({
     description:
       "Searches Memory files and past Conversations (user and assistant messages) by keywords. Returns the best matches first. Use memory_read to read a whole Memory file.",
     name: "memory_search",
     run: async (input) => {
       const hits = await store.search(input.query, {
-        limit: input.limit ?? DEFAULT_SEARCH_LIMIT,
+        limit: input.limit ?? TOOL_SEARCH_LIMIT,
         scope: input.scope ?? "all",
       });
 
@@ -146,8 +147,8 @@ const searchTool = (store: MemoryStore): RegisteredTool =>
     schema: SearchInput,
   });
 
-const readTool = (store: MemoryStore): RegisteredTool =>
-  register({
+const readTool = (store: MemoryStore): DefinedTool =>
+  defineTool({
     description:
       'Reads one Memory file: name "MEMORY" for MEMORY.md, or a topic slug such as "travel" for travel.md. Without a name, lists the Memory files and the MEMORY.md budget.',
     name: "memory_read",
@@ -155,14 +156,10 @@ const readTool = (store: MemoryStore): RegisteredTool =>
       if (input.name === undefined) {
         const { budget, files } = await store.list();
 
-        const lines = files.map(
-          (file) => `- ${memoryFileName(file.name)}: ${file.chars} characters`
-        );
-
         return textResult(
           [
             `MEMORY.md budget: ${budget.usedChars} of ${budget.maxChars} characters.`,
-            ...lines,
+            ...files.map(fileSizeLine),
           ].join("\n")
         );
       }
@@ -180,8 +177,8 @@ const readTool = (store: MemoryStore): RegisteredTool =>
     schema: ReadInput,
   });
 
-const writeTool = (store: MemoryStore): RegisteredTool =>
-  register({
+const writeTool = (store: MemoryStore): DefinedTool =>
+  defineTool({
     description:
       'Saves Markdown to a Memory file: name "MEMORY" for MEMORY.md (short, always in your system prompt, with a character cap) or a topic slug such as "travel" for details. Mode "replace" (default) overwrites the file, "append" adds a new line at the end. A MEMORY.md write over the cap fails and changes nothing.',
     name: "memory_write",
@@ -207,8 +204,8 @@ const writeTool = (store: MemoryStore): RegisteredTool =>
     schema: WriteInput,
   });
 
-const deleteTool = (store: MemoryStore): RegisteredTool =>
-  register({
+const deleteTool = (store: MemoryStore): DefinedTool =>
+  defineTool({
     description:
       'Deletes a topic file, or empties MEMORY.md for name "MEMORY".',
     name: "memory_delete",
@@ -241,7 +238,7 @@ const closeNothing = async (): Promise<void> => {
  * is empty and `close` does nothing.
  */
 export const createMemoryTools = (store: MemoryStore): ToolProvider => {
-  const registered = new Map(
+  const defined = new Map(
     [
       searchTool(store),
       readTool(store),
@@ -250,14 +247,14 @@ export const createMemoryTools = (store: MemoryStore): ToolProvider => {
     ].map((tool) => [tool.descriptor.name, tool])
   );
 
-  const descriptors = [...registered.values()].map((tool) => tool.descriptor);
+  const descriptors = [...defined.values()].map((tool) => tool.descriptor);
 
   const execute = async (
     name: string,
     input: JsonValue,
     ctx: ToolContext
   ): Promise<ToolResult> => {
-    const tool = registered.get(name);
+    const tool = defined.get(name);
 
     if (tool === undefined) {
       return errorResult(`Unknown Tool: ${name}`);
@@ -270,9 +267,7 @@ export const createMemoryTools = (store: MemoryStore): ToolProvider => {
     try {
       return await tool.execute(input);
     } catch (error) {
-      return errorResult(
-        error instanceof Error ? error.message : String(error)
-      );
+      return errorResult(errorMessage(error));
     }
   };
 

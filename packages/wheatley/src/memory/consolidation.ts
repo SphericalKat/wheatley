@@ -13,8 +13,8 @@ import type {
 } from "../contracts/maintenance-runner.js";
 import type { MemoryStore } from "../contracts/memory-store.js";
 import type { Clock } from "../contracts/module.js";
-import { memoryFileName } from "./names.js";
-import { hasColumns } from "./rows.js";
+import { errorMessage, fileSizeLine } from "./format.js";
+import { rowOf } from "./rows.js";
 import type { SqlRow } from "./rows.js";
 
 /** The `RunOrigin.job` of a consolidation Run. */
@@ -55,16 +55,24 @@ export interface MemoryConsolidation {
    * start the Run, the entry becomes `failed` and the runner's error propagates.
    */
   readonly run: () => Promise<{ readonly runId: string }>;
-  /** Returns the newest `limit` log entries, newest first. */
+  /**
+   * Returns the newest `limit` log entries, newest first.
+   *
+   * Errors: SQLite errors propagate. A row that does not match the `memory_consolidations` schema throws an `Error`.
+   */
   readonly log: (limit: number) => readonly ConsolidationLogEntry[];
   /**
    * Resumes the log entries of Runs that started before a restart, and starts the schedule if consolidation is
    * enabled. If the schedule passed a slot since the last consolidation started, it starts one consolidation at once.
+   * A consolidation on demand counts as the last one. If the log is empty, it does not catch up.
+   *
+   * Errors: SQLite errors from reading or updating the log propagate, and the schedule stays off. Failures of the
+   * catch-up consolidation and of scheduled consolidations go to the Agent logger, not to the caller.
    */
   readonly start: () => Promise<void>;
   /**
    * Stops the schedule. Entries of Runs that still run stay `running`, and the next `start` resumes them. Resolves
-   * without waiting for Runs to end.
+   * without waiting for Runs to end. Never throws.
    */
   readonly stop: () => Promise<void>;
 }
@@ -108,10 +116,8 @@ const LOG_ROW = {
 const RUNNING_ROW = { id: "text", run_id: "text?" } as const;
 const LAST_ROW = { last: "number?" } as const;
 
-const entryOf = (row: SqlRow): ConsolidationLogEntry[] => {
-  if (!hasColumns(row, LOG_ROW)) {
-    return [];
-  }
+const toLogEntry = (value: SqlRow): ConsolidationLogEntry => {
+  const row = rowOf(value, LOG_ROW);
 
   const entry: ConsolidationLogEntry = {
     endedAt:
@@ -136,16 +142,19 @@ const entryOf = (row: SqlRow): ConsolidationLogEntry[] => {
     entry.error = row.error;
   }
 
-  return [entry];
+  return entry;
 };
 
-/** Creates the consolidation job. It validates the schedule at once and throws an `Error` if it is invalid. */
+/**
+ * Creates the consolidation job. If consolidation is enabled, it validates the schedule at once and throws an `Error`
+ * if it is invalid. A disabled job ignores the schedule and the timezone.
+ */
 export const createMemoryConsolidation = (
   options: MemoryConsolidationOptions
 ): MemoryConsolidation => {
   const { clock, config, db, log, runner, store } = options;
-  const cron = parseSchedule(config);
   const enabled = config?.enabled ?? true;
+  const cron = enabled ? parseSchedule(config) : undefined;
   let active = false;
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
@@ -156,12 +165,7 @@ export const createMemoryConsolidation = (
     const inventory =
       files.length === 0
         ? "Memory has no files yet."
-        : files
-            .map(
-              (file) =>
-                `- ${memoryFileName(file.name)}: ${file.chars} characters`
-            )
-            .join("\n");
+        : files.map(fileSizeLine).join("\n");
 
     return [
       "Consolidate your Memory. This is a scheduled maintenance Run, and nobody reads your reply live.",
@@ -209,7 +213,7 @@ export const createMemoryConsolidation = (
       result = await runner.wait(runId);
     } catch (error) {
       result = {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         status: "failed",
         text: "",
       };
@@ -224,7 +228,7 @@ export const createMemoryConsolidation = (
       finish(id, result);
     } catch (error) {
       log.error("Failed to record the end of a Memory consolidation", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         runId,
       });
     } finally {
@@ -269,7 +273,7 @@ export const createMemoryConsolidation = (
       ).run(runId, id);
     } catch (error) {
       finish(id, {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         status: "failed",
         text: "",
       });
@@ -290,7 +294,7 @@ export const createMemoryConsolidation = (
         ORDER BY started_at DESC, rowid DESC LIMIT ?`
       )
       .all(limit)
-      .flatMap(entryOf);
+      .map(toLogEntry);
 
   const runScheduled = async (): Promise<void> => {
     try {
@@ -307,17 +311,17 @@ export const createMemoryConsolidation = (
       }
 
       log.error("Failed to start a scheduled Memory consolidation", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   };
 
-  const scheduleNext = (): void => {
+  const scheduleNext = (schedule: Cron): void => {
     if (stopped) {
       return;
     }
 
-    const next = cron.nextRun(new Date(clock.now()));
+    const next = schedule.nextRun(new Date(clock.now()));
 
     if (next === null) {
       return;
@@ -341,7 +345,9 @@ export const createMemoryConsolidation = (
         return;
       }
 
-      void runScheduled().finally(scheduleNext);
+      void runScheduled().finally(() => {
+        scheduleNext(schedule);
+      });
     };
 
     timer = setTimeout(
@@ -356,7 +362,7 @@ export const createMemoryConsolidation = (
         "SELECT id, run_id FROM memory_consolidations WHERE status = 'running'"
       )
       .all()
-      .filter((row) => hasColumns(row, RUNNING_ROW));
+      .map((value) => rowOf(value, RUNNING_ROW));
 
     for (const row of rows) {
       if (row.run_id === null) {
@@ -372,15 +378,13 @@ export const createMemoryConsolidation = (
     }
   };
 
-  const missedSlot = (): boolean => {
+  const missedSlot = (schedule: Cron): boolean => {
     const value = db
       .prepare("SELECT max(started_at) AS last FROM memory_consolidations")
       .get();
 
-    const last =
-      value !== undefined && hasColumns(value, LAST_ROW) ? value.last : null;
-
-    const [previous] = cron.previousRuns(1, new Date(clock.now()));
+    const last = value === undefined ? null : rowOf(value, LAST_ROW).last;
+    const [previous] = schedule.previousRuns(1, new Date(clock.now()));
 
     return last !== null && previous !== undefined && previous.getTime() > last;
   };
@@ -390,15 +394,15 @@ export const createMemoryConsolidation = (
       stopped = false;
       resume();
 
-      if (!enabled) {
+      if (cron === undefined) {
         return;
       }
 
-      if (missedSlot()) {
+      if (missedSlot(cron)) {
         void runScheduled();
       }
 
-      scheduleNext();
+      scheduleNext(cron);
     });
   };
 

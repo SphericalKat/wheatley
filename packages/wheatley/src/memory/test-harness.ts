@@ -14,6 +14,7 @@ import { openAgentDatabase } from "../db/database.js";
 import { runMigrations } from "../db/migrations.js";
 import { memoryModule } from "./module.js";
 import type { MemoryApi } from "./module.js";
+import { MEMORY_DIR_NAME } from "./names.js";
 
 /** One event that the module emitted. */
 export interface EmittedEvent {
@@ -115,6 +116,6 @@ export const createMemoryFixture = async (): Promise<MemoryFixture> => {
     dispose,
     logs,
     events,
-    memoryDir: path.join(agentDir, "memory"),
+    memoryDir: path.join(agentDir, MEMORY_DIR_NAME),
   };
 };

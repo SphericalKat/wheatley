@@ -32,7 +32,7 @@ import {
   memoryFilePath,
   memoryNameOfFile,
 } from "./names.js";
-import { hasColumns } from "./rows.js";
+import { rowOf } from "./rows.js";
 
 /** The default `MEMORY.md` character cap (ADR 0009). */
 export const DEFAULT_MEMORY_MAX_CHARS = 4000;
@@ -338,7 +338,7 @@ export const createMarkdownMemoryStore = (
         FROM memory_files_fts WHERE memory_files_fts MATCH ? ORDER BY rank LIMIT ?`
       )
       .all(match, limit)
-      .filter((row) => hasColumns(row, FILE_HIT))
+      .map((value) => rowOf(value, FILE_HIT))
       .map((row) => ({
         kind: "memory",
         name: row.name,
@@ -355,7 +355,7 @@ export const createMarkdownMemoryStore = (
         WHERE memory_messages_fts MATCH ? ORDER BY rank LIMIT ?`
       )
       .all(match, limit)
-      .filter((row) => hasColumns(row, MESSAGE_HIT))
+      .map((value) => rowOf(value, MESSAGE_HIT))
       .map((row) => ({
         at: new Date(row.at).toISOString(),
         conversationId: row.conversation_id,

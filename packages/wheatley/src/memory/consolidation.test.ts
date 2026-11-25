@@ -263,6 +263,27 @@ describe("scheduled consolidation", () => {
     });
   });
 
+  it("ignores an invalid schedule when consolidation is disabled", async () => {
+    const runner = new InMemoryMaintenanceRunner();
+
+    const memory = await fixture.create({
+      config: {
+        consolidation: {
+          enabled: false,
+          schedule: "not a cron",
+          timezone: "Nowhere/Invalid",
+        },
+      },
+      maintenance: runner,
+    });
+
+    await memory.start?.();
+
+    await expect(memory.api.consolidation.run()).resolves.toMatchObject({
+      runId: "maintenance-run-1",
+    });
+  });
+
   it("rejects an invalid schedule when the module is created", async () => {
     await expect(
       fixture.create({ config: { consolidation: { schedule: "not a cron" } } })
