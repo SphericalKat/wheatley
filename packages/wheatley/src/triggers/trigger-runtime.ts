@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { TriggerScheduleSchema } from "@wheatley/protocol";
 import type {
+  EventPayload,
   Trigger,
   TriggerInput,
   TriggerPatch,
@@ -21,6 +22,8 @@ import type {
   TriggerRuntime,
   WebhookEvent,
 } from "../contracts/trigger-runtime.js";
+import { armDueTimer } from "./due-timer.js";
+import { errorText } from "./errors.js";
 import {
   assertValidSchedule,
   initialFireAt,
@@ -28,14 +31,12 @@ import {
 } from "./schedule.js";
 import {
   blobColumn,
+  enumColumn,
   integerColumn,
   optionalIntegerColumn,
   textColumn,
 } from "./sql-row.js";
 import type { SqlRow } from "./sql-row.js";
-
-/** A timer never sleeps longer than this, so that the scheduler notices a changed system clock within a minute. */
-const MAX_TIMER_MS = 60_000;
 
 /**
  * A `cron` tick that the scheduler reaches later than this counts as missed and is skipped, for example after the host
@@ -43,8 +44,8 @@ const MAX_TIMER_MS = 60_000;
  */
 const CRON_GRACE_MS = 60_000;
 
-/** The wait before the runtime tries again to start a webhook firing whose start failed. */
-const WEBHOOK_RETRY_MS = 5000;
+/** The wait before the runtime tries again to start a webhook or `once` firing whose start failed. */
+const START_RETRY_MS = 5000;
 
 /** How long the runtime keeps the record of a Trigger Run for `isDeliverySuppressed`. */
 const RUN_RECORD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -69,19 +70,20 @@ const parseSchedule = (json: string): TriggerSchedule => {
   return value;
 };
 
-const conversationModeOf = (row: SqlRow): Trigger["conversationMode"] =>
-  textColumn(row, "conversation_mode") === "shared" ? "shared" : "per_firing";
+const CONVERSATION_MODES: readonly Trigger["conversationMode"][] = [
+  "per_firing",
+  "shared",
+];
 
-const createdByOf = (row: SqlRow): Trigger["createdBy"] =>
-  textColumn(row, "created_by") === "agent" ? "agent" : "operator";
+const CREATORS: readonly Trigger["createdBy"][] = ["agent", "operator"];
 
 const toTrigger = (row: SqlRow): Trigger => {
   const paused = integerColumn(row, "paused") === 1;
 
   return {
-    conversationMode: conversationModeOf(row),
+    conversationMode: enumColumn(row, "conversation_mode", CONVERSATION_MODES),
     createdAt: iso(integerColumn(row, "created_at")),
-    createdBy: createdByOf(row),
+    createdBy: enumColumn(row, "created_by", CREATORS),
     id: textColumn(row, "id"),
     lastFiredAt: isoOrNull(optionalIntegerColumn(row, "last_fired_at")),
     name: textColumn(row, "name"),
@@ -122,9 +124,6 @@ const assertActorMayChange = (
   }
 };
 
-const errorText = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
-
 /** What the SQLite Trigger runtime needs from its Agent. */
 export interface SqliteTriggerRuntimeOptions {
   readonly agentName: string;
@@ -156,143 +155,52 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
     this.#options = options;
   }
 
-  readonly list = async (): Promise<readonly Trigger[]> => {
-    await Promise.resolve();
+  readonly list = async (): Promise<readonly Trigger[]> =>
+    await Promise.try(() =>
+      this.#db
+        .prepare(
+          `SELECT ${TRIGGER_COLUMNS} FROM triggers_definitions ORDER BY seq`
+        )
+        .all()
+        .map(toTrigger)
+    );
 
-    return this.#db
-      .prepare(
-        `SELECT ${TRIGGER_COLUMNS} FROM triggers_definitions ORDER BY seq`
-      )
-      .all()
-      .map(toTrigger);
-  };
-
-  readonly get = async (triggerId: string): Promise<Trigger | undefined> => {
-    await Promise.resolve();
-
-    return this.#read(triggerId);
-  };
+  readonly get = async (triggerId: string): Promise<Trigger | undefined> =>
+    await Promise.try(() => this.#read(triggerId));
 
   readonly create = async (
     input: TriggerInput,
     actor: TriggerActor
-  ): Promise<Trigger> => {
-    await Promise.resolve();
-    assertActorMayChange(actor, input.schedule);
-    assertValidSchedule(input.schedule);
-
-    const id = randomUUID();
-    const now = this.#now();
-
-    this.#db
-      .prepare(
-        `INSERT INTO triggers_definitions (${TRIGGER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
-      )
-      .run(
-        id,
-        input.name,
-        input.prompt,
-        JSON.stringify(input.schedule),
-        input.target.bindingId,
-        input.target.chatId,
-        input.conversationMode ?? "per_firing",
-        input.paused === true ? 1 : 0,
-        actor,
-        now,
-        initialFireAt(input.schedule, now)
-      );
-
-    const trigger = this.#require(id);
-    this.#changed("created", trigger);
-    this.#rearm();
-
-    return trigger;
-  };
+  ): Promise<Trigger> => await Promise.try(() => this.#create(input, actor));
 
   readonly update = async (
     triggerId: string,
     patch: TriggerPatch,
     actor: TriggerActor
-  ): Promise<Trigger> => {
-    await Promise.resolve();
-    const current = this.#require(triggerId);
-    const schedule = patch.schedule ?? current.schedule;
-    const paused = patch.paused ?? current.paused;
-
-    assertActorMayChange(actor, current.schedule);
-    assertActorMayChange(actor, schedule);
-    assertValidSchedule(schedule);
-
-    const nextFireAt = this.#nextFireAtAfterUpdate(current, patch);
-    const target = patch.target ?? current.target;
-
-    this.#db
-      .prepare(
-        `UPDATE triggers_definitions SET name = ?, prompt = ?, schedule_json = ?, target_binding_id = ?,
-          target_chat_id = ?, conversation_mode = ?, paused = ?, next_fire_at = ? WHERE id = ?`
-      )
-      .run(
-        patch.name ?? current.name,
-        patch.prompt ?? current.prompt,
-        JSON.stringify(schedule),
-        target.bindingId,
-        target.chatId,
-        patch.conversationMode ?? current.conversationMode,
-        paused ? 1 : 0,
-        nextFireAt,
-        triggerId
-      );
-
-    const updated = this.#require(triggerId);
-    this.#changed("updated", updated);
-    this.#rearm();
-
-    return updated;
-  };
+  ): Promise<Trigger> =>
+    await Promise.try(() => this.#update(triggerId, patch, actor));
 
   readonly delete = async (
     triggerId: string,
     actor: TriggerActor
-  ): Promise<boolean> => {
-    await Promise.resolve();
-    const current = this.#read(triggerId);
-
-    if (current === undefined) {
-      return false;
-    }
-
-    assertActorMayChange(actor, current.schedule);
-    this.#db
-      .prepare("DELETE FROM triggers_definitions WHERE id = ?")
-      .run(triggerId);
-    this.#options.events.emit("trigger.changed", {
-      agent: this.#options.agentName,
-      change: "deleted",
-      triggerId,
-    });
-    this.#rearm();
-
-    return true;
-  };
+  ): Promise<boolean> =>
+    await Promise.try(() => this.#delete(triggerId, actor));
 
   readonly fire = async (
     triggerId: string
-  ): Promise<{ readonly runId: string }> => {
-    await Promise.resolve();
-
-    return await this.#fire(this.#require(triggerId), undefined);
-  };
+  ): Promise<{ readonly runId: string }> =>
+    await this.#fire(this.#require(triggerId), undefined);
 
   readonly webhookTokenSecret = async (
     triggerId: string
-  ): Promise<string | undefined> => {
-    await Promise.resolve();
-    const trigger = this.#read(triggerId);
+  ): Promise<string | undefined> =>
+    await Promise.try(() => {
+      const trigger = this.#read(triggerId);
 
-    return trigger?.schedule.kind === "webhook" && !trigger.paused
-      ? trigger.schedule.tokenSecret
-      : undefined;
-  };
+      return trigger?.schedule.kind === "webhook" && !trigger.paused
+        ? trigger.schedule.tokenSecret
+        : undefined;
+    });
 
   readonly acceptWebhookEvent = async (
     triggerId: string,
@@ -358,18 +266,19 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
    * events. Resolves after the first scheduler pass started. Calling it twice does nothing.
    */
   readonly start = async (): Promise<void> => {
-    if (this.#running) {
-      return;
-    }
+    await Promise.try(() => {
+      if (this.#running) {
+        return;
+      }
 
-    this.#running = true;
-    this.#db
-      .prepare("DELETE FROM triggers_runs WHERE started_at < ?")
-      .run(this.#now() - RUN_RECORD_RETENTION_MS);
-    this.#skipMissedCronTicks();
-    this.#enqueue(this.#drainWebhookEvents);
-    this.#enqueue(this.#runDue);
-    await Promise.resolve();
+      this.#running = true;
+      this.#db
+        .prepare("DELETE FROM triggers_runs WHERE started_at < ?")
+        .run(this.#now() - RUN_RECORD_RETENTION_MS);
+      this.#skipMissedCronTicks();
+      this.#enqueue(this.#drainWebhookEvents);
+      this.#enqueue(this.#runDue);
+    });
   };
 
   /** Stops the scheduler and waits for the scheduler work in progress. Repeated calls do nothing. */
@@ -408,6 +317,95 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
     return trigger;
   };
 
+  readonly #create = (input: TriggerInput, actor: TriggerActor): Trigger => {
+    assertActorMayChange(actor, input.schedule);
+    assertValidSchedule(input.schedule);
+
+    const id = randomUUID();
+    const now = this.#now();
+
+    this.#db
+      .prepare(
+        `INSERT INTO triggers_definitions (${TRIGGER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+      )
+      .run(
+        id,
+        input.name,
+        input.prompt,
+        JSON.stringify(input.schedule),
+        input.target.bindingId,
+        input.target.chatId,
+        input.conversationMode ?? "per_firing",
+        input.paused === true ? 1 : 0,
+        actor,
+        now,
+        initialFireAt(input.schedule, now)
+      );
+
+    const trigger = this.#require(id);
+    this.#changed("created", id, trigger);
+    this.#rearm();
+
+    return trigger;
+  };
+
+  readonly #update = (
+    triggerId: string,
+    patch: TriggerPatch,
+    actor: TriggerActor
+  ): Trigger => {
+    const current = this.#require(triggerId);
+    const schedule = patch.schedule ?? current.schedule;
+    const paused = patch.paused ?? current.paused;
+
+    assertActorMayChange(actor, current.schedule);
+    assertActorMayChange(actor, schedule);
+    assertValidSchedule(schedule);
+
+    const nextFireAt = this.#nextFireAtAfterUpdate(current, patch);
+    const target = patch.target ?? current.target;
+
+    this.#db
+      .prepare(
+        `UPDATE triggers_definitions SET name = ?, prompt = ?, schedule_json = ?, target_binding_id = ?,
+          target_chat_id = ?, conversation_mode = ?, paused = ?, next_fire_at = ? WHERE id = ?`
+      )
+      .run(
+        patch.name ?? current.name,
+        patch.prompt ?? current.prompt,
+        JSON.stringify(schedule),
+        target.bindingId,
+        target.chatId,
+        patch.conversationMode ?? current.conversationMode,
+        paused ? 1 : 0,
+        nextFireAt,
+        triggerId
+      );
+
+    const updated = this.#require(triggerId);
+    this.#changed("updated", triggerId, updated);
+    this.#rearm();
+
+    return updated;
+  };
+
+  readonly #delete = (triggerId: string, actor: TriggerActor): boolean => {
+    const current = this.#read(triggerId);
+
+    if (current === undefined) {
+      return false;
+    }
+
+    assertActorMayChange(actor, current.schedule);
+    this.#db
+      .prepare("DELETE FROM triggers_definitions WHERE id = ?")
+      .run(triggerId);
+    this.#changed("deleted", triggerId);
+    this.#rearm();
+
+    return true;
+  };
+
   readonly #storedNextFireAt = (triggerId: string): number | null => {
     const row = this.#db
       .prepare("SELECT next_fire_at FROM triggers_definitions WHERE id = ?")
@@ -441,16 +439,23 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
     return this.#storedNextFireAt(current.id);
   };
 
+  /** Emits `trigger.changed`. A `deleted` change has no `trigger`. */
   readonly #changed = (
-    change: "created" | "updated" | "fired",
-    trigger: Trigger
+    change: "created" | "updated" | "deleted" | "fired",
+    triggerId: string,
+    trigger?: Trigger
   ): void => {
-    this.#options.events.emit("trigger.changed", {
+    const payload: EventPayload<"trigger.changed"> = {
       agent: this.#options.agentName,
       change,
-      trigger,
-      triggerId: trigger.id,
-    });
+      triggerId,
+    };
+
+    if (trigger !== undefined) {
+      payload.trigger = trigger;
+    }
+
+    this.#options.events.emit("trigger.changed", payload);
   };
 
   readonly #settleStarts = async (): Promise<void> => {
@@ -489,7 +494,11 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
           "UPDATE triggers_definitions SET last_fired_at = ? WHERE id = ?"
         )
         .run(firedAt, trigger.id);
-      this.#changed("fired", this.#read(trigger.id) ?? firing.trigger);
+      this.#changed(
+        "fired",
+        trigger.id,
+        this.#read(trigger.id) ?? firing.trigger
+      );
 
       return { runId };
     } finally {
@@ -616,7 +625,23 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
         error: errorText(error),
         triggerId: trigger.id,
       });
+
+      if (schedule.kind === "once") {
+        this.#retryOnce(trigger.id);
+      }
     }
+  };
+
+  /**
+   * Schedules a `once` firing whose start failed again after `START_RETRY_MS`, so that a reminder is not lost. A
+   * concurrent `update` that set a new fire time wins.
+   */
+  readonly #retryOnce = (triggerId: string): void => {
+    this.#db
+      .prepare(
+        "UPDATE triggers_definitions SET next_fire_at = ? WHERE id = ? AND next_fire_at IS NULL"
+      )
+      .run(this.#now() + START_RETRY_MS, triggerId);
   };
 
   /** Fires the stored webhook events in arrival order. On a failed start, it keeps the event and tries again later. */
@@ -667,18 +692,17 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
     this.#webhookRetry = setTimeout(() => {
       this.#webhookRetry = undefined;
       this.#enqueue(this.#drainWebhookEvents);
-    }, WEBHOOK_RETRY_MS);
+    }, START_RETRY_MS);
     this.#webhookRetry.unref();
   };
 
-  /** Arms the timer for the earliest scheduled firing, at most `MAX_TIMER_MS` ahead. */
+  /** Arms the timer for the earliest scheduled firing. */
   readonly #rearm = (): void => {
     if (!this.#running) {
       return;
     }
 
     clearTimeout(this.#timer);
-    this.#timer = undefined;
 
     const row = this.#db
       .prepare(
@@ -686,18 +710,13 @@ export class SqliteTriggerRuntime implements TriggerRuntime {
       )
       .get();
 
-    const due = row === undefined ? null : optionalIntegerColumn(row, "due");
-
-    if (due === null) {
-      return;
-    }
-
-    const delay = Math.min(Math.max(due - this.#now(), 0), MAX_TIMER_MS);
-
-    this.#timer = setTimeout(() => {
-      this.#timer = undefined;
-      this.#enqueue(this.#runDue);
-    }, delay);
-    this.#timer.unref();
+    this.#timer = armDueTimer(
+      row === undefined ? null : optionalIntegerColumn(row, "due"),
+      this.#now(),
+      () => {
+        this.#timer = undefined;
+        this.#enqueue(this.#runDue);
+      }
+    );
   };
 }

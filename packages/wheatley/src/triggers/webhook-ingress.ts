@@ -11,6 +11,7 @@ import type {
   WebhookRouteHandler,
 } from "@wheatley/sdk";
 
+import { SeamError } from "../contracts/errors.js";
 import type { Clock } from "../contracts/module.js";
 import { MAX_WEBHOOK_BODY_BYTES } from "../contracts/webhook-ingress.js";
 import type {
@@ -18,6 +19,7 @@ import type {
   WebhookIngress,
   WebhookIngressDeps,
 } from "../contracts/webhook-ingress.js";
+import { errorText } from "./errors.js";
 
 /** The listener host if `webhooks.host` is absent. A reverse proxy in front of it terminates TLS. */
 export const DEFAULT_WEBHOOK_HOST = "127.0.0.1";
@@ -117,13 +119,16 @@ export class HttpWebhookIngress implements WebhookIngress {
       !SAFE_SUFFIX.test(pathSuffix);
 
     if (invalid) {
-      throw new RangeError(`Invalid webhook path suffix: ${pathSuffix}`);
+      throw new SeamError(
+        "invalid_name",
+        `Invalid webhook path suffix: ${pathSuffix}`
+      );
     }
 
     const path = `/frontends/${agent}/${bindingId}/${pathSuffix}`;
 
     if (this.#routes.has(path)) {
-      throw new Error(`Webhook route already mounted: ${path}`);
+      throw new SeamError("conflict", `Webhook route already mounted: ${path}`);
     }
 
     this.#routes.set(path, handler);
@@ -164,7 +169,7 @@ export class HttpWebhookIngress implements WebhookIngress {
       return status(404);
     } catch (error) {
       this.#options.log.error("A webhook request failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorText(error),
         path: request.path,
       });
 
@@ -316,7 +321,7 @@ export class HttpWebhookIngress implements WebhookIngress {
       response.end(result.body);
     } catch (error) {
       this.#options.log.warn("A webhook request was not read", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorText(error),
       });
 
       if (!response.headersSent) {

@@ -16,7 +16,10 @@ import type {
 } from "../contracts/delivery-outbox.js";
 import type { Clock, EventSink } from "../contracts/module.js";
 import { decodeDelivery, encodeDelivery } from "./delivery-codec.js";
+import { armDueTimer } from "./due-timer.js";
+import { errorText } from "./errors.js";
 import {
+  enumColumn,
   integerColumn,
   optionalIntegerColumn,
   optionalTextColumn,
@@ -34,8 +37,9 @@ export const MAX_DELIVERY_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 60 * 60 * 1000;
 
-/** The timer never sleeps longer than this, so that the outbox notices a changed system clock within a minute. */
-const MAX_TIMER_MS = 60_000;
+/** The jitter factor of a backoff is in `[JITTER_MIN, JITTER_MIN + JITTER_SPAN)`. */
+const JITTER_MIN = 0.5;
+const JITTER_SPAN = 0.5;
 
 /** How long `stop` waits for deliveries in progress. */
 const STOP_WAIT_MS = 10_000;
@@ -58,17 +62,6 @@ const STATUSES: readonly OutboxStatus[] = [
   "dismissed",
 ];
 
-const statusOf = (row: SqlRow): OutboxStatus => {
-  const stored = textColumn(row, "status");
-  const status = STATUSES.find((candidate) => candidate === stored);
-
-  if (status === undefined) {
-    throw new TypeError(`Unknown outbox status: ${stored}`);
-  }
-
-  return status;
-};
-
 /** One stored row: the public entry plus the columns that only the outbox reads. */
 interface StoredEntry {
   readonly entry: OutboxEntry;
@@ -90,7 +83,7 @@ const toStoredEntry = (row: SqlRow): StoredEntry => ({
     permanent: integerColumn(row, "permanent") === 1,
     sourceConversationId:
       optionalTextColumn(row, "source_conversation_id") ?? undefined,
-    status: statusOf(row),
+    status: enumColumn(row, "status", STATUSES),
   },
   finishedAt: optionalIntegerColumn(row, "finished_at"),
 });
@@ -107,9 +100,6 @@ const previewText = (delivery: Delivery): string => {
 
 const previewOf = (delivery: Delivery): string =>
   previewText(delivery).slice(0, DELIVERY_PREVIEW_MAX_LENGTH);
-
-const errorText = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
 
 /** A failed delivery attempt, parsed from the rejection of `deliver`. Any error other than a `DeliveryError` retries. */
 interface AttemptFailure {
@@ -160,8 +150,70 @@ export class SqliteDeliveryOutbox implements DeliveryOutbox {
     this.#options = options;
   }
 
-  readonly enqueue = async (item: OutboxItem): Promise<OutboxEntry> => {
-    await Promise.resolve();
+  readonly enqueue = async (item: OutboxItem): Promise<OutboxEntry> =>
+    await Promise.try(() => this.#enqueue(item));
+
+  readonly listFailed = async (): Promise<readonly FailedDelivery[]> =>
+    await Promise.try(() =>
+      this.#db
+        .prepare(
+          `SELECT ${ENTRY_COLUMNS} FROM outbox_entries WHERE status = 'failed' ORDER BY seq`
+        )
+        .all()
+        .map((row) => this.#failedDelivery(toStoredEntry(row)))
+    );
+
+  readonly retry = async (deliveryId: string): Promise<boolean> =>
+    await Promise.try(() => this.#retry(deliveryId));
+
+  readonly dismiss = async (deliveryId: string): Promise<boolean> =>
+    await Promise.try(() => this.#dismiss(deliveryId));
+
+  /** Starts deliveries, including the entries that waited while the Agent was down. Calling it twice does nothing. */
+  readonly start = async (): Promise<void> => {
+    await Promise.try(() => {
+      if (this.#running) {
+        return;
+      }
+
+      this.#running = true;
+      this.#db
+        .prepare(
+          "DELETE FROM outbox_entries WHERE status IN ('delivered', 'dismissed') AND finished_at < ?"
+        )
+        .run(this.#now() - FINISHED_RETENTION_MS);
+      this.#kick();
+    });
+  };
+
+  /**
+   * Stops deliveries. Waits up to 10 seconds for attempts in progress. An attempt that ends later still records its
+   * result. Repeated calls do nothing.
+   */
+  readonly stop = async (): Promise<void> => {
+    this.#running = false;
+    clearTimeout(this.#timer);
+    this.#timer = undefined;
+
+    const pumping = this.#pumping;
+
+    if (pumping === undefined) {
+      return;
+    }
+
+    await Promise.race([
+      pumping,
+      sleep(STOP_WAIT_MS, undefined, { ref: false }),
+    ]);
+  };
+
+  get #db(): DatabaseSync {
+    return this.#options.db;
+  }
+
+  readonly #now = (): number => this.#options.clock.now();
+
+  readonly #enqueue = (item: OutboxItem): OutboxEntry => {
     const deliveryId = randomUUID();
     const now = this.#now();
 
@@ -197,19 +249,7 @@ export class SqliteDeliveryOutbox implements DeliveryOutbox {
     return stored.entry;
   };
 
-  readonly listFailed = async (): Promise<readonly FailedDelivery[]> => {
-    await Promise.resolve();
-
-    return this.#db
-      .prepare(
-        `SELECT ${ENTRY_COLUMNS} FROM outbox_entries WHERE status = 'failed' ORDER BY seq`
-      )
-      .all()
-      .map((row) => this.#failedDelivery(toStoredEntry(row)));
-  };
-
-  readonly retry = async (deliveryId: string): Promise<boolean> => {
-    await Promise.resolve();
+  readonly #retry = (deliveryId: string): boolean => {
     const now = this.#now();
 
     const { changes } = this.#db
@@ -229,9 +269,7 @@ export class SqliteDeliveryOutbox implements DeliveryOutbox {
     return true;
   };
 
-  readonly dismiss = async (deliveryId: string): Promise<boolean> => {
-    await Promise.resolve();
-
+  readonly #dismiss = (deliveryId: string): boolean => {
     const { changes } = this.#db
       .prepare(
         `UPDATE outbox_entries SET status = 'dismissed', next_attempt_at = NULL, finished_at = ?
@@ -247,49 +285,6 @@ export class SqliteDeliveryOutbox implements DeliveryOutbox {
 
     return true;
   };
-
-  /** Starts deliveries, including the entries that waited while the Agent was down. Calling it twice does nothing. */
-  readonly start = async (): Promise<void> => {
-    if (this.#running) {
-      return;
-    }
-
-    this.#running = true;
-    this.#db
-      .prepare(
-        "DELETE FROM outbox_entries WHERE status IN ('delivered', 'dismissed') AND finished_at < ?"
-      )
-      .run(this.#now() - FINISHED_RETENTION_MS);
-    this.#kick();
-    await Promise.resolve();
-  };
-
-  /**
-   * Stops deliveries. Waits up to 10 seconds for attempts in progress. An attempt that ends later still records its
-   * result. Repeated calls do nothing.
-   */
-  readonly stop = async (): Promise<void> => {
-    this.#running = false;
-    clearTimeout(this.#timer);
-    this.#timer = undefined;
-
-    const pumping = this.#pumping;
-
-    if (pumping === undefined) {
-      return;
-    }
-
-    await Promise.race([
-      pumping,
-      sleep(STOP_WAIT_MS, undefined, { ref: false }),
-    ]);
-  };
-
-  get #db(): DatabaseSync {
-    return this.#options.db;
-  }
-
-  readonly #now = (): number => this.#options.clock.now();
 
   readonly #read = (deliveryId: string): StoredEntry | undefined => {
     const row = this.#db
@@ -468,36 +463,30 @@ export class SqliteDeliveryOutbox implements DeliveryOutbox {
       MAX_BACKOFF_MS
     );
 
-    const jitter = 0.5 + this.#options.random() * 0.5;
+    const jitter = JITTER_MIN + this.#options.random() * JITTER_SPAN;
 
     return Math.max(Math.round(exponential * jitter), failure.retryAfterMs);
   };
 
-  /** Arms the timer for the earliest Chat head that waits for a backoff, at most `MAX_TIMER_MS` ahead. */
+  /** Arms the timer for the earliest Chat head that waits for a backoff. */
   readonly #rearm = (): void => {
     if (!this.#running || this.#pumping !== undefined) {
       return;
     }
 
     clearTimeout(this.#timer);
-    this.#timer = undefined;
 
     const row = this.#db
       .prepare(`SELECT min(next_attempt_at) AS due FROM (${CHAT_HEADS})`)
       .get();
 
-    const due = row === undefined ? null : optionalIntegerColumn(row, "due");
-
-    if (due === null) {
-      return;
-    }
-
-    const delay = Math.min(Math.max(due - this.#now(), 0), MAX_TIMER_MS);
-
-    this.#timer = setTimeout(() => {
-      this.#timer = undefined;
-      this.#kick();
-    }, delay);
-    this.#timer.unref();
+    this.#timer = armDueTimer(
+      row === undefined ? null : optionalIntegerColumn(row, "due"),
+      this.#now(),
+      () => {
+        this.#timer = undefined;
+        this.#kick();
+      }
+    );
   };
 }

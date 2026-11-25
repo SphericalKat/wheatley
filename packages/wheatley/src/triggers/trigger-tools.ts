@@ -18,6 +18,7 @@ import type {
 import type { Clock } from "../contracts/module.js";
 import { canonicalToolName } from "../contracts/tool-names.js";
 import type { TriggerRuntime } from "../contracts/trigger-runtime.js";
+import { errorText } from "./errors.js";
 
 const ChatTargetSchema = Type.Object(
   {
@@ -118,6 +119,9 @@ interface TriggerTool<Schema extends TSchema> {
     deps: TriggerToolDeps
   ) => Promise<ToolResult>;
 }
+
+/** The Trigger Tools hold no resources, so `close` resolves at once. */
+const NOTHING_TO_CLOSE: Promise<void> = Promise.resolve();
 
 const textResult = (text: string): ToolResult => ({
   content: [{ text, type: "text" }],
@@ -311,7 +315,7 @@ export const createTriggerToolProvider = (
 
   return {
     close: async () => {
-      await Promise.resolve();
+      await NOTHING_TO_CLOSE;
     },
     execute: async (name, input, ctx) => {
       const tool = tools.get(name);
@@ -327,9 +331,7 @@ export const createTriggerToolProvider = (
       try {
         return await tool.run(input, ctx);
       } catch (error) {
-        return errorResult(
-          error instanceof Error ? error.message : String(error)
-        );
+        return errorResult(errorText(error));
       }
     },
     health: (): readonly ExtensionStatus[] => [],

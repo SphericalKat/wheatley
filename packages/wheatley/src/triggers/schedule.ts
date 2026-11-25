@@ -2,6 +2,7 @@ import type { TriggerSchedule } from "@wheatley/protocol";
 import { Cron } from "croner";
 
 import { SeamError } from "../contracts/errors.js";
+import { errorText } from "./errors.js";
 
 const isTimeZone = (timeZone: string): boolean => {
   try {
@@ -12,9 +13,6 @@ const isTimeZone = (timeZone: string): boolean => {
     return false;
   }
 };
-
-const errorText = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
 
 /**
  * Parses a 5-field cron expression in an IANA time zone. Throws `SeamError("invalid_name")` for an invalid expression,

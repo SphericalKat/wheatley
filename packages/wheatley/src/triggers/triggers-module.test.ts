@@ -45,6 +45,7 @@ let db: DatabaseSync;
 let firings: TriggerFiring[];
 let events: EmittedEvent[];
 let activeTriggers: Set<string>;
+let failingStarts: number;
 let instances: ModuleInstance<TriggersModuleApi>[];
 
 const createModule = async (): Promise<ModuleInstance<TriggersModuleApi>> => {
@@ -66,6 +67,12 @@ const createModule = async (): Promise<ModuleInstance<TriggersModuleApi>> => {
       isActive: (triggerId) => activeTriggers.has(triggerId),
       start: async (firing) => {
         await Promise.resolve();
+
+        if (failingStarts > 0) {
+          failingStarts -= 1;
+          throw new Error("The Agent is not ready");
+        }
+
         firings.push(firing);
 
         return { runId: `run-${firings.length}` };
@@ -126,6 +133,7 @@ beforeEach(() => {
   firings = [];
   events = [];
   activeTriggers = new Set();
+  failingStarts = 0;
   instances = [];
 });
 
@@ -242,6 +250,37 @@ it("catches up an overdue once Trigger one time at start", async () => {
   await startModule();
 
   expect(firings).toHaveLength(1);
+});
+
+it("retries a once Trigger whose Run failed to start", async () => {
+  const { api } = await startModule();
+  failingStarts = 2;
+
+  const trigger = await api.runtime.create(
+    {
+      name: "tea",
+      prompt: "Tea is ready",
+      schedule: { at: "2026-11-26T10:05:00.000Z", kind: "once" },
+      target: { bindingId: "tg", chatId: "1" },
+    },
+    "agent"
+  );
+
+  await vi.advanceTimersByTimeAsync(5 * MINUTE);
+
+  expect(firings).toHaveLength(0);
+  await expect(api.runtime.get(trigger.id)).resolves.toMatchObject({
+    nextFireAt: "2026-11-26T10:05:05.000Z",
+  });
+
+  await vi.advanceTimersByTimeAsync(MINUTE);
+
+  expect(firings.map((firing) => firing.prompt)).toStrictEqual([
+    "Tea is ready",
+  ]);
+  await expect(api.runtime.get(trigger.id)).resolves.toMatchObject({
+    nextFireAt: null,
+  });
 });
 
 it("fires a once Trigger at its time while the Agent runs", async () => {

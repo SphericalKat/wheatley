@@ -26,6 +26,22 @@ export const textColumn = (row: SqlRow, column: string): string => {
   return value;
 };
 
+/** Reads a `TEXT NOT NULL` column that holds one of `values`. Throws a `TypeError` for any other value. */
+export const enumColumn = <const Value extends string>(
+  row: SqlRow,
+  column: string,
+  values: readonly Value[]
+): Value => {
+  const stored = textColumn(row, column);
+  const value = values.find((candidate) => candidate === stored);
+
+  if (value === undefined) {
+    throw new TypeError(`Column ${column} has an unknown value: ${stored}`);
+  }
+
+  return value;
+};
+
 /** Reads a nullable `TEXT` column. */
 export const optionalTextColumn = (
   row: SqlRow,

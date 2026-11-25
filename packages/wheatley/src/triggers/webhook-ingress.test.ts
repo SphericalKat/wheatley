@@ -257,17 +257,17 @@ it("rejects an invalid or duplicate Frontend route suffix", () => {
 
   expect(() =>
     ingress.api.registerFrontendRoute("home", "slack-main", "events", handler)
-  ).toThrow("already mounted");
+  ).toThrow(expect.objectContaining({ code: "conflict" }));
 
   expect(() =>
     ingress.api.registerFrontendRoute("home", "slack-main", "", handler)
-  ).toThrow(RangeError);
+  ).toThrow(expect.objectContaining({ code: "invalid_name" }));
   expect(() =>
     ingress.api.registerFrontendRoute("home", "slack-main", "../up", handler)
-  ).toThrow(RangeError);
+  ).toThrow(expect.objectContaining({ code: "invalid_name" }));
   expect(() =>
     ingress.api.registerFrontendRoute("home", "slack-main", "a?x=1", handler)
-  ).toThrow(RangeError);
+  ).toThrow(expect.objectContaining({ code: "invalid_name" }));
 });
 
 it("answers 500 without details if a Frontend handler throws", async () => {
