@@ -29,7 +29,7 @@ node dist/index.js
 
 ## Scripts
 
-- `pnpm build`: Compile TypeScript from `src/` to `dist/`.
+- `pnpm build`: Compile TypeScript from `src/index.ts` to `dist/`.
 - `pnpm check`: Run lint and format checks.
 - `pnpm fix`: Apply automatic lint and format fixes.
 - `pnpm typecheck`: Run TypeScript type checks.

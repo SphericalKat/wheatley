@@ -6,157 +6,81 @@ Wheatley is a persistent personal TypeScript AI agent that replaces Hermes and O
 
 - Target **Node.js** `26.5.1` (`.node-version`), not Bun.
 - Keep compatibility with third-party Node packages, native addons, and MCP servers.
-- Consider `@earendil-works/pi-durable` if durable agent state is needed.
+- If the project needs durable agent state, consider `@earendil-works/pi-durable`.
 
-## Toolchain and code style
+## Toolchain and entry point
 
 - Use `pnpm` (`12.23.0`) for all package commands.
-- Write ESM TypeScript (`NodeNext` in `tsconfig.json`) with `strict` and `noUncheckedIndexedAccess` enabled.
-- Follow `oxlint.config.ts`, which extends `ultracite/oxlint/core` and `ultracite/oxlint/anti-slop` with `typeAware: true`.
-- Oxlint enforces `func-style` (expression). Write top-level functions as `export const fn = (...) => ...` instead of `function` declarations.
+- Use TypeScript (`^7.0.2`) with ESM (`NodeNext` in `tsconfig.json`), `strict`, and `noUncheckedIndexedAccess`.
+- Keep the entry point in `src/index.ts` and compile to `dist/index.js`.
+- Follow `oxlint.config.ts`, which extends `ultracite/oxlint/core` and `ultracite/oxlint/anti-slop` with `typeAware: true` (`ultracite` `8.3.1`).
 - Do not switch the linter back to Biome. Ultracite provides `anti-slop` for Oxlint only.
 
 ## Verification
 
-1. Run `pnpm check` to verify `oxlint` and `oxfmt`.
-2. Run `pnpm typecheck` to verify TypeScript types.
-3. Run `pnpm build` to verify compilation to `dist/`.
+1. Run `pnpm check` to run Oxlint and `oxfmt` checks.
+2. Run `pnpm fix` to apply automatic Oxlint and `oxfmt` fixes.
+3. Run `pnpm typecheck` to check TypeScript types.
+4. Run `pnpm build` to compile `src/` to `dist/`.
 
-`pnpm test` is a placeholder and fails until a test suite is added.
+Until you add a test suite, `pnpm test` fails as a placeholder.
 
 ## CLI gotchas
 
 - If a non-interactive shell defaults to an older Node.js version, run `eval "$(fnm env)" && fnm use` before `pnpm` commands.
 - If a CLI tool (such as `ultracite init`) stalls on an open input stream, redirect standard input from `/dev/null`.
 
-# Ultracite Code Standards
+## Ultracite code standards
 
-This project uses **Ultracite**, a zero-config preset that enforces strict code quality standards through automated formatting and linting.
+Ultracite (`oxlint` and `oxfmt`) enforces most format and lint rules automatically. Follow these project rules when you write TypeScript code.
 
-## Quick Reference
+### Type safety and explicitness
 
-- **Format code**: `pnpm exec ultracite fix`
-- **Check for issues**: `pnpm exec ultracite check`
-- **Diagnose setup**: `pnpm exec ultracite doctor`
+- Use explicit types for function parameters and return values when they clarify intent.
+- Prefer `unknown` over `any` when a type is genuinely unknown.
+- Use `as const` for immutable values and literal types.
+- Use TypeScript type narrowing instead of type assertions.
+- Extract magic numbers into constants with descriptive names.
 
-Oxlint + Oxfmt (the underlying engine) provides robust linting and formatting. Most issues are automatically fixable.
+### Modern JavaScript and TypeScript
 
----
+- Write top-level functions as arrow functions assigned to `const` (`export const fn = (...) => ...`), and define them above where you call them.
+- Prefer `for...of` loops over `.forEach()` and indexed `for` loops.
+- Use optional chaining (`?.`) and nullish coalescing (`??`) for property access.
+- Prefer template literals over string concatenation.
+- Use destructuring for object and array assignments.
+- Use `const` by default, `let` only when reassignment is needed, and never `var`.
 
-## Core Principles
+### Async and promises
 
-Write code that is **accessible, performant, type-safe, and maintainable**. Focus on clarity and explicit intent over brevity.
+- Always `await` promises in async functions and use the return value.
+- Use `async`/`await` syntax instead of promise chains.
+- Handle errors in async code with `try`/`catch` blocks.
+- Do not use async functions as `Promise` executors.
 
-### Type Safety & Explicitness
+### Error handle and debug rules
 
-- Use explicit types for function parameters and return values when they enhance clarity
-- Prefer `unknown` over `any` when the type is genuinely unknown
-- Use const assertions (`as const`) for immutable values and literal types
-- Leverage TypeScript's type narrowing instead of type assertions
-- Use meaningful variable names instead of magic numbers - extract constants with descriptive names
+- Remove `console.log`, `debugger`, and `alert` statements from production code unless the module intentionally writes CLI output.
+- Throw `Error` objects with descriptive messages instead of strings or other values.
+- Use `try`/`catch` blocks only when you handle or enrich the error.
+- Prefer early returns over nested conditionals for error cases.
 
-### Modern JavaScript/TypeScript
+### Code organization and performance
 
-- Write functions as arrow functions assigned to `const`, and define them above where they're used
-- Prefer `for...of` loops over `.forEach()` and indexed `for` loops
-- Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
-- Prefer template literals over string concatenation
-- Use destructuring for object and array assignments
-- Use `const` by default, `let` only when reassignment is needed, never `var`
+- Keep functions focused and under reasonable complexity limits.
+- Extract complex conditions into named boolean variables.
+- Put braces around every `if` body, including one-line guards.
+- Use a single ternary for two outcomes. Use early returns or a lookup for three or more outcomes.
+- Avoid import cycles by moving shared code into a separate module.
+- Do not leave `TODO` or `FIXME` comments in new code.
+- Do not use `eval()`. Validate and sanitize untrusted input.
+- Avoid spread syntax in accumulators inside loops.
+- Define regex literals at module scope instead of inside loops.
+- Avoid barrel files (`index.ts` files that only re-export other modules) inside the app.
 
-### Async & Promises
+### Tests
 
-- Always `await` promises in async functions - don't forget to use the return value
-- Use `async/await` syntax instead of promise chains for better readability
-- Handle errors appropriately in async code with try-catch blocks
-- Don't use async functions as Promise executors
-
-### React & JSX
-
-- Use function components over class components
-- Call hooks at the top level only, never conditionally
-- When a hook dependency rule fires, first check whether the effect is needed, and whether adding the dependency changes when it runs
-- Use the `key` prop for elements in iterables (prefer unique IDs over array indices)
-- Nest children between opening and closing tags instead of passing as props
-- Don't define components inside other components
-- In JSX, work out a multi-way condition in a variable or helper above the `return`, not in a chain of ternaries
-
-### Accessibility
-
-- Use semantic HTML first; add ARIA only when no native element fits
-- Provide meaningful alt text for images
-- Use proper heading hierarchy
-- Add labels for form inputs
-- Make anything clickable a `<button>` or a link, so it works from the keyboard; don't add key handlers to a `<div>`
-- Use semantic elements (`<button>`, `<nav>`, etc.) instead of divs with roles
-
-### Error Handling & Debugging
-
-- Remove `console.log`, `debugger`, and `alert` statements from production code
-- Throw `Error` objects with descriptive messages, not strings or other values
-- Use `try-catch` blocks meaningfully - don't catch errors just to rethrow them
-- Prefer early returns over nested conditionals for error cases
-
-### Code Organization
-
-- Keep functions focused and under reasonable cognitive complexity limits
-- Extract complex conditions into well-named boolean variables
-- Use early returns to reduce nesting, and put braces around every `if` body, including a one-line guard
-- Use a single ternary for a choice between two values. For three or more outcomes, use early returns or a lookup; never nest ternaries
-- Group related code together and separate concerns
-- Avoid import cycles; move shared code into a module both sides import
-- Don't leave TODO or FIXME comments in new code. For an existing one, do the task, delete it if it's done, or leave it; never reword it to get past the linter
-
-### Security
-
-- Add `rel="noopener noreferrer"` when using `target="_blank"` on links
-- Avoid `dangerouslySetInnerHTML` unless absolutely necessary
-- Don't use `eval()` or assign directly to `document.cookie`
-- Validate and sanitize user input
-
-### Performance
-
-- Avoid spread syntax in accumulators within loops
-- Use top-level regex literals instead of creating them in loops
-- Avoid barrel files (index files that only re-export other modules) inside an app; a package's entry point is fine
-- Use proper image components (e.g., Next.js `<Image>`) over `<img>` tags
-
-### Framework-Specific Guidance
-
-**Next.js:**
-
-- Use Next.js `<Image>` component for images
-- Use `next/head` or App Router metadata API for head elements
-- Use Server Components for async data fetching instead of async Client Components
-
-**React 19+:**
-
-- Use ref as a prop instead of `React.forwardRef`
-
-**Solid/Svelte/Vue/Qwik:**
-
-- Use `class` and `for` attributes (not `className` or `htmlFor`)
-
----
-
-## Testing
-
-- Write assertions inside `it()` or `test()` blocks
-- Avoid done callbacks in async tests - use async/await instead
-- Don't use `.only` or `.skip` in committed code
-- Keep test suites reasonably flat - avoid excessive `describe` nesting
-
-## When Oxlint + Oxfmt Can't Help
-
-Oxlint + Oxfmt will catch most mechanical issues automatically. Focus your attention on:
-
-1. **Business logic correctness** - Oxlint + Oxfmt can't validate your algorithms
-2. **Meaningful naming** - Use descriptive names for functions, variables, and types
-3. **Architecture decisions** - Component structure, data flow, and API design
-4. **Edge cases** - Handle boundary conditions and error states
-5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
-
----
-
-Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run `pnpm exec ultracite fix` before committing to ensure compliance.
+- Write assertions inside `it()` or `test()` blocks.
+- Use `async`/`await` in async tests instead of `done` callbacks.
+- Do not commit `.only` or `.skip` in tests.
+- Keep test suites flat and avoid deep `describe` levels.
