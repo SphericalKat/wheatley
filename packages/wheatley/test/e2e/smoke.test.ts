@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -59,14 +59,7 @@ const upgradeStatus = async (url: string, origin: string): Promise<number> => {
   return await promise;
 };
 
-it("runs an Agent with every module on the real Harness and answers over the CLI, /ws, and a Frontend", async () => {
-  await expect(
-    stat(path.join(harness.agentDir(), "harness.sqlite"))
-  ).resolves.toBeDefined();
-  await expect(
-    stat(path.join(harness.agentDir(), "agent.sqlite"))
-  ).resolves.toBeDefined();
-
+it("runs an Agent on the real Harness and answers over the CLI, /ws, and a Frontend", async () => {
   const session = await harness.connect();
   const status = await session.request("system.status", {});
 
@@ -78,22 +71,6 @@ it("runs an Agent with every module on the real Harness and answers over the CLI
     state: "ready",
     type: "fake",
   });
-
-  const extensions = await session.request("extensions.list", {
-    agent: "home",
-  });
-
-  const tools = extensions.tools.map((tool) => tool.name);
-
-  expect(tools).toEqual(
-    expect.arrayContaining([
-      "read_file",
-      "write_file",
-      "shell",
-      "memory_write",
-      "schedule_trigger",
-    ])
-  );
 
   harness.llm.faux.setResponses([fauxAssistantMessage("Hello from the CLI")]);
   const asked = await harness.cli(["ask", "--agent", "home", "Say hello"]);

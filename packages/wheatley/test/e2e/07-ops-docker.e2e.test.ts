@@ -357,6 +357,9 @@ const runCommand = async (
 
 const DOCKER_INFO_TIMEOUT_MS = 15_000;
 
+/** Set to `1` to skip the Docker image build, for example on a host without Docker. */
+const SKIP_DOCKER_ENV = "WHEATLEY_E2E_SKIP_DOCKER";
+
 /** Resolves an empty string if the Docker daemon answers, else the reason that it does not. */
 const dockerUnreachableReason = async (): Promise<string> => {
   const info = await runCommand(
@@ -388,11 +391,17 @@ const DOCKER_TEST_TIMEOUT_MS =
 it(
   "builds the node:26-trixie-slim Docker image, which runs the wheatley CLI as the node user with /data as home",
   async (context) => {
+    if (process.env[SKIP_DOCKER_ENV] === "1") {
+      context.skip(`Skipped the Docker image build: ${SKIP_DOCKER_ENV}=1`);
+    }
+
     const reason = await dockerUnreachableReason();
 
-    if (reason !== "") {
-      context.skip(`Skipped the Docker image build: ${reason}`);
-    }
+    // The E2E gate includes the image build, so a host without Docker fails unless the Operator opts out.
+    expect(
+      reason,
+      `Set ${SKIP_DOCKER_ENV}=1 to skip the Docker image build on this host`
+    ).toBe("");
 
     const image = `wheatley-e2e:${process.pid}-${Date.now()}`;
 
@@ -445,9 +454,8 @@ it(
 
       const help = await dockerRun(image, ["wheatley", "--help"]);
 
-      expect(`${help.stdout}${help.stderr}`).toContain(
-        "Usage: wheatley <command> [options]"
-      );
+      expect(help.code).toBe(0);
+      expect(help.stdout).toContain("Usage: wheatley <command> [options]");
 
       // Inside the image, `update` prints the Docker Compose commands instead of an npm update.
       const update = await dockerRun(image, ["wheatley", "update", "--check"]);

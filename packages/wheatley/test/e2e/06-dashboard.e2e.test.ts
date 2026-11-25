@@ -1,38 +1,67 @@
-// Flow 6: the live dashboard that the daemon serves on `/` and `/ws`. A browser-like client (a WebSocket with an
-// `Origin` header) drives the Approvals Inbox, the Config editor, and Agent create, rename, and delete over JSON-RPC.
-import { once } from "node:events";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+// Flow 6: the live dashboard that the daemon serves on `/` and `/ws`. The suite builds the real dashboard SPA with Vite
+// and bundles it as `npm pack` does. The daemon serves that bundle. The dashboard's own JSON-RPC client and view models
+// drive the Approvals Inbox, the Config editor with Save & Restart, and Agent create, rename, and delete.
+import { execFileSync } from "node:child_process";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai";
-import {
-  decodeServerMessage,
-  encodeRequest,
-  PROTOCOL_VERSION,
-  RpcError,
-  RpcErrorCode,
-} from "@wheatley/protocol";
-import type {
-  AgentConfig,
-  DeploymentConfig,
-  EventName,
-  EventPayload,
-  MethodName,
-  MethodParams,
-  MethodResult,
-  RpcEvent,
-  RpcId,
-  RpcResult,
-} from "@wheatley/protocol";
-import { afterEach, expect, it } from "vitest";
+import { RpcErrorCode } from "@wheatley/protocol";
+import type { AgentConfig, EventName, EventPayload } from "@wheatley/protocol";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
+import { createConfigEditor } from "../../../dashboard/src/models/config-editor.js";
+import type {
+  ConfigChange,
+  ConfigEditor,
+} from "../../../dashboard/src/models/config-editor.js";
+import {
+  createInbox,
+  OPERATOR_DISPLAY_NAME,
+} from "../../../dashboard/src/models/inbox.js";
+import {
+  createRpcClient,
+  dashboardSocketUrl,
+} from "../../../dashboard/src/rpc/client.js";
+import type { RpcClient } from "../../../dashboard/src/rpc/client.js";
 import { FAKE_PROVIDER } from "../../src/core/test-support.js";
+import { bundleDashboardAssets } from "../../src/ops/dashboard-assets.js";
 import { startHarness, waitFor } from "./harness.js";
 import type { Harness } from "./harness.js";
 
-const FIXTURE_DIR = path.join(import.meta.dirname, "fixtures", "06-dashboard");
+const DASHBOARD_PACKAGE = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "dashboard"
+);
+
+const VITE_BIN = path.join(
+  DASHBOARD_PACKAGE,
+  "node_modules",
+  "vite",
+  "bin",
+  "vite.js"
+);
+
+/** The script and stylesheet references of the built `index.html`. */
+const ASSET_REFERENCE = /(?:src|href)="(?<asset>\/assets\/[^"]+)"/gu;
+
+const CONTENT_TYPES = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+]);
 
 /** An origin that `daemon.allowedOrigins` lists, for example a dashboard behind a reverse proxy. */
 const PROXY_ORIGIN = "http://dashboard.example:8080";
@@ -44,135 +73,88 @@ const UPGRADE_FORBIDDEN = 403;
 
 const ALLOW_ALL = [{ action: "allow", tool: "*" }] as const;
 
-/** A JSON-RPC session over `/ws` that sends a browser `Origin`, as the dashboard does. */
-interface DashboardSession {
-  readonly request: <M extends MethodName>(
-    method: M,
-    params: MethodParams<M>
-  ) => Promise<MethodResult<M>>;
-  readonly waitForEvent: <E extends EventName>(
-    name: E,
-    predicate?: (payload: EventPayload<E>) => boolean
-  ) => Promise<EventPayload<E>>;
-}
-
-interface Pending {
-  readonly method: MethodName;
-  readonly settle: (response: RpcResult | RpcError) => void;
-}
-
+let workDir: string;
+let dashboardDir: string;
 let harness: Harness | undefined;
-const sockets: WebSocket[] = [];
+const clients: RpcClient[] = [];
+const disposers: (() => void)[] = [];
+
+beforeAll(async () => {
+  workDir = await mkdtemp(path.join(tmpdir(), "wheatley-e2e-dashboard-"));
+
+  const viteOut = path.join(workDir, "vite");
+
+  dashboardDir = path.join(workDir, "bundled");
+  execFileSync(
+    process.execPath,
+    [VITE_BIN, "build", "--outDir", viteOut, "--emptyOutDir"],
+    { cwd: DASHBOARD_PACKAGE, stdio: "pipe" }
+  );
+  await bundleDashboardAssets(viteOut, dashboardDir);
+});
+
+afterAll(async () => {
+  await rm(workDir, { force: true, recursive: true });
+});
 
 afterEach(async () => {
-  for (const socket of sockets.splice(0)) {
-    socket.terminate();
+  for (const dispose of disposers.splice(0)) {
+    dispose();
+  }
+
+  for (const client of clients.splice(0)) {
+    client.close();
   }
 
   await harness?.cleanup();
   harness = undefined;
 });
 
-const isEventOf = <E extends EventName>(
-  event: RpcEvent,
-  name: E
-): event is RpcEvent & {
-  readonly name: E;
-  readonly payload: EventPayload<E>;
-} => event.name === name;
+/** Connects the dashboard's own JSON-RPC client to the `/ws` URL that the served page derives from its location. */
+const connectDashboard = async (h: Harness): Promise<RpcClient> => {
+  const client = createRpcClient({
+    clientName: "wheatley-dashboard",
+    clientVersion: "e2e",
+    url: dashboardSocketUrl(new URL(h.httpUrl())),
+  });
 
-const isResultOf = <M extends MethodName>(
-  response: RpcResult,
-  method: M
-): response is RpcResult & { readonly result: MethodResult<M> } =>
-  response.method === method;
+  clients.push(client);
+  client.connect();
+  // A call waits for the handshake: `system.hello` and `events.subscribe` for every topic.
+  await client.call("system.status", {});
 
-/** Opens `/ws` with `origin`, greets the daemon, and subscribes to every event. */
-const openDashboard = async (
-  wsUrl: string,
-  origin: string
-): Promise<DashboardSession> => {
-  const socket = new WebSocket(wsUrl, { origin });
-  const pending = new Map<RpcId, Pending>();
-  const events: RpcEvent[] = [];
-  let nextId = 1;
+  return client;
+};
 
-  sockets.push(socket);
-  socket.on("message", (data) => {
-    const text = Buffer.isBuffer(data) ? data.toString("utf-8") : "";
-    const message = decodeServerMessage(text, (id) => pending.get(id)?.method);
+/** Resolves with the next `name` event that matches `predicate`. Register it before the action that causes it. */
+const nextEvent = async <E extends EventName>(
+  client: RpcClient,
+  name: E,
+  predicate: (payload: EventPayload<E>) => boolean = () => true
+): Promise<EventPayload<E>> => {
+  const { promise, resolve } = Promise.withResolvers<EventPayload<E>>();
 
-    if (message.kind === "event") {
-      events.push(message.event);
-
-      return;
-    }
-
-    if (message.kind === "result") {
-      pending.get(message.response.id)?.settle(message.response);
-      pending.delete(message.response.id);
-
-      return;
-    }
-
-    if (message.kind === "error" && message.id !== null) {
-      const { code, data: errorData, message: reason } = message.error;
-
-      pending.get(message.id)?.settle(new RpcError(code, reason, errorData));
-      pending.delete(message.id);
+  const off = client.on(name, (payload) => {
+    if (predicate(payload)) {
+      off();
+      resolve(payload);
     }
   });
-  await once(socket, "open");
 
-  const request = async <M extends MethodName>(
-    method: M,
-    params: MethodParams<M>
-  ): Promise<MethodResult<M>> => {
-    const id = nextId;
+  return await promise;
+};
 
-    nextId += 1;
+/** A Config editor that the test disposes, loaded once. */
+const loadedEditor = async (client: RpcClient): Promise<ConfigEditor> => {
+  const editor = createConfigEditor(client);
 
-    const response = Promise.withResolvers<RpcResult | RpcError>();
+  disposers.push(editor.dispose);
+  await waitFor(
+    () => editor.state.get().revision ?? undefined,
+    "the Config editor to load config.yaml"
+  );
 
-    pending.set(id, { method, settle: response.resolve });
-    socket.send(encodeRequest(id, method, params));
-
-    const settled = await response.promise;
-
-    if (settled instanceof RpcError) {
-      throw settled;
-    }
-
-    if (!isResultOf(settled, method)) {
-      throw new Error(`The daemon answered ${settled.method} for ${method}`);
-    }
-
-    return settled.result;
-  };
-
-  await request("system.hello", {
-    client: { name: "wheatley-dashboard", version: "e2e" },
-    protocolVersion: PROTOCOL_VERSION,
-  });
-  await request("events.subscribe", {});
-
-  return {
-    request,
-    waitForEvent: async (name, predicate) =>
-      await waitFor(
-        () =>
-          events.find(
-            (
-              event
-            ): event is RpcEvent & {
-              readonly payload: EventPayload<typeof name>;
-            } =>
-              isEventOf(event, name) &&
-              (predicate === undefined || predicate(event.payload))
-          )?.payload,
-        `the dashboard event ${name}`
-      ),
-  };
+  return editor;
 };
 
 /** Resolves the HTTP status of a WebSocket upgrade to `/ws`. Without `origin`, the request has no `Origin` header. */
@@ -205,6 +187,17 @@ const exists = async (target: string): Promise<boolean> => {
   }
 };
 
+const waitForRunning = async (
+  client: RpcClient,
+  agent: string
+): Promise<void> => {
+  await waitFor(async () => {
+    const health = await client.call("agents.get", { agent });
+
+    return health.state === "running" ? true : undefined;
+  }, `the ${agent} Agent to run`);
+};
+
 /** The text of every system message that the model received, which carries the Agent instructions. */
 const systemText: (context: Parameters<FauxResponseFactory>[0]) => string = (
   context
@@ -213,13 +206,13 @@ const systemText: (context: Parameters<FauxResponseFactory>[0]) => string = (
     context.messages.filter((message) => message.role === "system")
   );
 
-it("serves the dashboard SPA on / and accepts /ws only from its own or allowed origins", async () => {
+it("serves the built dashboard SPA on / and accepts /ws only from its own or allowed origins", async () => {
   harness = await startHarness({
     config: { daemon: { allowedOrigins: [PROXY_ORIGIN] } },
-    dashboardDir: FIXTURE_DIR,
+    dashboardDir,
   });
 
-  const index = await readFile(path.join(FIXTURE_DIR, "index.html"), "utf-8");
+  const index = await readFile(path.join(dashboardDir, "index.html"), "utf-8");
   const page = await fetch(`${harness.httpUrl()}/`);
 
   expect(page.status).toBe(200);
@@ -231,13 +224,29 @@ it("serves the dashboard SPA on / and accepts /ws only from its own or allowed o
   expect(deepRoute.status).toBe(200);
   expect(await deepRoute.text()).toBe(index);
 
-  const script = await fetch(`${harness.httpUrl()}/assets/app.js`);
-
-  expect(script.status).toBe(200);
-  expect(script.headers.get("content-type")).toBe(
-    "text/javascript; charset=utf-8"
+  const assets = [...index.matchAll(ASSET_REFERENCE)].map(
+    (match) => match.groups?.asset ?? ""
   );
-  expect(await script.text()).toContain("Wheatley dashboard fixture");
+
+  expect(assets.map((asset) => path.extname(asset)).toSorted()).toEqual([
+    ".css",
+    ".js",
+  ]);
+
+  for (const asset of assets) {
+    // oxlint-disable-next-line no-await-in-loop -- The page loads two assets, one after the other.
+    const response = await fetch(`${harness.httpUrl()}${asset}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      CONTENT_TYPES.get(path.extname(asset))
+    );
+    // oxlint-disable-next-line no-await-in-loop -- See above.
+    expect(await response.text()).toBe(
+      // oxlint-disable-next-line no-await-in-loop -- See above.
+      await readFile(path.join(dashboardDir, asset), "utf-8")
+    );
+  }
 
   const missingAsset = await fetch(`${harness.httpUrl()}/assets/missing.js`);
 
@@ -260,8 +269,8 @@ it("serves the dashboard SPA on / and accepts /ws only from its own or allowed o
   expect(await upgradeStatus(harness.wsUrl(), PROXY_ORIGIN)).toBe(UPGRADE_OK);
   expect(await upgradeStatus(harness.wsUrl())).toBe(UPGRADE_OK);
 
-  const dashboard = await openDashboard(harness.wsUrl(), harness.httpUrl());
-  const status = await dashboard.request("system.status", {});
+  const client = await connectDashboard(harness);
+  const status = await client.call("system.status", {});
 
   expect(status.agents.map((agent) => [agent.name, agent.state])).toEqual([
     ["home", "running"],
@@ -279,10 +288,14 @@ it("decides a Frontend Chat's Approval from the dashboard Approvals Inbox", asyn
         ],
       },
     },
-    dashboardDir: FIXTURE_DIR,
+    dashboardDir,
   });
 
-  const dashboard = await openDashboard(harness.wsUrl(), harness.httpUrl());
+  const client = await connectDashboard(harness);
+  const inbox = createInbox(client);
+
+  disposers.push(inbox.dispose);
+
   const binding = harness.frontend.binding("home", "fake-main");
   const target = path.join(harness.workspaceDir(), "inbox.txt");
 
@@ -300,20 +313,18 @@ it("decides a Frontend Chat's Approval from the dashboard Approvals Inbox", asyn
   ]);
   await harness.frontend.send("home", "fake-main", "chat-1", "Write inbox.txt");
 
-  const { approval } = await dashboard.waitForEvent("approval.requested");
+  const approval = await waitFor(
+    () => inbox.state.get().approvals[0],
+    "the Approval in the dashboard Inbox"
+  );
 
+  expect(inbox.state.get().approvals).toHaveLength(1);
   expect(approval).toMatchObject({
     agent: "home",
     chat: { bindingId: "fake-main", chatId: "chat-1" },
     toolName: "write_file",
   });
   expect(approval.inputPreview).toContain("inbox.txt");
-
-  const inbox = await dashboard.request("approvals.list", {});
-
-  expect(inbox.approvals.map((item) => item.approvalId)).toEqual([
-    approval.approvalId,
-  ]);
   await waitFor(
     () =>
       binding.deliveries.find(
@@ -325,35 +336,33 @@ it("decides a Frontend Chat's Approval from the dashboard Approvals Inbox", asyn
   );
   expect(await exists(target)).toBe(false);
 
-  const decided = await dashboard.request("approvals.decide", {
-    agent: "home",
-    approvalId: approval.approvalId,
-    resolution: { decision: "allow_always", resolvedBy: "Dashboard" },
-  });
+  const resolved = nextEvent(
+    client,
+    "approval.resolved",
+    (payload) => payload.approvalId === approval.approvalId
+  );
 
-  expect(decided).toEqual({ accepted: true });
+  await inbox.decide(approval, "allow_always");
+
+  expect(inbox.state.get()).toMatchObject({
+    approvals: [],
+    itemErrors: new Map(),
+    notice: null,
+  });
+  await expect(resolved).resolves.toMatchObject({
+    agent: "home",
+    decision: "allow_always",
+    resolvedBy: OPERATOR_DISPLAY_NAME,
+  });
   await expect(
     harness.frontend.decide(
       "home",
       "fake-main",
       "chat-1",
       approval.approvalId,
-      {
-        decision: "deny",
-      }
+      { decision: "deny" }
     )
   ).resolves.toBe(false);
-
-  const resolved = await dashboard.waitForEvent(
-    "approval.resolved",
-    (payload) => payload.approvalId === approval.approvalId
-  );
-
-  expect(resolved).toMatchObject({
-    agent: "home",
-    decision: "allow_always",
-    resolvedBy: "Dashboard",
-  });
 
   const reply = await waitFor(
     () => binding.deliveries.find((delivery) => delivery.kind === "message"),
@@ -369,11 +378,11 @@ it("decides a Frontend Chat's Approval from the dashboard Approvals Inbox", asyn
       kind: "approval_resolved",
     })
   );
-  await expect(dashboard.request("approvals.list", {})).resolves.toEqual({
-    approvals: [],
-  });
 
-  const { config } = await dashboard.request("config.get", {});
+  await inbox.refresh();
+  expect(inbox.state.get().approvals).toEqual([]);
+
+  const { config } = await client.call("config.get", {});
 
   expect(config.agents.home?.permissionPolicy?.[0]).toEqual({
     action: "allow",
@@ -381,61 +390,57 @@ it("decides a Frontend Chat's Approval from the dashboard Approvals Inbox", asyn
   });
 });
 
-it("saves config with expectedRevision, reports a conflict, and applies Save & Restart", async () => {
+it("reports a revision conflict in the Config editor, overwrites it, and applies Save & Restart", async () => {
   harness = await startHarness({
     agents: {
       home: { frontends: [{ config: {}, id: "fake-main", type: "fake" }] },
     },
-    dashboardDir: FIXTURE_DIR,
+    dashboardDir,
   });
 
-  const dashboard = await openDashboard(harness.wsUrl(), harness.httpUrl());
+  const client = await connectDashboard(harness);
+  const editor = await loadedEditor(client);
   const configFile = path.join(harness.homeDir, "config.yaml");
-  const loaded = await dashboard.request("config.get", {});
-
-  // Another editor changes the file after the dashboard loaded it.
-  await writeFile(configFile, `# Edited in a text editor\n${loaded.raw}`);
-
-  const reloaded = await dashboard.request("config.get", {});
-  const { home } = loaded.config.agents;
+  const loaded = editor.state.get();
+  const home = loaded.config?.agents.home;
 
   if (home === undefined) {
     throw new Error("config.yaml has no home Agent");
   }
 
-  const withInstructions = (instructions: string): DeploymentConfig => ({
-    ...loaded.config,
-    agents: { ...loaded.config.agents, home: { ...home, instructions } },
+  const instructionsChange = (
+    instructions: string,
+    restart: "none" | "affected"
+  ): ConfigChange => ({
+    agent: "home",
+    config: { ...home, instructions },
+    kind: "agent",
+    restart,
   });
 
-  expect(reloaded.revision).not.toBe(loaded.revision);
+  // Another editor changes the file after the dashboard loaded it.
+  await writeFile(configFile, `# Edited in a text editor\n${loaded.raw}`);
+
+  const current = await client.call("config.get", {});
+
+  expect(current.revision).not.toBe(loaded.revision);
   await expect(
-    dashboard.request("config.save", {
-      config: withInstructions("You are Wheatley v2."),
-      expectedRevision: loaded.revision,
-      restart: "affected",
-    })
-  ).rejects.toMatchObject({
-    code: RpcErrorCode.RevisionConflict,
-    data: { revision: reloaded.revision },
+    editor.save(instructionsChange("You are Wheatley v2.", "none"))
+  ).resolves.toBe(false);
+  expect(editor.state.get().conflict).toEqual({
+    change: instructionsChange("You are Wheatley v2.", "none"),
+    currentRevision: current.revision,
   });
   expect(await readFile(configFile, "utf-8")).not.toContain("Wheatley v2");
 
-  const saved = await dashboard.request("config.save", {
-    config: withInstructions("You are Wheatley v2."),
-    expectedRevision: reloaded.revision,
-    restart: "none",
-  });
+  await expect(editor.resolveConflict("overwrite")).resolves.toBe(true);
 
-  expect(saved.pendingRestart).toEqual([{ agent: "home", kind: "agent" }]);
-  await expect(
-    dashboard.waitForEvent(
-      "config.changed",
-      (payload) => payload.revision === saved.revision
-    )
-  ).resolves.toEqual({
+  const saved = editor.state.get();
+
+  expect(saved).toMatchObject({
+    conflict: null,
     pendingRestart: [{ agent: "home", kind: "agent" }],
-    revision: saved.revision,
+    saveError: null,
   });
 
   const savedText = await readFile(configFile, "utf-8");
@@ -443,28 +448,21 @@ it("saves config with expectedRevision, reports a conflict, and applies Save & R
   expect(savedText).toContain("# Edited in a text editor");
   expect(savedText).toContain("You are Wheatley v2.");
   await expect(
-    dashboard.request("agents.get", { agent: "home" })
+    client.call("agents.get", { agent: "home" })
   ).resolves.toMatchObject({ pendingRestart: true, state: "running" });
 
-  const restarted = await dashboard.request("config.save", {
-    config: withInstructions("You are Wheatley v3."),
-    expectedRevision: saved.revision,
-    restart: "affected",
-  });
-
-  expect(restarted.pendingRestart).toEqual([]);
+  await expect(
+    editor.save(instructionsChange("You are Wheatley v3.", "affected"))
+  ).resolves.toBe(true);
+  expect(editor.state.get().pendingRestart).toEqual([]);
 
   const health = await waitFor(async () => {
-    const current = await dashboard.request("agents.get", { agent: "home" });
+    const agent = await client.call("agents.get", { agent: "home" });
 
-    return current.state === "running" ? current : undefined;
+    return agent.state === "running" ? agent : undefined;
   }, "the home Agent to run again");
 
   expect(health.pendingRestart).toBe(false);
-  await expect(dashboard.request("config.get", {})).resolves.toMatchObject({
-    pendingRestart: [],
-    revision: restarted.revision,
-  });
 
   const prompts: string[] = [];
 
@@ -491,12 +489,12 @@ it("saves config with expectedRevision, reports a conflict, and applies Save & R
   expect(prompts[0]).toContain("You are Wheatley v3.");
 });
 
-it("creates, renames, and deletes an Agent over JSON-RPC", async () => {
-  harness = await startHarness({ dashboardDir: FIXTURE_DIR });
+it("creates, renames, and deletes an Agent from the Config editor", async () => {
+  harness = await startHarness({ dashboardDir });
 
   const h = harness;
-  const dashboard = await openDashboard(h.wsUrl(), h.httpUrl());
-  const initial = await dashboard.request("config.get", {});
+  const client = await connectDashboard(h);
+  const editor = await loadedEditor(client);
 
   const workConfig: AgentConfig = {
     model: { id: h.llm.modelId, provider: FAKE_PROVIDER },
@@ -504,89 +502,58 @@ it("creates, renames, and deletes an Agent over JSON-RPC", async () => {
   };
 
   await expect(
-    dashboard.request("agents.create", {
-      agent: "work",
-      config: workConfig,
-      expectedRevision: "stale-revision",
-    })
-  ).rejects.toMatchObject({
-    code: RpcErrorCode.RevisionConflict,
-    data: { revision: initial.revision },
-  });
+    editor.save({ agent: "home", config: workConfig, kind: "create" })
+  ).resolves.toBe(false);
+  expect(editor.state.get().saveError).not.toBeNull();
+
+  // A hand edit after the load makes the create conflict. The Operator overwrites.
+  const configFile = path.join(h.homeDir, "config.yaml");
+
+  await writeFile(
+    configFile,
+    `# Edited in a text editor\n${editor.state.get().raw}`
+  );
   await expect(
-    dashboard.request("agents.create", {
-      agent: "home",
-      config: workConfig,
-      expectedRevision: initial.revision,
-    })
-  ).rejects.toMatchObject({ code: RpcErrorCode.Conflict });
-
-  const created = await dashboard.request("agents.create", {
+    editor.save({ agent: "work", config: workConfig, kind: "create" })
+  ).resolves.toBe(false);
+  expect(editor.state.get().conflict?.change).toMatchObject({
     agent: "work",
-    config: workConfig,
-    expectedRevision: initial.revision,
+    kind: "create",
   });
+  await expect(editor.resolveConflict("overwrite")).resolves.toBe(true);
+  await waitForRunning(client, "work");
 
-  await waitFor(async () => {
-    const health = await dashboard.request("agents.get", { agent: "work" });
-
-    return health.state === "running" ? true : undefined;
-  }, "the work Agent to run");
-  expect(await exists(path.join(h.agentDir("work"), "harness.sqlite"))).toBe(
-    true
-  );
-  expect(await exists(path.join(h.agentDir("work"), "agent.sqlite"))).toBe(
-    true
-  );
-
-  const listed = await dashboard.request("agents.list", {});
+  const listed = await client.call("agents.list", {});
 
   expect(listed.agents.map((agent) => agent.name)).toEqual(["home", "work"]);
 
   h.llm.faux.setResponses([fauxAssistantMessage("Work Agent here")]);
 
-  const sent = await dashboard.request("chat.send", {
-    agent: "work",
-    text: "Hello work",
-  });
-
-  await dashboard.waitForEvent(
+  const answered = nextEvent(
+    client,
     "chat.message",
     (payload) =>
       payload.agent === "work" &&
-      payload.message.messageId !== sent.messageId &&
       payload.message.role === "assistant" &&
       payload.message.text === "Work Agent here"
   );
 
+  await client.call("chat.send", { agent: "work", text: "Hello work" });
+  await answered;
+
   await expect(
-    dashboard.request("agents.rename", {
-      agent: "work",
-      expectedRevision: created.revision,
-      newName: "home",
-    })
-  ).rejects.toMatchObject({ code: RpcErrorCode.Conflict });
-
-  const renamed = await dashboard.request("agents.rename", {
-    agent: "work",
-    expectedRevision: created.revision,
-    newName: "office",
-  });
-
-  await waitFor(async () => {
-    const health = await dashboard.request("agents.get", { agent: "office" });
-
-    return health.state === "running" ? true : undefined;
-  }, "the office Agent to run");
+    editor.save({ agent: "work", kind: "rename", newName: "home" })
+  ).resolves.toBe(false);
+  expect(editor.state.get().saveError).not.toBeNull();
   await expect(
-    dashboard.request("agents.get", { agent: "work" })
+    editor.save({ agent: "work", kind: "rename", newName: "office" })
+  ).resolves.toBe(true);
+  await waitForRunning(client, "office");
+  await expect(
+    client.call("agents.get", { agent: "work" })
   ).rejects.toMatchObject({ code: RpcErrorCode.AgentNotFound });
-  expect(await exists(h.agentDir("work"))).toBe(false);
-  expect(await exists(path.join(h.agentDir("office"), "agent.sqlite"))).toBe(
-    true
-  );
 
-  const history = await dashboard.request("chat.history", { agent: "office" });
+  const history = await client.call("chat.history", { agent: "office" });
 
   expect(
     history.messages.map((message) => [message.role, message.text])
@@ -594,46 +561,25 @@ it("creates, renames, and deletes an Agent over JSON-RPC", async () => {
     ["user", "Hello work"],
     ["assistant", "Work Agent here"],
   ]);
-
-  const afterRename = await dashboard.request("config.get", {});
-
-  expect(Object.keys(afterRename.config.agents).toSorted()).toEqual([
-    "home",
-    "office",
-  ]);
-  expect(afterRename.revision).toBe(renamed.revision);
+  expect(
+    Object.keys(editor.state.get().config?.agents ?? {}).toSorted()
+  ).toEqual(["home", "office"]);
 
   await expect(
-    dashboard.request("agents.delete", {
-      agent: "office",
-      data: "archive",
-      expectedRevision: created.revision,
-    })
-  ).rejects.toMatchObject({ code: RpcErrorCode.RevisionConflict });
+    editor.save({ agent: "office", data: "archive", kind: "delete" })
+  ).resolves.toBe(true);
 
-  const deleted = await dashboard.request("agents.delete", {
-    agent: "office",
-    data: "archive",
-    expectedRevision: renamed.revision,
-  });
-
-  const afterDelete = await dashboard.request("agents.list", {});
+  const afterDelete = await client.call("agents.list", {});
 
   expect(afterDelete.agents.map((agent) => agent.name)).toEqual(["home"]);
-  expect(await exists(h.agentDir("office"))).toBe(false);
-
-  const archived = await readFile(path.join(h.homeDir, "config.yaml"), "utf-8");
-
-  expect(archived).not.toContain("office");
-  await expect(dashboard.request("config.get", {})).resolves.toMatchObject({
-    revision: deleted.revision,
-  });
+  expect(await readFile(configFile, "utf-8")).not.toContain("office");
+  expect(editor.state.get().config?.agents).not.toHaveProperty("office");
 
   const archive = await readdir(path.join(h.homeDir, "archive"));
 
   expect(archive).toHaveLength(1);
   expect(archive[0]).toMatch(/^office-/u);
   await expect(
-    dashboard.request("agents.get", { agent: "office" })
+    client.call("agents.get", { agent: "office" })
   ).rejects.toMatchObject({ code: RpcErrorCode.AgentNotFound });
 });
