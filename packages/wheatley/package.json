@@ -1,6 +1,6 @@
 {
   "name": "@wheatley-ai/cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Wheatley daemon and CLI",
   "license": "ISC",
   "repository": {
