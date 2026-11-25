@@ -1,0 +1,344 @@
+import { homedir } from "node:os";
+import { parseArgs } from "node:util";
+
+import { systemClock } from "../contracts/module.js";
+import type { Clock } from "../contracts/module.js";
+import { listBackups, restoreAgentBackup } from "./backup.js";
+import { processRunner } from "./command-runner.js";
+import type { CommandRunner } from "./command-runner.js";
+import { agentDirFor, resolveHomeDir } from "./paths.js";
+import {
+  createServiceManager,
+  packageBinScript,
+  resolveServiceSpec,
+} from "./service.js";
+import {
+  applyUpdate,
+  detectInstallMethod,
+  installCommand,
+  packageDir,
+  planUpdate,
+  readPackageVersion,
+} from "./update.js";
+import type { PackageManager } from "./update.js";
+
+/** Output streams of one CLI command. Each call writes one line. */
+export interface CliIo {
+  readonly out: (line: string) => void;
+  readonly err: (line: string) => void;
+}
+
+/**
+ * One `wheatley` subcommand. `args` are the arguments after the subcommand name. Resolves with the process exit code:
+ * 0 for success, 1 for a failure, and 2 for a usage error. It never rejects: it writes errors to `io.err`.
+ */
+export type CliCommand = (
+  args: readonly string[],
+  io: CliIo
+) => Promise<number>;
+
+/** What the ops CLI commands need from the host. */
+export interface OpsCliDeps {
+  readonly env: NodeJS.ProcessEnv;
+  readonly platform: NodeJS.Platform;
+  readonly userHome: string;
+  readonly uid: number;
+  /** The Node.js binary that runs the CLI. */
+  readonly execPath: string;
+  readonly runner: CommandRunner;
+  readonly clock: Clock;
+  /**
+   * Resolves `true` if a daemon runs for the Deployment home. `wheatley restore` refuses to replace `agent.sqlite`
+   * then, because the daemon holds it open.
+   */
+  readonly isDaemonRunning: () => Promise<boolean>;
+  /** The configured `daemon.drainTimeout` in milliseconds, for the service stop grace period. */
+  readonly drainTimeoutMs?: number;
+}
+
+/** The ops CLI dependencies of this process. */
+export const hostCliDeps = (
+  isDaemonRunning: () => Promise<boolean>,
+  drainTimeoutMs?: number
+): OpsCliDeps => ({
+  clock: systemClock,
+  env: process.env,
+  execPath: process.execPath,
+  isDaemonRunning,
+  platform: process.platform,
+  runner: processRunner,
+  uid: process.getuid?.() ?? 0,
+  userHome: homedir(),
+  drainTimeoutMs,
+});
+
+const EXIT_OK = 0;
+const EXIT_FAILURE = 1;
+const EXIT_USAGE = 2;
+
+const SERVICE_USAGE =
+  "Usage: wheatley service <install|start|stop|restart|status>";
+
+const UPDATE_USAGE = "Usage: wheatley update [--check] [--manager npm|pnpm]";
+const RESTORE_USAGE = "Usage: wheatley restore <agent> <backup>";
+
+class UsageError extends Error {
+  override readonly name = "UsageError";
+}
+
+const isUsageError = (error: Error): boolean =>
+  error instanceof UsageError ||
+  ("code" in error && String(error.code).startsWith("ERR_PARSE_ARGS"));
+
+/** Turns thrown errors into exit codes, so that a command never rejects. */
+const guarded =
+  (usage: string, body: CliCommand): CliCommand =>
+  async (args, io) => {
+    try {
+      return await body(args, io);
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      io.err(failure.message);
+
+      if (isUsageError(failure)) {
+        io.err(usage);
+
+        return EXIT_USAGE;
+      }
+
+      return EXIT_FAILURE;
+    }
+  };
+
+const serviceCommand =
+  (deps: OpsCliDeps): CliCommand =>
+  async (args, io) => {
+    const { positionals } = parseArgs({
+      allowPositionals: true,
+      args: [...args],
+    });
+
+    const [action, ...extra] = positionals;
+
+    if (action === undefined || extra.length > 0) {
+      throw new UsageError("Pass exactly one service action.");
+    }
+
+    const manager = createServiceManager(deps);
+
+    switch (action) {
+      case "install": {
+        const spec = await resolveServiceSpec({
+          binScript: packageBinScript(),
+          env: deps.env,
+          execPath: deps.execPath,
+          homeDir: resolveHomeDir(deps.env, deps.userHome),
+          drainTimeoutMs: deps.drainTimeoutMs,
+        });
+
+        const result = await manager.install(spec);
+        io.out(`Installed the ${manager.kind} unit: ${result.unitPath}`);
+
+        for (const note of result.notes) {
+          io.out(note);
+        }
+
+        return EXIT_OK;
+      }
+
+      case "start": {
+        await manager.start();
+        io.out("Started the Wheatley service.");
+
+        return EXIT_OK;
+      }
+
+      case "stop": {
+        await manager.stop();
+        io.out("Stopped the Wheatley service.");
+
+        return EXIT_OK;
+      }
+
+      case "restart": {
+        await manager.restart();
+        io.out("Restarted the Wheatley service.");
+
+        return EXIT_OK;
+      }
+
+      case "status": {
+        const status = await manager.status();
+        io.out(`Manager: ${status.manager}`);
+        io.out(`Unit: ${status.unitPath}`);
+        io.out(`State: ${status.state}`);
+        io.out(`PID: ${status.pid ?? "-"}`);
+
+        return EXIT_OK;
+      }
+
+      default: {
+        throw new UsageError(`Unknown service action: ${action}`);
+      }
+    }
+  };
+
+const isPackageManager = (value: string): value is PackageManager =>
+  value === "npm" || value === "pnpm";
+
+const newerMajorNote = (version: string, manager: PackageManager): string =>
+  `Wheatley ${version} is a new major version. wheatley update stays within the current major version. Read the release notes, then run: ${installCommand(manager, version).join(" ")}`;
+
+const updateCommand =
+  (deps: OpsCliDeps): CliCommand =>
+  async (args, io) => {
+    const { values } = parseArgs({
+      args: [...args],
+      options: {
+        check: { type: "boolean" },
+        manager: { type: "string" },
+      },
+    });
+
+    if (values.manager !== undefined && !isPackageManager(values.manager)) {
+      throw new UsageError(`Unknown package manager: ${values.manager}`);
+    }
+
+    const dir = packageDir();
+    const method = detectInstallMethod(deps.env, dir);
+
+    const plan = await planUpdate({
+      current: await readPackageVersion(dir),
+      method,
+      runner: deps.runner,
+      manager: values.manager,
+    });
+
+    if (plan.kind === "docker") {
+      io.out(
+        "This Wheatley runs in Docker. In the folder of docker-compose.yml, run:"
+      );
+
+      for (const command of plan.commands) {
+        io.out(`  ${command}`);
+      }
+
+      return EXIT_OK;
+    }
+
+    const manager = values.manager ?? (method === "pnpm" ? "pnpm" : "npm");
+
+    const newerMajor =
+      plan.newerMajor === undefined
+        ? []
+        : [newerMajorNote(plan.newerMajor, manager)];
+
+    if (plan.kind === "up_to_date") {
+      io.out(
+        `Wheatley ${plan.current} is the newest release of its major version.`
+      );
+
+      for (const line of newerMajor) {
+        io.out(line);
+      }
+
+      return EXIT_OK;
+    }
+
+    if (values.check === true) {
+      io.out(
+        `Update available: ${plan.current} -> ${plan.target}. Run: wheatley update`
+      );
+    } else {
+      io.out(
+        `Updating Wheatley ${plan.current} -> ${plan.target}: ${plan.command.join(" ")}`
+      );
+      await applyUpdate(plan, deps.runner);
+      io.out(
+        `Updated Wheatley to ${plan.target}. If the daemon runs as a service, run: wheatley service restart`
+      );
+    }
+
+    for (const line of newerMajor) {
+      io.out(line);
+    }
+
+    return EXIT_OK;
+  };
+
+const restoreCommand =
+  (deps: OpsCliDeps): CliCommand =>
+  async (args, io) => {
+    const { positionals } = parseArgs({
+      allowPositionals: true,
+      args: [...args],
+    });
+
+    const [agent, backup, ...extra] = positionals;
+
+    if (agent === undefined || extra.length > 0) {
+      throw new UsageError("Pass an Agent name and a backup.");
+    }
+
+    const agentDir = agentDirFor(
+      resolveHomeDir(deps.env, deps.userHome),
+      agent
+    );
+
+    if (backup === undefined) {
+      const backups = await listBackups(agentDir);
+      io.err(RESTORE_USAGE);
+      io.err(
+        backups.length === 0
+          ? `Agent ${agent} has no backups.`
+          : `Backups of Agent ${agent}, newest first:`
+      );
+
+      for (const info of backups) {
+        io.err(`  ${info.file}  (${info.reason}, ${info.createdAt})`);
+      }
+
+      return EXIT_USAGE;
+    }
+
+    if (await deps.isDaemonRunning()) {
+      io.err(
+        "The Wheatley daemon is running and holds agent.sqlite open. Stop it first, for example: wheatley service stop"
+      );
+
+      return EXIT_FAILURE;
+    }
+
+    const result = await restoreAgentBackup({
+      agentDir,
+      backup,
+      clock: deps.clock,
+    });
+
+    io.out(`Restored Agent ${agent} from ${result.restoredFrom}.`);
+
+    if (result.safetyBackup !== undefined) {
+      io.out(
+        `The replaced agent.sqlite is in backup ${result.safetyBackup.file}.`
+      );
+    }
+
+    return EXIT_OK;
+  };
+
+/** The ops subcommands, by name, for the CLI root. */
+export interface OpsCommands {
+  /** `wheatley service <install|start|stop|restart|status>` */
+  readonly service: CliCommand;
+  /** `wheatley update [--check] [--manager npm|pnpm]` */
+  readonly update: CliCommand;
+  /** `wheatley restore <agent> <backup>`. Without `<backup>`, it lists the Agent's backups. */
+  readonly restore: CliCommand;
+}
+
+/** Creates the ops subcommand handlers. */
+export const createOpsCommands = (deps: OpsCliDeps): OpsCommands => ({
+  restore: guarded(RESTORE_USAGE, restoreCommand(deps)),
+  service: guarded(SERVICE_USAGE, serviceCommand(deps)),
+  update: guarded(UPDATE_USAGE, updateCommand(deps)),
+});
