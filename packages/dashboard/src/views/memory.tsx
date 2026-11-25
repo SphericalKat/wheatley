@@ -2,8 +2,8 @@ import {
   MemoryNameSchema,
   MemorySearchScopeSchema,
   decode,
-} from "@wheatley/protocol";
-import type { MemorySearchHit, MemorySearchScope } from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
+import type { MemorySearchHit, MemorySearchScope } from "@wheatley-ai/protocol";
 import { useEffect, useState } from "react";
 
 import { useRpcQuery, useServices } from "../hooks.js";

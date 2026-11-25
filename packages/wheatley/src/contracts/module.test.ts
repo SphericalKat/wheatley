@@ -2,7 +2,7 @@ import {
   decodeClientMessage,
   encodeRequest,
   encodeResult,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 import { openAgentDatabase } from "../db/database.js";

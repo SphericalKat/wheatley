@@ -1,5 +1,5 @@
-import type { FailedDelivery } from "@wheatley/protocol";
-import type { Delivery } from "@wheatley/sdk";
+import type { FailedDelivery } from "@wheatley-ai/protocol";
+import type { Delivery } from "@wheatley-ai/sdk";
 
 /** A `Delivery` before the outbox assigns `messageId` and `chatId`. */
 export type DeliveryDraft = Delivery extends infer Item
@@ -72,7 +72,7 @@ export interface DeliveryOutbox {
 /** What the outbox needs from the Agent. */
 export interface DeliveryOutboxDeps {
   /**
-   * Delivers through the Frontend Binding `bindingId`. Rejects with a `DeliveryError` from `@wheatley/sdk`. An
+   * Delivers through the Frontend Binding `bindingId`. Rejects with a `DeliveryError` from `@wheatley-ai/sdk`. An
    * unknown binding is a permanent error.
    */
   readonly deliver: (bindingId: string, delivery: Delivery) => Promise<void>;

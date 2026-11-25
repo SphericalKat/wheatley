@@ -1,4 +1,4 @@
-import { DISPLAY_NAME_MAX_LENGTH, isJsonValue } from "@wheatley/protocol";
+import { DISPLAY_NAME_MAX_LENGTH, isJsonValue } from "@wheatley-ai/protocol";
 import type {
   Attachment,
   Delivery,
@@ -10,8 +10,8 @@ import type {
   WebhookResponse,
   WebhookRoute,
   WebhookRouteHandler,
-} from "@wheatley/sdk";
-import { DeliveryError, parseCommandText } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { DeliveryError, parseCommandText } from "@wheatley-ai/sdk";
 
 import { stageInboundFile } from "./attachments.js";
 import type { FetchFunction } from "./attachments.js";

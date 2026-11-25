@@ -1,4 +1,4 @@
-import { RpcError, RpcErrorCode } from "@wheatley/protocol";
+import { RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { startMockDaemon } from "../../mock/server.js";

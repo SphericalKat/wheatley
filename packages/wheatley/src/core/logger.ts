@@ -1,6 +1,6 @@
-import { isJsonValue } from "@wheatley/protocol";
-import type { LogLevel, LogRecord } from "@wheatley/protocol";
-import type { JsonObject, Logger } from "@wheatley/sdk";
+import { isJsonValue } from "@wheatley-ai/protocol";
+import type { LogLevel, LogRecord } from "@wheatley-ai/protocol";
+import type { JsonObject, Logger } from "@wheatley-ai/sdk";
 
 import type { Clock, EventSink } from "../contracts/module.js";
 

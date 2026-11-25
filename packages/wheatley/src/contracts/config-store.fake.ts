@@ -4,12 +4,12 @@ import {
   DeploymentConfigSchema,
   decode,
   isJsonValue,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   DeploymentConfig,
   PermissionRule,
   ConfigIssue,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type {
   ConfigSaveInput,

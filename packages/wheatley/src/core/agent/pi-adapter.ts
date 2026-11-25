@@ -28,9 +28,9 @@ import type {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { bool, obj } from "@earendil-works/pi-schema";
-import { isJsonValue } from "@wheatley/protocol";
-import type { JsonValue, ModelChoice, RunUsage } from "@wheatley/protocol";
-import type { JsonSchema, Logger, ToolResult } from "@wheatley/sdk";
+import { isJsonValue } from "@wheatley-ai/protocol";
+import type { JsonValue, ModelChoice, RunUsage } from "@wheatley-ai/protocol";
+import type { JsonSchema, Logger, ToolResult } from "@wheatley-ai/sdk";
 
 import type { ParkedCall } from "../../contracts/approval-gate.js";
 import { errorMessage } from "../error-message.js";

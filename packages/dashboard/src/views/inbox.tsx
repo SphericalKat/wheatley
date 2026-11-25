@@ -2,7 +2,7 @@ import type {
   ApprovalDecision,
   FailedDelivery,
   PendingApproval,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

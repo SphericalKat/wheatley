@@ -1,7 +1,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { Tool, ToolResult } from "@wheatley/sdk";
+import type { Tool, ToolResult } from "@wheatley-ai/sdk";
 
 import { errorMessage } from "../core/error-message.js";
 import { checkInput, stringField } from "./input.js";

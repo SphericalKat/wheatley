@@ -9,7 +9,7 @@ import type {
   Message,
   TextContent,
 } from "@earendil-works/pi-ai";
-import type { MessageDelivery } from "@wheatley/sdk";
+import type { MessageDelivery } from "@wheatley-ai/sdk";
 import { afterEach, expect, it } from "vitest";
 
 import type { FakeBindingHandle } from "./fake-frontend.js";

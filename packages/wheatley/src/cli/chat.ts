@@ -1,5 +1,5 @@
-import type { PendingApproval, RpcEvent } from "@wheatley/protocol";
-import { BUILTIN_COMMANDS, parseCommandText } from "@wheatley/sdk";
+import type { PendingApproval, RpcEvent } from "@wheatley-ai/protocol";
+import { BUILTIN_COMMANDS, parseCommandText } from "@wheatley-ai/sdk";
 
 import { CLI_CHAT_ID } from "../core/agent/agent.js";
 import { CLI_BINDING_ID } from "../core/config/validate.js";

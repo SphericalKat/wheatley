@@ -1,4 +1,4 @@
-import type { AgentConfig } from "@wheatley/protocol";
+import type { AgentConfig } from "@wheatley-ai/protocol";
 
 import { createApprovalGate } from "../approvals/gate.js";
 import { approvalsModule } from "../approvals/module.js";

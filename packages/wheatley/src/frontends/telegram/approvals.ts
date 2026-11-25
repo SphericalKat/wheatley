@@ -7,7 +7,7 @@ import type {
   ApprovalOutcome,
   ApprovalRequestedDelivery,
   ApprovalResolvedDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";

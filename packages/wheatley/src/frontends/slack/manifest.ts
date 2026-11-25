@@ -1,5 +1,5 @@
-import type { CommandSpec } from "@wheatley/sdk";
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+import type { CommandSpec } from "@wheatley-ai/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 
 /** The webhook path suffix of a binding in `webhook` transport. Events, commands, and interactions share it. */
 export const WEBHOOK_PATH_SUFFIX = "events";

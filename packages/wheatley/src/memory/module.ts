@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { MemoryConfig } from "@wheatley/protocol";
+import type { MemoryConfig } from "@wheatley-ai/protocol";
 
 import type { ToolProvider } from "../contracts/extension-catalog.js";
 import type { MaintenanceRunner } from "../contracts/maintenance-runner.js";

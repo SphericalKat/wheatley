@@ -13,7 +13,7 @@ import type {
 } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/client/validators/ajv";
-import { isJsonValue } from "@wheatley/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
 import type {
   ExtensionState,
   ExtensionStatus,
@@ -22,8 +22,8 @@ import type {
   McpServerConfig,
   SecretRef,
   StringOrSecret,
-} from "@wheatley/protocol";
-import type { Logger, SecretReader, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger, SecretReader, ToolResult } from "@wheatley-ai/sdk";
 
 import type { ToolDescriptor } from "../contracts/extension-catalog.js";
 import { canonicalToolName } from "../contracts/tool-names.js";

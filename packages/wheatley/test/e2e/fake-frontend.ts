@@ -9,8 +9,8 @@ import type {
   FrontendContext,
   FrontendSink,
   RunEvent,
-} from "@wheatley/sdk";
-import { DeliveryError } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { DeliveryError } from "@wheatley-ai/sdk";
 
 /** The `type` of the fake Frontend in `config.yaml`. */
 export const FAKE_FRONTEND_TYPE = "fake";

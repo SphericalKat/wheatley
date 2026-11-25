@@ -3,14 +3,14 @@ import {
   ConversationModeSchema,
   TriggerInputSchema,
   decode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   ConversationMode,
   PermissionAction,
   Trigger,
   TriggerInput,
   TriggerSchedule,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { useState } from "react";
 
 import { useRpcQuery, useServices, useStore } from "../hooks.js";

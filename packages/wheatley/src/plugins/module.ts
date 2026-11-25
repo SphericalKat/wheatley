@@ -1,5 +1,5 @@
-import type { AgentConfig } from "@wheatley/protocol";
-import type { SecretReader } from "@wheatley/sdk";
+import type { AgentConfig } from "@wheatley-ai/protocol";
+import type { SecretReader } from "@wheatley-ai/sdk";
 
 import type { PluginProvider } from "../contracts/extension-catalog.js";
 import type { AgentModule, RpcHandlerMap } from "../contracts/module.js";

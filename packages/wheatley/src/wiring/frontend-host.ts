@@ -1,14 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { isJsonValue } from "@wheatley/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   BindingStatus,
   ChatKey,
   FrontendBindingConfig,
-} from "@wheatley/protocol";
-import { BUILTIN_COMMANDS, DeliveryError } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import { BUILTIN_COMMANDS, DeliveryError } from "@wheatley-ai/sdk";
 import type {
   Attachment,
   Delivery,
@@ -20,7 +20,7 @@ import type {
   SecretReader,
   WebhookRoute,
   WebhookRouteHandler,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type { AgentModuleContext } from "../contracts/module.js";
 import type { AgentHost, MountedModule } from "../core/agent/agent.js";

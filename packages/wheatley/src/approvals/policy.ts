@@ -1,10 +1,10 @@
-import { parseDuration } from "@wheatley/protocol";
+import { parseDuration } from "@wheatley-ai/protocol";
 import type {
   Duration,
   PermissionAction,
   PermissionRule,
   RunOrigin,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import { matchesToolPattern } from "../contracts/tool-names.js";
 

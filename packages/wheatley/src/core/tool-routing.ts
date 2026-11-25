@@ -1,4 +1,4 @@
-import type { ToolResult } from "@wheatley/sdk";
+import type { ToolResult } from "@wheatley-ai/sdk";
 
 import type {
   AgentExtensions,

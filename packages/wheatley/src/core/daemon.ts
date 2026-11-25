@@ -1,7 +1,7 @@
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parseDuration } from "@wheatley/protocol";
+import { parseDuration } from "@wheatley-ai/protocol";
 
 import type { RpcHandlerMap } from "../contracts/module.js";
 import { Deployment } from "./deployment.js";

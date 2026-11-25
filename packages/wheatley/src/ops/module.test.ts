@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { JsonObject } from "@wheatley/protocol";
+import type { JsonObject } from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openAgentDatabase } from "../db/database.js";

@@ -1,7 +1,6 @@
 {
-  "name": "wheatley",
+  "name": "@wheatley-ai/cli",
   "version": "0.0.0",
-  "private": true,
   "description": "Wheatley daemon and CLI",
   "license": "ISC",
   "bin": {
@@ -13,6 +12,9 @@
   ],
   "type": "module",
   "main": "dist/index.js",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/bundle-dashboard.ts && node scripts/vendor-workspace-packages.ts",
     "prepack": "pnpm run build",
@@ -37,9 +39,9 @@
   "devDependencies": {
     "@modelcontextprotocol/server": "2.4.0",
     "@types/ws": "8.18.2",
-    "@wheatley/dashboard": "workspace:*",
-    "@wheatley/protocol": "workspace:*",
-    "@wheatley/sdk": "workspace:*"
+    "@wheatley-ai/dashboard": "workspace:*",
+    "@wheatley-ai/protocol": "workspace:*",
+    "@wheatley-ai/sdk": "workspace:*"
   },
   "engines": {
     "node": ">=26.13.1"

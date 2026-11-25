@@ -1,4 +1,4 @@
-import type { JsonObject, JsonSchema, JsonValue } from "@wheatley/sdk";
+import type { JsonObject, JsonSchema, JsonValue } from "@wheatley-ai/sdk";
 
 const GUILD_MESSAGE_MODES = ["mention_or_reply", "all"] as const;
 const STREAMING_MODES = ["edit", "typing"] as const;

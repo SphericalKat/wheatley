@@ -3,8 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
-import type { EventName, EventPayload, MemoryConfig } from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+import type {
+  EventName,
+  EventPayload,
+  MemoryConfig,
+} from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import { InMemoryMaintenanceRunner } from "../contracts/maintenance-runner.fake.js";
 import type { MaintenanceRunner } from "../contracts/maintenance-runner.js";

@@ -1,5 +1,5 @@
-import { isJsonValue } from "@wheatley/protocol";
-import type { JsonObject, JsonValue } from "@wheatley/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
+import type { JsonObject, JsonValue } from "@wheatley-ai/protocol";
 import { isMap, isNode, isScalar, isSeq } from "yaml";
 import type { Document, Node, Scalar } from "yaml";
 

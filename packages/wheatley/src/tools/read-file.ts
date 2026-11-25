@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { Tool, ToolResult } from "@wheatley/sdk";
+import type { Tool, ToolResult } from "@wheatley-ai/sdk";
 
 import { errorMessage } from "../core/error-message.js";
 import { checkInput, integerField, stringField } from "./input.js";

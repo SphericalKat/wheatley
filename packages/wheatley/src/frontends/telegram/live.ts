@@ -1,4 +1,4 @@
-import type { Logger, RunEvent } from "@wheatley/sdk";
+import type { Logger, RunEvent } from "@wheatley-ai/sdk";
 
 import type { TelegramTarget } from "./chat-key.js";
 import type { TelegramClient } from "./client.js";

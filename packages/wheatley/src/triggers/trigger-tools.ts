@@ -1,12 +1,12 @@
-import { parseDuration, TRIGGER_NAME_MAX_LENGTH } from "@wheatley/protocol";
+import { parseDuration, TRIGGER_NAME_MAX_LENGTH } from "@wheatley-ai/protocol";
 import type {
   ExtensionStatus,
   JsonValue,
   PermissionAction,
   Trigger,
   TriggerSchedule,
-} from "@wheatley/protocol";
-import type { JsonSchema, ToolContext, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { JsonSchema, ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";

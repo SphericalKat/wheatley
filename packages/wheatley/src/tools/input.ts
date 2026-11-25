@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@wheatley/sdk";
+import type { JsonObject, JsonValue } from "@wheatley-ai/sdk";
 
 /** The result of reading a Tool input object. */
 export type InputCheck<T> =

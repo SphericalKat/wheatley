@@ -14,7 +14,7 @@ import type {
   FrontendContext,
   JsonObject,
   MessageDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InMemorySecretStore } from "../../contracts/secret-store.fake.js";

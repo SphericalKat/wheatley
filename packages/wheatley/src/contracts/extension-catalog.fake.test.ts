@@ -1,4 +1,4 @@
-import type { Frontend, Logger, Tool, ToolContext } from "@wheatley/sdk";
+import type { Frontend, Logger, Tool, ToolContext } from "@wheatley-ai/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { InMemoryExtensionCatalog } from "./extension-catalog.fake.js";

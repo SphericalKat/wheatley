@@ -2,7 +2,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { AgentNameSchema, decode } from "@wheatley/protocol";
+import { AgentNameSchema, decode } from "@wheatley-ai/protocol";
 
 /** The Agent storage file that Wheatley migrations change. */
 export const AGENT_DATABASE_FILE = "agent.sqlite";

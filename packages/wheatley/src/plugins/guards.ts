@@ -1,5 +1,5 @@
-import { isJsonValue } from "@wheatley/protocol";
-import { API_VERSION } from "@wheatley/sdk";
+import { isJsonValue } from "@wheatley-ai/protocol";
+import { API_VERSION } from "@wheatley-ai/sdk";
 import type {
   Frontend,
   JsonObject,
@@ -10,7 +10,7 @@ import type {
   StandardJsonSchemaProps,
   StandardJsonSchemaV1,
   ToolResult,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 const STANDARD_KEY = "~standard";
 const STANDARD_VERSION = 1;
@@ -73,7 +73,7 @@ export const hasApiVersion = (
   typeof value === "object" && value !== null && "apiVersion" in value;
 
 /**
- * Returns true if `value` has the runtime form of a `Plugin` of `@wheatley/sdk`: `apiVersion` 1, `name` and `version`
+ * Returns true if `value` has the runtime form of a `Plugin` of `@wheatley-ai/sdk`: `apiVersion` 1, `name` and `version`
  * strings, a `setup` function, and an optional schema as `configSchema`. It does not check the name pattern.
  */
 export const isPlugin = (value: unknown): value is Plugin<unknown> =>
@@ -94,7 +94,7 @@ export const isPlugin = (value: unknown): value is Plugin<unknown> =>
 /** The Tool type of `PluginContributions`, which accepts any input type. */
 export type PluginTool = NonNullable<PluginContributions["tools"]>[number];
 
-/** Returns true if `value` has the runtime form of a `Tool` of `@wheatley/sdk`. It does not check the name pattern. */
+/** Returns true if `value` has the runtime form of a `Tool` of `@wheatley-ai/sdk`. It does not check the name pattern. */
 export const isPluginTool = (value: unknown): value is PluginTool =>
   typeof value === "object" &&
   value !== null &&
@@ -107,7 +107,7 @@ export const isPluginTool = (value: unknown): value is PluginTool =>
   "execute" in value &&
   typeof value.execute === "function";
 
-/** Returns true if `value` has the runtime form of a `Frontend` of `@wheatley/sdk`. */
+/** Returns true if `value` has the runtime form of a `Frontend` of `@wheatley-ai/sdk`. */
 export const isPluginFrontend = (value: unknown): value is Frontend =>
   typeof value === "object" &&
   value !== null &&

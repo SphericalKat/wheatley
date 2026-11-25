@@ -6,7 +6,7 @@ import type {
   EventPayload,
   PermissionAction,
   PermissionRule,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type {

@@ -3,8 +3,13 @@ import type {
   JsonValue,
   PermissionAction,
   ToolSource,
-} from "@wheatley/protocol";
-import type { JsonSchema, Tool, ToolContext, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type {
+  JsonSchema,
+  Tool,
+  ToolContext,
+  ToolResult,
+} from "@wheatley-ai/sdk";
 
 import type { ToolDescriptor, ToolProvider } from "./extension-catalog.js";
 import { simulateIo } from "./fake-io.js";

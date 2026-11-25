@@ -3,7 +3,7 @@ import type {
   MemoryFile,
   MemorySearchHit,
   MemorySearchScope,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 /** The `MEMORY.md` text that the Agent injects at Conversation start and after `/compact` (ADR 0009). */
 export interface MemorySnapshot {

@@ -4,7 +4,7 @@ import type {
   MethodName,
   MethodParams,
   MethodResult,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import {
   createContext,
   useCallback,

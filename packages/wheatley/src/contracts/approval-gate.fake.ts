@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { TOOL_INPUT_PREVIEW_MAX_LENGTH } from "@wheatley/protocol";
+import { TOOL_INPUT_PREVIEW_MAX_LENGTH } from "@wheatley-ai/protocol";
 import type {
   ApprovalOutcome,
   PendingApproval,
   PermissionAction,
   PermissionRule,
-} from "@wheatley/protocol";
-import type { ApprovalResolution } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { ApprovalResolution } from "@wheatley-ai/sdk";
 
 import type {
   ApprovalGate,

@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { SkillInfo } from "@wheatley/protocol";
+import type { SkillInfo } from "@wheatley-ai/protocol";
 
 import { isNotFolder, isNotFound, messageOf } from "./fs-errors.js";
 import { parseSkillFile, SKILL_FILE_NAME } from "./skill-file.js";

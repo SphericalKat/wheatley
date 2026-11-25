@@ -1,5 +1,5 @@
-import { RpcError, RpcErrorCode } from "@wheatley/protocol";
-import type { JsonValue, RpcErrorCodeValue } from "@wheatley/protocol";
+import { RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
+import type { JsonValue, RpcErrorCodeValue } from "@wheatley-ai/protocol";
 
 /** Why a seam method failed. Each code maps to one JSON-RPC error code. */
 export type SeamErrorCode =

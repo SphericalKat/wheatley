@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
+import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
 
 import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
 import { errorMessage } from "../core/error-message.js";

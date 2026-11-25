@@ -1,4 +1,4 @@
-import type { Attachment, Delivery } from "@wheatley/sdk";
+import type { Attachment, Delivery } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";

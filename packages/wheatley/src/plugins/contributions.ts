@@ -1,5 +1,5 @@
-import type { PermissionAction } from "@wheatley/protocol";
-import type { Frontend, PluginContributions } from "@wheatley/sdk";
+import type { PermissionAction } from "@wheatley-ai/protocol";
+import type { Frontend, PluginContributions } from "@wheatley-ai/sdk";
 
 import type { ToolDescriptor } from "../contracts/extension-catalog.js";
 import { canonicalToolName } from "../contracts/tool-names.js";
@@ -93,7 +93,7 @@ export const disposerOf = (
 };
 
 /**
- * Validates what `setup` of the Plugin `plugin` returned against `PluginContributions` of `@wheatley/sdk` and names
+ * Validates what `setup` of the Plugin `plugin` returned against `PluginContributions` of `@wheatley-ai/sdk` and names
  * its Tools `<plugin>:<tool>`.
  *
  * Errors: throws a `TypeError` or `RangeError` with a message for Agent health if the value is not a contributions

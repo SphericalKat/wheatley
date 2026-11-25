@@ -1,4 +1,4 @@
-import type { WebhooksConfig } from "@wheatley/protocol";
+import type { WebhooksConfig } from "@wheatley-ai/protocol";
 
 import type {
   DeliveryOutbox,

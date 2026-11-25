@@ -4,7 +4,7 @@ import {
   IdSchema,
   RpcError,
   RpcErrorCode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   ConfigIssue,
@@ -12,7 +12,7 @@ import type {
   JsonObject,
   JsonValue,
   PendingRestart,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";

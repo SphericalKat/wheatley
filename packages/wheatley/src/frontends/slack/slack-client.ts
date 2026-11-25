@@ -16,7 +16,7 @@ import type {
   UsersInfoResponse,
   WebAPICallResult,
 } from "@slack/web-api";
-import type { Logger } from "@wheatley/sdk";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import type { SlackBlocks } from "./approval-blocks.js";
 import type { SlackChatTarget } from "./chat-id.js";

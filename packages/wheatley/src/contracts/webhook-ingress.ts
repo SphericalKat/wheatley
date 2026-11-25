@@ -1,10 +1,10 @@
-import type { AgentState } from "@wheatley/protocol";
+import type { AgentState } from "@wheatley-ai/protocol";
 import type {
   SecretReader,
   WebhookResponse,
   WebhookRoute,
   WebhookRouteHandler,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type { TriggerRuntime } from "./trigger-runtime.js";
 

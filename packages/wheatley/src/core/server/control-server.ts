@@ -6,7 +6,7 @@ import { isIPv4 } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
-import type { Logger } from "@wheatley/sdk";
+import type { Logger } from "@wheatley-ai/sdk";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 

@@ -4,7 +4,7 @@ import type {
   ApprovalOutcome,
   ChatKey,
   PendingApproval,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type { ParkedCall } from "../contracts/approval-gate.js";
 import type { Migration } from "../db/migrations.js";

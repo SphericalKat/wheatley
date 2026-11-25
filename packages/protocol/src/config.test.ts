@@ -2,7 +2,7 @@ import {
   decode,
   DeploymentConfigSchema,
   TriggerInputSchema,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 const validConfig = {

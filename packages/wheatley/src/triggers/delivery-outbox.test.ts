@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { EventName, EventPayload } from "@wheatley/protocol";
-import { DeliveryError } from "@wheatley/sdk";
-import type { Delivery } from "@wheatley/sdk";
+import type { EventName, EventPayload } from "@wheatley-ai/protocol";
+import { DeliveryError } from "@wheatley-ai/sdk";
+import type { Delivery } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type {

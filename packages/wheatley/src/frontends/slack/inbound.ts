@@ -1,4 +1,4 @@
-import type { ApprovalDecision, JsonValue } from "@wheatley/sdk";
+import type { ApprovalDecision, JsonValue } from "@wheatley-ai/sdk";
 
 import { decisionOfAction } from "./approval-blocks.js";
 import {

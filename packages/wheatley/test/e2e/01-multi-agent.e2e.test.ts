@@ -6,8 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai";
-import { RpcErrorCode } from "@wheatley/protocol";
-import type { GatePressure, RunSummary } from "@wheatley/protocol";
+import { RpcErrorCode } from "@wheatley-ai/protocol";
+import type { GatePressure, RunSummary } from "@wheatley-ai/protocol";
 import { afterEach, expect, it } from "vitest";
 
 import { startHarness, waitFor } from "./harness.js";

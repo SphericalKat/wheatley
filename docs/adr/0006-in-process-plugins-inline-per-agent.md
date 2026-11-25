@@ -1,6 +1,6 @@
 # In-process Plugins configured inline per Agent
 
-Each **Agent** configures its own **Plugins** and **MCP Servers** inline in `config.yaml`, with no shared instances across **Agents**. **Plugins** run in-process through Node ESM `import()` as trusted **Operator** code and export a versioned contract (`apiVersion: 1`) typed by `@wheatley/sdk`. If a **Plugin** fails to load or an **MCP Server** fails to connect on start, Wheatley skips it, starts the **Agent** without it, and reports the error in **Agent** health.
+Each **Agent** configures its own **Plugins** and **MCP Servers** inline in `config.yaml`, with no shared instances across **Agents**. **Plugins** run in-process through Node ESM `import()` as trusted **Operator** code and export a versioned contract (`apiVersion: 1`) typed by `@wheatley-ai/sdk`. If a **Plugin** fails to load or an **MCP Server** fails to connect on start, Wheatley skips it, starts the **Agent** without it, and reports the error in **Agent** health.
 
 ## Considered Options
 

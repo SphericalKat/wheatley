@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir } from "node:fs/promises";
 
-import type { Tool, ToolResult } from "@wheatley/sdk";
+import type { Tool, ToolResult } from "@wheatley-ai/sdk";
 
 import { errorMessage } from "../core/error-message.js";
 import { checkInput, integerField, stringField } from "./input.js";

@@ -72,16 +72,16 @@ Wave 1 tracks run concurrently across separate branches and pull requests. Follo
 - **Owned paths**: Root workspace config (`pnpm-workspace.yaml`, root `package.json`, `tsconfig.base.json`, `vitest.config.ts`), `packages/protocol/`, `packages/sdk/`, `packages/wheatley/src/contracts/`, `packages/wheatley/src/db/`, `packages/dashboard/` (empty workspace package stub).
 - **Depends on**: None.
 - **Scope**:
-  - Convert the repository to a `pnpm` workspace with `packages/wheatley`, `packages/protocol` (private), `packages/sdk` (`@wheatley/sdk`), and `packages/dashboard` (private).
+  - Convert the repository to a `pnpm` workspace with `packages/wheatley`, `packages/protocol` (private), `packages/sdk` (`@wheatley-ai/sdk`), and `packages/dashboard` (private).
   - Configure Vitest across the workspace and verify `pnpm check`, `pnpm typecheck`, `pnpm build`, and `pnpm test`.
   - Define the complete v1 JSON-RPC envelope, method schemas, and event payloads in `packages/protocol` (ADR 0005, dashboard, approvals, memory, triggers, config, secrets, logs).
-  - Define `@wheatley/sdk` (`apiVersion: 1`) in `packages/sdk`: `Plugin`, `Tool` (plain JSON Schema and Standard JSON Schema), `FrontendBinding`, `Delivery` (`message`, `approval_requested`, `approval_resolved`), `FrontendContext` (including `registerWebhookRoute`), `Attachment`, and `FrontendSink` with zero `@earendil-works/pi-durable` types (ADRs 0003, 0006, 0007, 0011, 0012).
+  - Define `@wheatley-ai/sdk` (`apiVersion: 1`) in `packages/sdk`: `Plugin`, `Tool` (plain JSON Schema and Standard JSON Schema), `FrontendBinding`, `Delivery` (`message`, `approval_requested`, `approval_resolved`), `FrontendContext` (including `registerWebhookRoute`), `Attachment`, and `FrontendSink` with zero `@earendil-works/pi-durable` types (ADRs 0003, 0006, 0007, 0011, 0012).
   - Implement the `node:sqlite` migration runner seam for `agent.sqlite` with per-module migration namespaces.
   - Define internal TypeScript module interfaces and in-memory test fakes under `packages/wheatley/src/contracts/` for `ConfigStore`, `ApprovalGate`, `MemoryStore`, `ExtensionCatalog`, `TriggerRuntime`, `DeliveryOutbox`, and `WebhookIngress`.
   - Add a `@earendil-works/pi-durable` (`1.6.1`) type and smoke test to confirm harness creation, signal sleep, and compaction hooks against the real package.
 - **Acceptance criteria**:
   - All workspace packages build, lint, typecheck, and run Vitest.
-  - `@wheatley/sdk` exports zero `pi-durable` types.
+  - `@wheatley-ai/sdk` exports zero `pi-durable` types.
   - The `pi-durable` smoke test passes in Node.js `26.5.1`.
 
 ## Wave 1: Isolated Feature Tracks (12 Parallel Tracks)

@@ -1,4 +1,4 @@
-import { RpcErrorCode } from "@wheatley/protocol";
+import { RpcErrorCode } from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 import { SeamError, toRpcError } from "./errors.js";

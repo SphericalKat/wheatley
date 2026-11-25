@@ -1,5 +1,5 @@
-import type { ExtensionStatus, JsonValue } from "@wheatley/protocol";
-import type { ToolContext, ToolResult } from "@wheatley/sdk";
+import type { ExtensionStatus, JsonValue } from "@wheatley-ai/protocol";
+import type { ToolContext, ToolResult } from "@wheatley-ai/sdk";
 
 import type {
   ProviderInput,

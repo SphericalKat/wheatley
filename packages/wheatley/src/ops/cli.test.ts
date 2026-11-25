@@ -187,9 +187,11 @@ describe("wheatley update", () => {
       `Update available: ${current} -> ${sameMajor}. Run: wheatley update`
     );
     expect(io.stdout[1]).toContain(
-      `npm install --global wheatley@${nextMajor}`
+      `npm install --global @wheatley-ai/cli@${nextMajor}`
     );
-    expect(runner.lines).toStrictEqual(["npm view wheatley versions --json"]);
+    expect(runner.lines).toStrictEqual([
+      "npm view @wheatley-ai/cli versions --json",
+    ]);
   });
 
   it("rejects an unknown package manager", async () => {

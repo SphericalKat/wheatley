@@ -1,5 +1,5 @@
 // A Plugin whose setup fails, as a Plugin with a missing credential does.
-import { definePlugin } from "@wheatley/sdk";
+import { definePlugin } from "@wheatley-ai/sdk";
 
 export default definePlugin({
   apiVersion: 1,

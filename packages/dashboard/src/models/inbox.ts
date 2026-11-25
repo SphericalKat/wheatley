@@ -1,10 +1,10 @@
-import { RpcError, RpcErrorCode } from "@wheatley/protocol";
+import { RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
 import type {
   ApprovalDecision,
   ApprovalResolution,
   FailedDelivery,
   PendingApproval,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage, withEntry, withMember } from "../store.js";

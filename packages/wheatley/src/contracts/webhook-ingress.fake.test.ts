@@ -1,4 +1,4 @@
-import type { AgentState } from "@wheatley/protocol";
+import type { AgentState } from "@wheatley-ai/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { SeamError } from "./errors.js";

@@ -31,7 +31,7 @@ export class DeliveryError extends Error {
  * Returns true if `cause` is a `DeliveryError`.
  *
  * Checks the name and fields instead of `instanceof`, so errors from a Plugin that bundles its own copy of
- * `@wheatley/sdk` also match.
+ * `@wheatley-ai/sdk` also match.
  */
 export const isDeliveryError = (cause: unknown): cause is DeliveryError =>
   cause instanceof Error &&

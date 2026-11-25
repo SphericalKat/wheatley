@@ -5,8 +5,8 @@ import path from "node:path";
 
 import { createModels, fauxProvider } from "@earendil-works/pi-ai";
 import type { FauxProviderHandle, MutableModels } from "@earendil-works/pi-ai";
-import type { EventName, EventPayload } from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+import type { EventName, EventPayload } from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import { InMemoryExtensionCatalog } from "../contracts/extension-catalog.fake.js";
 import { createBuiltinToolProvider } from "../tools/builtin-tools.js";

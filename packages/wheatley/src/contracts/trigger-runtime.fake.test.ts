@@ -1,4 +1,4 @@
-import type { TriggerInput } from "@wheatley/protocol";
+import type { TriggerInput } from "@wheatley-ai/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { SeamError } from "./errors.js";

@@ -9,7 +9,7 @@ import type {
   WebhookResponse,
   WebhookRoute,
   WebhookRouteHandler,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import { SeamError } from "../contracts/errors.js";
 import type { Clock } from "../contracts/module.js";

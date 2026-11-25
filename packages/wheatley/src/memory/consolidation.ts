@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import type { ConsolidationLogEntry, MemoryConfig } from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+import type {
+  ConsolidationLogEntry,
+  MemoryConfig,
+} from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 import { Cron } from "croner";
 
 import { SeamError } from "../contracts/errors.js";

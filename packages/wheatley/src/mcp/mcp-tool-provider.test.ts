@@ -16,8 +16,8 @@ import type {
   JsonValue,
   McpServerConfig,
   StringOrSecret,
-} from "@wheatley/protocol";
-import type { Logger, ToolContext, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger, ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type {

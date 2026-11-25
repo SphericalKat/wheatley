@@ -1,4 +1,4 @@
-import type { JsonObject } from "@wheatley/sdk";
+import type { JsonObject } from "@wheatley-ai/sdk";
 
 import type {
   SlackSdk,

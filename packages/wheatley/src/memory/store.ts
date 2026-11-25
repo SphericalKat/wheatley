@@ -15,7 +15,7 @@ import type {
   MemoryBudget,
   MemoryFile,
   MemorySearchHit,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import { SeamError } from "../contracts/errors.js";
 import type {

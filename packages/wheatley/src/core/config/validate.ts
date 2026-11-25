@@ -1,5 +1,5 @@
-import { DeploymentConfigSchema, decode } from "@wheatley/protocol";
-import type { ConfigIssue, DeploymentConfig } from "@wheatley/protocol";
+import { DeploymentConfigSchema, decode } from "@wheatley-ai/protocol";
+import type { ConfigIssue, DeploymentConfig } from "@wheatley-ai/protocol";
 import { parseDocument } from "yaml";
 import type { Document } from "yaml";
 

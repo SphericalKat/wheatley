@@ -1,4 +1,4 @@
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 import { describe, expect, it } from "vitest";
 
 import { createSlackAppManifest } from "./manifest.js";

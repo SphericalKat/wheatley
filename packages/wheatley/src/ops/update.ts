@@ -9,7 +9,7 @@ import type { CommandRunner } from "./command-runner.js";
 import { isDocker } from "./paths.js";
 
 /** The npm package name of the daemon and CLI. */
-export const PACKAGE_NAME = "wheatley";
+export const PACKAGE_NAME = "@wheatley-ai/cli";
 
 /** The commands that update a Docker Compose Deployment. Run them in the folder of `docker-compose.yml`. */
 export const DOCKER_UPDATE_COMMANDS = [

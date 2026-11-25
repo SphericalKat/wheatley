@@ -1,4 +1,4 @@
-import type { AgentConfig, DeploymentConfig } from "@wheatley/protocol";
+import type { AgentConfig, DeploymentConfig } from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { configToYaml } from "../../mock/fixtures.js";

@@ -3,7 +3,7 @@ import {
   eventTopic,
   EventTopicSchema,
   decode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 describe("eventTopic", () => {

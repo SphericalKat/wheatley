@@ -1,6 +1,6 @@
-import { APPROVAL_REASON_MAX_LENGTH } from "@wheatley/protocol";
-import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
-import type { ApprovalResolution } from "@wheatley/sdk";
+import { APPROVAL_REASON_MAX_LENGTH } from "@wheatley-ai/protocol";
+import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
+import type { ApprovalResolution } from "@wheatley-ai/sdk";
 
 import { systemClock } from "../contracts/module.js";
 import type { Clock } from "../contracts/module.js";

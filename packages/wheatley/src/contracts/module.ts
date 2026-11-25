@@ -6,8 +6,8 @@ import type {
   MethodName,
   MethodParams,
   MethodResult,
-} from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import type { Migration, MigrationNamespace } from "../db/migrations.js";
 

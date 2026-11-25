@@ -1,4 +1,4 @@
-import type { LogLevel, LogRecord } from "@wheatley/protocol";
+import type { LogLevel, LogRecord } from "@wheatley-ai/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";

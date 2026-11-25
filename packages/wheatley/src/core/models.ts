@@ -1,8 +1,8 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { DeploymentConfig } from "@wheatley/protocol";
-import type { SecretReader } from "@wheatley/sdk";
+import type { DeploymentConfig } from "@wheatley-ai/protocol";
+import type { SecretReader } from "@wheatley-ai/sdk";
 
 /**
  * Builds pi-ai `Models` with every built-in provider. A provider entry in `config.yaml` with `apiKey` gets that secret

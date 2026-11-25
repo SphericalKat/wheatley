@@ -30,7 +30,7 @@ let workDir = "";
 
 beforeAll(async () => {
   workDir = await mkdtemp(path.join(tmpdir(), "wheatley-sdk-surface-"));
-  const installDir = path.join(workDir, "node_modules", "@wheatley", "sdk");
+  const installDir = path.join(workDir, "node_modules", "@wheatley-ai", "sdk");
 
   tsc([
     "-p",
@@ -51,15 +51,15 @@ afterAll(async () => {
   await rm(workDir, { force: true, recursive: true });
 });
 
-describe("@wheatley/sdk public type surface", () => {
+describe("@wheatley-ai/sdk public type surface", () => {
   it(
     "type-checks a consumer with no pi-durable, Node.js types, or other packages installed",
     async () => {
       await writeFile(
         path.join(workDir, "consumer.ts"),
         [
-          'import type * as sdk from "@wheatley/sdk";',
-          'import { API_VERSION, chunkMarkdown, definePlugin } from "@wheatley/sdk";',
+          'import type * as sdk from "@wheatley-ai/sdk";',
+          'import { API_VERSION, chunkMarkdown, definePlugin } from "@wheatley-ai/sdk";',
           "export const plugin: sdk.Plugin = definePlugin({",
           '  apiVersion: API_VERSION, name: "probe", version: "1.0.0", setup: () => ({}),',
           "});",

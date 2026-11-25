@@ -4,8 +4,8 @@ import type {
   PermissionRule,
   SecretInfo,
   SecretSource,
-} from "@wheatley/protocol";
-import type { SecretReader } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { SecretReader } from "@wheatley-ai/sdk";
 
 /** One read of `config.yaml`. */
 export interface ConfigSnapshot {

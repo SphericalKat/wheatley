@@ -1,4 +1,4 @@
-import type { EventName, EventPayload } from "@wheatley/protocol";
+import type { EventName, EventPayload } from "@wheatley-ai/protocol";
 
 import type { EventSink } from "../contracts/module.js";
 

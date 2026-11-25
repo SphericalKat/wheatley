@@ -3,7 +3,7 @@ import type {
   Trigger,
   TriggerInput,
   TriggerPatch,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 /** Who changes a Trigger. Only the Operator may create, change, or delete `webhook` Triggers (ADR 0010). */
 export type TriggerActor = "agent" | "operator";
