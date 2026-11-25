@@ -152,6 +152,19 @@ describe("degraded reports", () => {
     });
   });
 
+  it("reports a planning failure as migration_failed, not backup_failed", async () => {
+    db.close();
+
+    const report = await migrate(notes(createItems));
+
+    expect(report).toMatchObject({
+      backup: undefined,
+      code: "migration_failed",
+      outcome: "degraded",
+    });
+    await expect(listBackups(agentDir)).resolves.toHaveLength(0);
+  });
+
   it("does not migrate if the backup fails", async () => {
     await migrate(notes(createItems));
     db.prepare("INSERT INTO notes_items (body) VALUES (?)").run("kept");

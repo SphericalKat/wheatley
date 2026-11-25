@@ -1,4 +1,5 @@
-// Copies the dashboard build output into `dist/dashboard/`. The `prepack` hook and the Docker image build run it.
+// Copies the dashboard build output into `dist/dashboard/`. The Docker image build runs it, and npm packaging must run
+// it before `npm pack`.
 import path from "node:path";
 
 import {

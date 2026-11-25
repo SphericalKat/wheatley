@@ -20,8 +20,6 @@ export interface AgentMigrationOptions {
   readonly agentDir: string;
   readonly namespaces: readonly MigrationNamespace[];
   readonly clock: Clock;
-  /** How many backups to keep. The default is `DEFAULT_BACKUP_RETENTION`. */
-  readonly retain?: number;
 }
 
 /** The migrations succeeded. The Agent can create its modules. */
@@ -43,7 +41,10 @@ export interface AgentMigrationDegraded {
   readonly state: "degraded";
   /** A message for `AgentHealth.lastError`. It names the backup to restore, if one exists. */
   readonly error: string;
-  /** The `MigrationError` code, or `backup_failed` if the pre-migration backup failed. */
+  /**
+   * The `MigrationError` code, `backup_failed` if the pre-migration backup failed, or `migration_failed` for another
+   * error from the migration runner.
+   */
   readonly code: MigrationErrorCode | "backup_failed";
   readonly backup: BackupInfo | undefined;
   readonly cause: Error;
@@ -59,6 +60,7 @@ const causeMessage = (error: Error): string =>
 const degraded = (
   options: AgentMigrationOptions,
   error: Error,
+  code: AgentMigrationDegraded["code"],
   backup: BackupInfo | undefined
 ): AgentMigrationDegraded => {
   const restoreHint =
@@ -70,12 +72,24 @@ const degraded = (
     agent: options.agent,
     backup,
     cause: error,
-    code: error instanceof MigrationError ? error.code : "backup_failed",
+    code,
     error: `${causeMessage(error)}${restoreHint}`,
     outcome: "degraded",
     state: "degraded",
   };
 };
+
+const runnerFailure = (
+  options: AgentMigrationOptions,
+  error: Error,
+  backup: BackupInfo | undefined
+): AgentMigrationDegraded =>
+  degraded(
+    options,
+    error,
+    error instanceof MigrationError ? error.code : "migration_failed",
+    backup
+  );
 
 const isEmpty = (db: DatabaseSync): boolean =>
   db.prepare("SELECT 1 FROM sqlite_schema LIMIT 1").get() === undefined;
@@ -101,7 +115,7 @@ export const migrateAgentDatabase = async (
   } catch (error) {
     const failure = error instanceof Error ? error : new Error(String(error));
 
-    return degraded(options, failure, undefined);
+    return runnerFailure(options, failure, undefined);
   }
 
   let backup: BackupInfo | undefined;
@@ -112,7 +126,6 @@ export const migrateAgentDatabase = async (
         agentDir: options.agentDir,
         clock: options.clock,
         reason: "pre-migration",
-        retain: options.retain,
       });
 
       ({ backup } = result);
@@ -120,6 +133,7 @@ export const migrateAgentDatabase = async (
       return degraded(
         options,
         new Error("Pre-migration backup failed", { cause: error }),
+        "backup_failed",
         undefined
       );
     }
@@ -136,6 +150,6 @@ export const migrateAgentDatabase = async (
   } catch (error) {
     const failure = error instanceof Error ? error : new Error(String(error));
 
-    return degraded(options, failure, backup);
+    return runnerFailure(options, failure, backup);
   }
 };

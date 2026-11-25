@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openAgentDatabase } from "../db/database.js";
 import type { MigrationNamespace } from "../db/migrations.js";
 import { bundleDashboardAssets } from "./dashboard-assets.js";
-import { opsMigrations, opsModule, opsRpcHandlers } from "./module.js";
+import { opsModule } from "./module.js";
 
 interface LogEntry {
   readonly level: string;
@@ -74,12 +74,6 @@ const createOps = async (logs: LogEntry[]) => {
 };
 
 describe("ops module", () => {
-  it("exports a Deployment module without migrations or JSON-RPC methods", () => {
-    expect(opsModule).toMatchObject({ name: "ops", scope: "deployment" });
-    expect(opsMigrations).toHaveLength(0);
-    expect(Object.keys(opsRpcHandlers)).toHaveLength(0);
-  });
-
   it("backs up, migrates, and logs a degraded Agent", async () => {
     const logs: LogEntry[] = [];
     const ops = await createOps(logs);

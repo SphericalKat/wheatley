@@ -9,10 +9,6 @@ import { migrateAgentDatabase } from "./migrate.js";
 import type { AgentMigrationReport } from "./migrate.js";
 import { agentDirFor } from "./paths.js";
 
-export { createOpsCommands, hostCliDeps } from "./cli.js";
-
-export type { CliCommand, CliIo, OpsCliDeps, OpsCommands } from "./cli.js";
-
 /** The ops API that the Deployment and the Supervisor use. */
 export interface OpsApi {
   /**

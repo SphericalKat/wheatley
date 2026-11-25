@@ -31,7 +31,7 @@ const hasEntry = async (dir: string): Promise<boolean> => {
 
 /**
  * Replaces `targetDir` with a copy of the dashboard build output in `sourceDir` and returns the number of copied
- * files. The `prepack` hook and the Docker image build run it after `pnpm build`.
+ * files. `scripts/bundle-dashboard.ts` runs it after `pnpm build`, in the Docker image build and before `npm pack`.
  *
  * Errors: throws if `sourceDir` has no `index.html`, so a package never ships without its dashboard.
  */

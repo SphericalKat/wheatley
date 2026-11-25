@@ -50,6 +50,7 @@ const deps = (overrides: Partial<OpsCliDeps> = {}): OpsCliDeps => ({
   clock,
   env: { WHEATLEY_HOME: home },
   execPath: process.execPath,
+  homeDir: home,
   isDaemonRunning: async () => await Promise.resolve(false),
   platform: "linux",
   runner: new FakeCommandRunner(),
@@ -125,7 +126,7 @@ describe("wheatley restore", () => {
 });
 
 describe("wheatley service", () => {
-  it("installs the systemd unit for the Deployment home", async () => {
+  it("installs the systemd unit for the Wheatley home folder", async () => {
     const runner = new FakeCommandRunner();
     const io = captureIo();
 

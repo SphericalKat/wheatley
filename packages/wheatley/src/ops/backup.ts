@@ -1,13 +1,18 @@
-import { chmod, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type { Clock } from "../contracts/module.js";
 import { openAgentDatabase } from "../db/database.js";
-import { AGENT_DATABASE_FILE, BACKUPS_DIR } from "./paths.js";
+import {
+  AGENT_DATABASE_FILE,
+  BACKUPS_DIR,
+  isMissing,
+  pathExists,
+} from "./paths.js";
 
 /** How many backups `backupAgentDatabase` keeps per Agent, newest first. */
-export const DEFAULT_BACKUP_RETENTION = 5;
+export const BACKUP_RETENTION = 5;
 
 /** Why Wheatley took a backup. */
 export type BackupReason = "pre-migration" | "pre-restore";
@@ -27,8 +32,6 @@ export interface BackupOptions {
   readonly agentDir: string;
   readonly reason: BackupReason;
   readonly clock: Clock;
-  /** How many backups to keep. The default is `DEFAULT_BACKUP_RETENTION`. */
-  readonly retain?: number;
 }
 
 export interface BackupResult {
@@ -91,23 +94,6 @@ const parseBackup = (dir: string, file: string): ParsedBackup | undefined => {
   };
 };
 
-const isMissing = (error: Error): boolean =>
-  "code" in error && error.code === "ENOENT";
-
-const exists = async (target: string): Promise<boolean> => {
-  try {
-    await stat(target);
-
-    return true;
-  } catch (error) {
-    if (error instanceof Error && isMissing(error)) {
-      return false;
-    }
-
-    throw error;
-  }
-};
-
 const newestFirst = (a: ParsedBackup, b: ParsedBackup): number =>
   b.stamp.localeCompare(a.stamp) || b.seq - a.seq;
 
@@ -150,12 +136,9 @@ const nextBackupPath = async (
   return path.join(dir, file);
 };
 
-const rotate = async (
-  agentDir: string,
-  retain: number
-): Promise<BackupInfo[]> => {
+const rotate = async (agentDir: string): Promise<BackupInfo[]> => {
   const backups = await listBackups(agentDir);
-  const stale = backups.slice(retain);
+  const stale = backups.slice(BACKUP_RETENTION);
 
   await Promise.all(
     stale.map(async (backup) => {
@@ -168,24 +151,17 @@ const rotate = async (
 
 /**
  * Writes a consistent snapshot of the open `agent.sqlite` handle to `<agentDir>/backups/` with `VACUUM INTO`, then
- * deletes the oldest backups so that `retain` remain.
+ * deletes the oldest backups so that `BACKUP_RETENTION` remain.
  *
  * Invariants: backup files are owner-only (`0600`) in an owner-only folder. File names sort by time, so rotation
  * always keeps the newest backups, including the new one.
  *
- * Errors: throws if `db` is inside a transaction (SQLite rejects `VACUUM` there), if `retain` is less than 1, or for
- * I/O errors. A failed `VACUUM INTO` leaves the existing backups unchanged.
+ * Errors: throws if `db` is inside a transaction (SQLite rejects `VACUUM` there), or for I/O errors. A failed `VACUUM INTO` leaves the existing backups unchanged.
  */
 export const backupAgentDatabase = async (
   db: DatabaseSync,
   options: BackupOptions
 ): Promise<BackupResult> => {
-  const retain = options.retain ?? DEFAULT_BACKUP_RETENTION;
-
-  if (!Number.isInteger(retain) || retain < 1) {
-    throw new RangeError(`Backup retention must be at least 1, got ${retain}`);
-  }
-
   if (db.isTransaction) {
     throw new Error("Cannot back up a database inside an open transaction");
   }
@@ -208,7 +184,7 @@ export const backupAgentDatabase = async (
     throw new Error(`Backup file name does not parse: ${target}`);
   }
 
-  return { backup, removed: await rotate(options.agentDir, retain) };
+  return { backup, removed: await rotate(options.agentDir) };
 };
 
 const resolveBackupPath = async (
@@ -221,7 +197,7 @@ const resolveBackupPath = async (
     ? path.join(agentDir, BACKUPS_DIR, backup)
     : path.resolve(backup);
 
-  if (!(await exists(candidate))) {
+  if (!(await pathExists(candidate))) {
     throw new Error(`Backup not found: ${candidate}`);
   }
 
@@ -265,8 +241,6 @@ export interface RestoreOptions {
   /** A file name in `<agentDir>/backups/`, or a path to a backup file. */
   readonly backup: string;
   readonly clock: Clock;
-  /** How many backups to keep after the pre-restore backup. The default is `DEFAULT_BACKUP_RETENTION`. */
-  readonly retain?: number;
 }
 
 export interface RestoreResult {
@@ -291,7 +265,7 @@ export interface RestoreResult {
 export const restoreAgentBackup = async (
   options: RestoreOptions
 ): Promise<RestoreResult> => {
-  if (!(await exists(options.agentDir))) {
+  if (!(await pathExists(options.agentDir))) {
     throw new Error(`Agent folder not found: ${options.agentDir}`);
   }
 
@@ -307,7 +281,7 @@ export const restoreAgentBackup = async (
 
     let safetyBackup: BackupInfo | undefined;
 
-    if (await exists(target)) {
+    if (await pathExists(target)) {
       const current = openAgentDatabase(target);
 
       try {
@@ -315,7 +289,6 @@ export const restoreAgentBackup = async (
           agentDir: options.agentDir,
           clock: options.clock,
           reason: "pre-restore",
-          retain: options.retain,
         });
 
         safetyBackup = result.backup;

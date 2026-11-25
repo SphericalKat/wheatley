@@ -11,18 +11,27 @@ import { fileURLToPath } from "node:url";
 
 import { describeFailure } from "./command-runner.js";
 import type { CommandResult, CommandRunner } from "./command-runner.js";
-import { DOCKER_ENV, HOME_ENV } from "./paths.js";
+import { envValue, HOME_ENV, isDocker, pathExists } from "./paths.js";
 
 /** How long the daemon waits for active Runs after `SIGTERM` before it stops them, unless config sets `daemon.drainTimeout`. */
 export const DEFAULT_DRAIN_TIMEOUT_MS = 30_000;
 
-/** How long the service manager waits after `SIGTERM` before it sends `SIGKILL`. */
+/**
+ * How long the service manager waits after `SIGTERM` before it sends `SIGKILL`. `stop_grace_period` in
+ * `docker/docker-compose.yml` must match it.
+ */
 export const STOP_GRACE_MS = 45_000;
 
 /** The time that the daemon gets after the drain to close storage and child processes. */
 const SHUTDOWN_MARGIN_MS = 15_000;
 
 const MS_PER_SECOND = 1000;
+
+/** How long systemd waits before it restarts a failed daemon. */
+const RESTART_DELAY_SECONDS = 5;
+
+/** Unit files and plists are world-readable, as the service managers expect. */
+const UNIT_FILE_MODE = 0o644;
 
 /** The CLI subcommand that runs the daemon in the foreground. The service units start it. */
 export const DAEMON_SUBCOMMAND = "daemon";
@@ -35,7 +44,7 @@ export interface ServiceSpec {
   /** The absolute program path, then its arguments. */
   readonly command: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
-  /** The Deployment home. The daemon runs in it. */
+  /** The Wheatley home folder. The daemon runs in it. */
   readonly workingDirectory: string;
   /** The folder for the launchd stdout and stderr files. systemd sends output to the journal. */
   readonly logDir: string;
@@ -102,7 +111,7 @@ export const renderSystemdUnit = (spec: ServiceSpec): string => {
     `WorkingDirectory=${systemdValue(spec.workingDirectory)}`,
     ...environment,
     "Restart=on-failure",
-    "RestartSec=5",
+    `RestartSec=${RESTART_DELAY_SECONDS}`,
     "KillMode=mixed",
     "KillSignal=SIGTERM",
     `TimeoutStopSec=${toSeconds(stopGraceMs(spec.drainTimeoutMs))}`,
@@ -242,8 +251,7 @@ export const resolveServiceSpec = async (
       ? [path.join(nodeDir, path.basename(input.execPath)), input.binScript]
       : [executable];
 
-  const hasHomeOverride =
-    input.env[HOME_ENV] !== undefined && input.env[HOME_ENV] !== "";
+  const hasHomeOverride = envValue(input.env, HOME_ENV) !== undefined;
 
   const pathValue = searchPath.join(path.delimiter);
 
@@ -310,7 +318,7 @@ export interface ServiceManager {
   readonly stop: () => Promise<void>;
   /** Stops and starts the daemon. Errors: as `stop` and `start`. */
   readonly restart: () => Promise<void>;
-  /** Reports the service state. Errors: rejects only if the service manager cannot run. */
+  /** Reports the service state. Errors: rejects if the service manager cannot run or the unit path cannot be read. */
   readonly status: () => Promise<ServiceStatus>;
 }
 
@@ -322,16 +330,6 @@ export interface ServiceManagerOptions {
   readonly uid: number;
   readonly runner: CommandRunner;
 }
-
-const fileExists = async (file: string): Promise<boolean> => {
-  try {
-    await stat(file);
-
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 const run = async (
   runner: CommandRunner,
@@ -388,10 +386,8 @@ const createSystemdManager = (
   options: ServiceManagerOptions
 ): ServiceManager => {
   const configHome =
-    options.env.XDG_CONFIG_HOME === undefined ||
-    options.env.XDG_CONFIG_HOME === ""
-      ? path.join(options.userHome, ".config")
-      : options.env.XDG_CONFIG_HOME;
+    envValue(options.env, "XDG_CONFIG_HOME") ??
+    path.join(options.userHome, ".config");
 
   const unitPath = path.join(configHome, "systemd", "user", SYSTEMD_UNIT_NAME);
 
@@ -399,7 +395,7 @@ const createSystemdManager = (
     await run(options.runner, "systemctl", ["--user", ...args]);
 
   const requireInstalled = async (): Promise<void> => {
-    if (!(await fileExists(unitPath))) {
+    if (!(await pathExists(unitPath))) {
       throw notInstalled(unitPath);
     }
   };
@@ -407,7 +403,9 @@ const createSystemdManager = (
   return {
     install: async (spec) => {
       await mkdir(path.dirname(unitPath), { recursive: true });
-      await writeFile(unitPath, renderSystemdUnit(spec), { mode: 0o644 });
+      await writeFile(unitPath, renderSystemdUnit(spec), {
+        mode: UNIT_FILE_MODE,
+      });
       await systemctl("daemon-reload");
       await systemctl("enable", SYSTEMD_UNIT_NAME);
 
@@ -429,7 +427,7 @@ const createSystemdManager = (
       await systemctl("start", SYSTEMD_UNIT_NAME);
     },
     status: async () => {
-      if (!(await fileExists(unitPath))) {
+      if (!(await pathExists(unitPath))) {
         return {
           manager: "systemd",
           pid: null,
@@ -499,7 +497,7 @@ const createLaunchdManager = (
   };
 
   const requireInstalled = async (): Promise<void> => {
-    if (!(await fileExists(unitPath))) {
+    if (!(await pathExists(unitPath))) {
       throw notInstalled(unitPath);
     }
   };
@@ -523,7 +521,9 @@ const createLaunchdManager = (
     install: async (spec) => {
       await mkdir(path.dirname(unitPath), { recursive: true });
       await mkdir(spec.logDir, { recursive: true });
-      await writeFile(unitPath, renderLaunchdPlist(spec), { mode: 0o644 });
+      await writeFile(unitPath, renderLaunchdPlist(spec), {
+        mode: UNIT_FILE_MODE,
+      });
       await run(options.runner, "plutil", ["-lint", unitPath]);
 
       return {
@@ -540,7 +540,7 @@ const createLaunchdManager = (
     },
     start,
     status: async () => {
-      if (!(await fileExists(unitPath))) {
+      if (!(await pathExists(unitPath))) {
         return {
           manager: "launchd",
           pid: null,
@@ -575,7 +575,7 @@ const createLaunchdManager = (
 export const createServiceManager = (
   options: ServiceManagerOptions
 ): ServiceManager => {
-  if (options.env[DOCKER_ENV] === "1") {
+  if (isDocker(options.env)) {
     throw new Error(
       "wheatley service does not apply in Docker. Docker Compose runs the daemon."
     );

@@ -5,13 +5,13 @@ import { systemClock } from "../contracts/module.js";
 import type { Clock } from "../contracts/module.js";
 import { listBackups, restoreAgentBackup } from "./backup.js";
 import { processRunner } from "./command-runner.js";
-import type { CommandRunner } from "./command-runner.js";
 import { agentDirFor, resolveHomeDir } from "./paths.js";
 import {
   createServiceManager,
   packageBinScript,
   resolveServiceSpec,
 } from "./service.js";
+import type { ServiceManagerOptions } from "./service.js";
 import {
   applyUpdate,
   detectInstallMethod,
@@ -22,9 +22,11 @@ import {
 } from "./update.js";
 import type { PackageManager } from "./update.js";
 
-/** Output streams of one CLI command. Each call writes one line. */
+/** Output streams of one CLI command. */
 export interface CliIo {
+  /** Writes one line of normal output, for example to stdout. `line` has no line break at the end. */
   readonly out: (line: string) => void;
+  /** Writes one line of error or usage output, for example to stderr. `line` has no line break at the end. */
   readonly err: (line: string) => void;
 }
 
@@ -38,18 +40,15 @@ export type CliCommand = (
 ) => Promise<number>;
 
 /** What the ops CLI commands need from the host. */
-export interface OpsCliDeps {
-  readonly env: NodeJS.ProcessEnv;
-  readonly platform: NodeJS.Platform;
-  readonly userHome: string;
-  readonly uid: number;
+export interface OpsCliDeps extends ServiceManagerOptions {
+  /** The Wheatley home folder. It must equal `DeploymentModuleContext.homeDir` of the daemon: use `resolveHomeDir`. */
+  readonly homeDir: string;
   /** The Node.js binary that runs the CLI. */
   readonly execPath: string;
-  readonly runner: CommandRunner;
   readonly clock: Clock;
   /**
-   * Resolves `true` if a daemon runs for the Deployment home. `wheatley restore` refuses to replace `agent.sqlite`
-   * then, because the daemon holds it open.
+   * Resolves `true` if a daemon runs for the Wheatley home folder. `wheatley restore` refuses to replace
+   * `agent.sqlite` then, because the daemon holds it open.
    */
   readonly isDaemonRunning: () => Promise<boolean>;
   /** The configured `daemon.drainTimeout` in milliseconds, for the service stop grace period. */
@@ -64,6 +63,7 @@ export const hostCliDeps = (
   clock: systemClock,
   env: process.env,
   execPath: process.execPath,
+  homeDir: resolveHomeDir(),
   isDaemonRunning,
   platform: process.platform,
   runner: processRunner,
@@ -132,7 +132,7 @@ const serviceCommand =
           binScript: packageBinScript(),
           env: deps.env,
           execPath: deps.execPath,
-          homeDir: resolveHomeDir(deps.env, deps.userHome),
+          homeDir: deps.homeDir,
           drainTimeoutMs: deps.drainTimeoutMs,
         });
 
@@ -280,10 +280,7 @@ const restoreCommand =
       throw new UsageError("Pass an Agent name and a backup.");
     }
 
-    const agentDir = agentDirFor(
-      resolveHomeDir(deps.env, deps.userHome),
-      agent
-    );
+    const agentDir = agentDirFor(deps.homeDir, agent);
 
     if (backup === undefined) {
       const backups = await listBackups(agentDir);

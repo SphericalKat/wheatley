@@ -6,7 +6,7 @@ import { Value } from "typebox/value";
 
 import { describeFailure } from "./command-runner.js";
 import type { CommandRunner } from "./command-runner.js";
-import { DOCKER_ENV } from "./paths.js";
+import { isDocker } from "./paths.js";
 
 /** The npm package name of the daemon and CLI. */
 export const PACKAGE_NAME = "wheatley";
@@ -115,7 +115,7 @@ export const detectInstallMethod = (
   env: NodeJS.ProcessEnv,
   packageDir: string
 ): InstallMethod => {
-  if (env[DOCKER_ENV] === "1") {
+  if (isDocker(env)) {
     return "docker";
   }
 
