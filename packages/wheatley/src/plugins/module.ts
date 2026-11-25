@@ -13,9 +13,11 @@ export interface PluginsModuleDeps {
   readonly homeDir: string;
   /** The Agent config. The module reads its `plugins` entries. */
   readonly config: AgentConfig;
+  /** Reads the secrets that Plugins request through `PluginSetupContext.secrets`. */
   readonly secrets: SecretReader;
   /** Aborts when the Agent stops while its Plugins load. */
   readonly signal: AbortSignal;
+  /** The `setup` and `dispose` time limits. Absent fields use the defaults of `createPluginProvider`. */
   readonly options?: PluginProviderOptions;
 }
 

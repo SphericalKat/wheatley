@@ -1,4 +1,5 @@
 import { isJsonValue } from "@wheatley/protocol";
+import { API_VERSION } from "@wheatley/sdk";
 import type {
   Frontend,
   JsonObject,
@@ -79,7 +80,7 @@ export const isPlugin = (value: unknown): value is Plugin<unknown> =>
   typeof value === "object" &&
   value !== null &&
   "apiVersion" in value &&
-  value.apiVersion === 1 &&
+  value.apiVersion === API_VERSION &&
   "name" in value &&
   typeof value.name === "string" &&
   "version" in value &&

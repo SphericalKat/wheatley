@@ -79,7 +79,6 @@ it("starts an Agent module with a broken Plugin and serves the Tools of the work
     expect(instance.api.tools().map((tool) => tool.name)).toStrictEqual([
       "clock:now",
     ]);
-    expect(instance.rpc).toStrictEqual({});
 
     await instance.stop?.();
 

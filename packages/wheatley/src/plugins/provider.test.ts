@@ -287,7 +287,7 @@ describe("Plugin loader", () => {
         { source: "wheatley-plugin-missing" },
         { source: good },
       ],
-      { setupTimeoutMs: SHORT_TIMEOUT_MS }
+      { disposeTimeoutMs: SHORT_TIMEOUT_MS, setupTimeoutMs: SHORT_TIMEOUT_MS }
     );
 
     const missing = statusOf(loaded, "wheatley-plugin-missing");
@@ -331,6 +331,30 @@ describe("Plugin loader", () => {
       "Cannot find package 'wheatley-plugin-missing'"
     );
     expect(loaded.tools().map((tool) => tool.name)).toStrictEqual(["good:add"]);
+  });
+
+  it("disposes the contributions of a setup that finishes after its time limit before close resolves", async () => {
+    const source = await writeLocalPlugin(
+      "late.mjs",
+      `import { writeFile } from "node:fs/promises";
+      import { join } from "node:path";
+      export default { apiVersion: 1, name: "late", version: "1.0.0", setup: async (ctx) => {
+        await new Promise((resolve) => { setTimeout(resolve, ${SHORT_TIMEOUT_MS * 2}); });
+        return { dispose: async () => { await writeFile(join(ctx.dataDir, "disposed"), "yes"); } };
+      } };`
+    );
+
+    const loaded = await load([{ source }], {
+      setupTimeoutMs: SHORT_TIMEOUT_MS,
+    });
+
+    expect(statusOf(loaded, "late")?.state).toBe("failed");
+
+    await loaded.close();
+
+    await expect(
+      readFile(path.join(agentDir, "plugins", "late", "disposed"), "utf-8")
+    ).resolves.toBe("yes");
   });
 
   it("reports disabled entries without importing them", async () => {

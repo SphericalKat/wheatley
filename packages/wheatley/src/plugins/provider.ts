@@ -77,6 +77,10 @@ const failed = (name: string, error: string): EntryOutcome => ({
   status: { error, name, state: "failed" },
 });
 
+const stopped = (name: string): EntryOutcome => ({
+  status: { error: AGENT_STOPPED, name, state: "stopped" },
+});
+
 /**
  * Settles with `work`, or rejects when `signal` aborts first. The abort reason becomes the rejection. Removes its
  * listener when it settles.
@@ -200,6 +204,21 @@ const disposeLate = async (
   }
 };
 
+/** Waits for one late disposal up to the dispose time limit. Logs and swallows a timeout. */
+const disposeWithin = async (
+  late: Promise<void>,
+  log: Logger,
+  options: Required<PluginProviderOptions>
+): Promise<void> => {
+  try {
+    await raceAbort(late, AbortSignal.timeout(options.disposeTimeoutMs));
+  } catch (error) {
+    log.warn("A late Plugin setup did not finish before close", {
+      error: errorMessage(error),
+    });
+  }
+};
+
 const setupTimeoutMessage = (
   options: Required<PluginProviderOptions>
 ): string => `Plugin setup timed out after ${options.setupTimeoutMs} ms`;
@@ -207,6 +226,8 @@ const setupTimeoutMessage = (
 interface SetupInput {
   readonly provider: ProviderInput;
   readonly options: Required<PluginProviderOptions>;
+  /** The disposals of `setup` calls that finished late. `close` waits for them, up to the dispose time limit. */
+  readonly lateDisposals: Promise<void>[];
 }
 
 /**
@@ -216,7 +237,7 @@ interface SetupInput {
 const setupPlugin = async (
   definition: PluginDefinition,
   entry: PluginConfig,
-  { provider, options }: SetupInput
+  { provider, options, lateDisposals }: SetupInput
 ): Promise<EntryOutcome> => {
   const { name } = definition.plugin;
   const log = pluginLogger(provider.log, name);
@@ -261,14 +282,14 @@ const setupPlugin = async (
       returned = await raceAbort(pending, signal);
     } catch (error) {
       if (signal.aborted) {
-        void disposeLate(pending, log);
+        lateDisposals.push(disposeLate(pending, log));
       }
 
       throw error;
     }
   } catch (error) {
     if (provider.signal.aborted) {
-      return { status: { error: AGENT_STOPPED, name, state: "stopped" } };
+      return stopped(name);
     }
 
     return failed(
@@ -334,22 +355,31 @@ const dedupeFrontends = async (
 
   for (const outcome of outcomes) {
     const { plugin } = outcome;
-    const frontends = plugin?.contributions.frontends ?? [];
-    const taken = frontends.find((frontend) => owners.has(frontend.type));
 
-    if (plugin !== undefined && taken !== undefined) {
+    if (plugin === undefined) {
+      result.push(outcome);
+      continue;
+    }
+
+    const { frontends } = plugin.contributions;
+
+    const taken = frontends
+      .map(({ type }) => ({ owner: owners.get(type), type }))
+      .find(({ owner }) => owner !== undefined);
+
+    if (taken?.owner !== undefined) {
       rejected.push(plugin);
       result.push(
         failed(
           plugin.name,
-          `Plugin ${String(owners.get(taken.type))} already contributes the Frontend type ${taken.type}`
+          `Plugin ${taken.owner} already contributes the Frontend type ${taken.type}`
         )
       );
       continue;
     }
 
-    for (const frontend of frontends) {
-      owners.set(frontend.type, String(plugin?.name));
+    for (const { type } of frontends) {
+      owners.set(type, plugin.name);
     }
 
     result.push(outcome);
@@ -387,13 +417,7 @@ const loadEntries = async (input: SetupInput): Promise<EntryOutcome[]> => {
       }
 
       if (input.provider.signal.aborted) {
-        return {
-          status: {
-            error: AGENT_STOPPED,
-            name: item.definition.plugin.name,
-            state: "stopped" as const,
-          },
-        };
+        return stopped(item.definition.plugin.name);
       }
 
       return await setupPlugin(item.definition, item.entry, input);
@@ -442,6 +466,9 @@ const runTool = async (
  * module did not load. `health` lists the entries in config order. If `input.signal` aborts during loading, the
  * Plugins that did not finish report `stopped`.
  *
+ * `close` runs once. It disposes every loaded Plugin and each `setup` that finished after its time limit or the Agent
+ * stop, and waits up to the dispose time limit for each.
+ *
  * Errors: rejects only for defects in the provider itself.
  */
 export const createPluginProvider = async (
@@ -453,7 +480,13 @@ export const createPluginProvider = async (
     setupTimeoutMs: options.setupTimeoutMs ?? DEFAULT_SETUP_TIMEOUT_MS,
   };
 
-  const outcomes = await loadEntries({ options: limits, provider: input });
+  const lateDisposals: Promise<void>[] = [];
+
+  const outcomes = await loadEntries({
+    lateDisposals,
+    options: limits,
+    provider: input,
+  });
 
   for (const { status } of outcomes) {
     if (status.state === "failed") {
@@ -491,11 +524,14 @@ export const createPluginProvider = async (
           ? { name: status.name, state: "stopped" }
           : status
       );
-      await Promise.all(
-        plugins.map(async ({ name, contributions }) => {
+      await Promise.all([
+        ...plugins.map(async ({ name, contributions }) => {
           await disposePlugin(name, contributions.dispose, input.log, limits);
-        })
-      );
+        }),
+        ...lateDisposals.map(async (late) => {
+          await disposeWithin(late, input.log, limits);
+        }),
+      ]);
     })();
 
     await closing;
