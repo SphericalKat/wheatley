@@ -337,8 +337,8 @@ describe("wheatley status and init", () => {
       const terminal = scriptedIo([]);
 
       // oxlint-disable-next-line no-await-in-loop -- Each spelling of --home runs on its own.
-      await expect(runCli(argv, terminal.io)).resolves.toBe(2);
-      expect(terminal.stderr()).toContain(backup);
+      await expect(runCli(argv, terminal.io)).resolves.toBe(0);
+      expect(terminal.stdout()).toContain(backup);
     }
   });
 });
