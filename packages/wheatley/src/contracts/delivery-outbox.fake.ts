@@ -10,7 +10,7 @@ import type {
 } from "./delivery-outbox.js";
 import { simulateIo } from "./fake-io.js";
 import { systemClock } from "./module.js";
-import type { Clock } from "./module.js";
+import type { Clock, EventSink } from "./module.js";
 
 /** The attempt limit of the real outbox. */
 export const MAX_DELIVERY_ATTEMPTS = 10;
@@ -29,6 +29,12 @@ const previewOf = (delivery: Delivery): string => {
 const errorText = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
+/** Options of the fake outbox. */
+export interface FakeDeliveryOutboxOptions {
+  readonly clock?: Clock;
+  readonly events?: EventSink;
+}
+
 /**
  * An in-memory `DeliveryOutbox`. It has no timers: `drain()` makes one delivery attempt per due entry, in FIFO order
  * per Chat, and ignores backoff delays.
@@ -37,17 +43,25 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
   readonly #agentName: string;
   readonly #deps: DeliveryOutboxDeps;
   readonly #clock: Clock;
+  readonly #emitter: EventSink | undefined;
   readonly #entries: OutboxEntry[] = [];
+  readonly #copyErrors: unknown[] = [];
   #nextId = 1;
 
   constructor(
     agentName: string,
     deps: DeliveryOutboxDeps,
-    clock: Clock = systemClock
+    options: FakeDeliveryOutboxOptions = {}
   ) {
     this.#agentName = agentName;
     this.#deps = deps;
-    this.#clock = clock;
+    this.#clock = options.clock ?? systemClock;
+    this.#emitter = options.events;
+  }
+
+  /** Rejections of `onDelivered`, which the real outbox logs. */
+  get copyErrors(): readonly unknown[] {
+    return this.#copyErrors;
   }
 
   /** Every entry in creation order, for test assertions. */
@@ -88,30 +102,18 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
 
     return this.#entries
       .filter((entry) => entry.status === "failed")
-      .map((entry) => ({
-        agent: this.#agentName,
-        attempts: entry.attempts,
-        bindingId: entry.bindingId,
-        chatId: entry.chatId,
-        createdAt: new Date(entry.createdAt).toISOString(),
-        deliveryId: entry.deliveryId,
-        failedAt: new Date(this.#clock.now()).toISOString(),
-        kind: entry.delivery.kind,
-        lastError: entry.lastError ?? "",
-        permanent: entry.permanent,
-        preview: previewOf(entry.delivery),
-      }));
+      .map((entry) => this.#failedDelivery(entry));
   };
 
   readonly retry = async (deliveryId: string): Promise<boolean> =>
-    await this.#leaveFailed(deliveryId, {
+    await this.#leaveFailed(deliveryId, "retried", {
       attempts: 0,
       permanent: false,
       status: "pending",
     });
 
   readonly dismiss = async (deliveryId: string): Promise<boolean> =>
-    await this.#leaveFailed(deliveryId, { status: "dismissed" });
+    await this.#leaveFailed(deliveryId, "dismissed", { status: "dismissed" });
 
   /** Makes one attempt for the oldest pending entry of each Chat. Resolves with the number of confirmed deliveries. */
   readonly drain = async (): Promise<number> => {
@@ -130,14 +132,49 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
       const next = await this.#attempt(entry);
       this.#entries[index] = next;
 
+      if (next.status === "failed") {
+        this.#emitter?.emit("delivery.failed", {
+          agent: this.#agentName,
+          delivery: this.#failedDelivery(next),
+        });
+      }
+
       if (next.status === "delivered") {
         delivered += 1;
         blocked.delete(chat);
+        // oxlint-disable-next-line no-await-in-loop -- The copy follows its own confirmed delivery.
+        await this.#copy(next);
       }
     }
 
     return delivered;
   };
+
+  readonly #copy = async (entry: OutboxEntry): Promise<void> => {
+    if (entry.sourceConversationId === undefined) {
+      return;
+    }
+
+    try {
+      await this.#deps.onDelivered(entry);
+    } catch (error) {
+      this.#copyErrors.push(error);
+    }
+  };
+
+  readonly #failedDelivery = (entry: OutboxEntry): FailedDelivery => ({
+    agent: this.#agentName,
+    attempts: entry.attempts,
+    bindingId: entry.bindingId,
+    chatId: entry.chatId,
+    createdAt: new Date(entry.createdAt).toISOString(),
+    deliveryId: entry.deliveryId,
+    failedAt: new Date(this.#clock.now()).toISOString(),
+    kind: entry.delivery.kind,
+    lastError: entry.lastError ?? "",
+    permanent: entry.permanent,
+    preview: previewOf(entry.delivery),
+  });
 
   readonly #attempt = async (entry: OutboxEntry): Promise<OutboxEntry> => {
     const attempts = entry.attempts + 1;
@@ -145,18 +182,7 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
     try {
       await this.#deps.deliver(entry.bindingId, entry.delivery);
 
-      const delivered: OutboxEntry = {
-        ...entry,
-        attempts,
-        nextAttemptAt: null,
-        status: "delivered",
-      };
-
-      if (delivered.sourceConversationId !== undefined) {
-        await this.#deps.onDelivered(delivered);
-      }
-
-      return delivered;
+      return { ...entry, attempts, nextAttemptAt: null, status: "delivered" };
     } catch (error) {
       const permanent = isDeliveryError(error) && error.kind === "permanent";
       const failed = permanent || attempts >= MAX_DELIVERY_ATTEMPTS;
@@ -174,6 +200,7 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
 
   readonly #leaveFailed = async (
     deliveryId: string,
+    reason: "retried" | "dismissed",
     change: Partial<Pick<OutboxEntry, "attempts" | "permanent" | "status">>
   ): Promise<boolean> => {
     await simulateIo();
@@ -193,6 +220,11 @@ export class InMemoryDeliveryOutbox implements DeliveryOutbox {
       ...change,
       nextAttemptAt: this.#clock.now(),
     };
+    this.#emitter?.emit("delivery.cleared", {
+      agent: this.#agentName,
+      deliveryId,
+      reason,
+    });
 
     return true;
   };

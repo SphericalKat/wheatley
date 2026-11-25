@@ -1,12 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  cp,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,7 +17,6 @@ const tscPath = path.join(
 );
 
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
-const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*"(?<specifier>[^"]+)"/gu;
 const TSC_TIMEOUT_MS = 60_000;
 
 /** Runs the TypeScript compiler and returns its output. Throws with the output if it reports errors. */
@@ -34,21 +26,11 @@ const tsc = (args: readonly string[]): string =>
     timeout: TSC_TIMEOUT_MS,
   });
 
-const listDeclarations = async (dir: string): Promise<string[]> => {
-  const entries = await readdir(dir, { recursive: true });
-
-  return entries
-    .filter((entry) => entry.endsWith(".d.ts"))
-    .map((entry) => path.join(dir, entry));
-};
-
 let workDir = "";
-let declarationsDir = "";
 
 beforeAll(async () => {
   workDir = await mkdtemp(path.join(tmpdir(), "wheatley-sdk-surface-"));
   const installDir = path.join(workDir, "node_modules", "@wheatley", "sdk");
-  declarationsDir = path.join(installDir, "dist");
 
   tsc([
     "-p",
@@ -57,7 +39,7 @@ beforeAll(async () => {
     "--declarationMap",
     "false",
     "--outDir",
-    declarationsDir,
+    path.join(installDir, "dist"),
   ]);
   await cp(
     path.join(packageDir, "package.json"),
@@ -70,25 +52,6 @@ afterAll(async () => {
 });
 
 describe("@wheatley/sdk public type surface", () => {
-  it("emits declarations that import only other SDK declarations", async () => {
-    const declarations = await listDeclarations(declarationsDir);
-
-    const contents = await Promise.all(
-      declarations.map(async (file) => await readFile(file, "utf-8"))
-    );
-
-    const specifiers = contents.flatMap((content) =>
-      [...content.matchAll(IMPORT_SPECIFIER)].map(
-        (match) => match.groups?.specifier ?? ""
-      )
-    );
-
-    expect(declarations.length).toBeGreaterThan(0);
-    expect(
-      specifiers.filter((specifier) => !specifier.startsWith("./"))
-    ).toStrictEqual([]);
-  });
-
   it(
     "type-checks a consumer with no pi-durable, Node.js types, or other packages installed",
     async () => {

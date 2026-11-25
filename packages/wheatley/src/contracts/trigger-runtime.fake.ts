@@ -3,7 +3,7 @@ import type { Trigger, TriggerInput, TriggerPatch } from "@wheatley/protocol";
 import { SeamError } from "./errors.js";
 import { simulateIo } from "./fake-io.js";
 import { systemClock } from "./module.js";
-import type { Clock } from "./module.js";
+import type { Clock, EventSink } from "./module.js";
 import type {
   TriggerActor,
   TriggerRunner,
@@ -23,23 +23,40 @@ const assertActorMayChange = (
   }
 };
 
+/** Options of the fake Trigger runtime. */
+export interface FakeTriggerRuntimeOptions {
+  readonly clock?: Clock;
+  readonly events?: EventSink;
+}
+
 /**
  * An in-memory `TriggerRuntime` without a scheduler: `fire` and `acceptWebhookEvent` start Runs at once, and
  * `nextFireAt` stays `null`.
  */
 export class InMemoryTriggerRuntime implements TriggerRuntime {
+  readonly #agentName: string;
   readonly #runner: TriggerRunner;
   readonly #clock: Clock;
+  readonly #emitter: EventSink | undefined;
   readonly #triggers = new Map<string, Trigger>();
+  readonly #runIds = new Set<string>();
+  readonly #suppressed = new Set<string>();
   readonly #events: {
     readonly triggerId: string;
     readonly event: WebhookEvent;
   }[] = [];
   #nextId = 1;
+  #nextFiringId = 1;
 
-  constructor(runner: TriggerRunner, clock: Clock = systemClock) {
+  constructor(
+    agentName: string,
+    runner: TriggerRunner,
+    options: FakeTriggerRuntimeOptions = {}
+  ) {
+    this.#agentName = agentName;
     this.#runner = runner;
-    this.#clock = clock;
+    this.#clock = options.clock ?? systemClock;
+    this.#emitter = options.events;
   }
 
   /** Accepted webhook events in arrival order, for test assertions. */
@@ -86,6 +103,7 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     };
 
     this.#triggers.set(id, trigger);
+    this.#changed("created", trigger);
 
     return trigger;
   };
@@ -101,6 +119,7 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     const updated: Trigger = { ...current, ...patch };
     assertActorMayChange(actor, updated);
     this.#triggers.set(triggerId, updated);
+    this.#changed("updated", updated);
 
     return updated;
   };
@@ -117,8 +136,14 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     }
 
     assertActorMayChange(actor, current);
+    this.#triggers.delete(triggerId);
+    this.#emitter?.emit("trigger.changed", {
+      agent: this.#agentName,
+      change: "deleted",
+      triggerId,
+    });
 
-    return this.#triggers.delete(triggerId);
+    return true;
   };
 
   readonly fire = async (
@@ -160,6 +185,39 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     return { eventId: `event-${this.#events.length}` };
   };
 
+  readonly isDeliverySuppressed = async (runId: string): Promise<boolean> => {
+    await simulateIo();
+
+    return this.#suppressed.has(runId);
+  };
+
+  /**
+   * Does what the `suppress_delivery` Tool does in the real module. Resolves `false` for a Run that no Trigger started.
+   */
+  readonly suppressDelivery = async (runId: string): Promise<boolean> => {
+    await simulateIo();
+
+    if (!this.#runIds.has(runId)) {
+      return false;
+    }
+
+    this.#suppressed.add(runId);
+
+    return true;
+  };
+
+  readonly #changed = (
+    change: "created" | "updated" | "fired",
+    trigger: Trigger
+  ): void => {
+    this.#emitter?.emit("trigger.changed", {
+      agent: this.#agentName,
+      change,
+      trigger,
+      triggerId: trigger.id,
+    });
+  };
+
   readonly #require = (triggerId: string): Trigger => {
     const trigger = this.#triggers.get(triggerId);
 
@@ -183,12 +241,19 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     };
 
     this.#triggers.set(trigger.id, fired);
+    const firingId = `firing-${this.#nextFiringId}`;
+    this.#nextFiringId += 1;
 
-    return await this.#runner.start({
-      firingId: `${trigger.id}:${this.#clock.now()}`,
+    const started = await this.#runner.start({
+      firingId,
       prompt: `${trigger.prompt}${body}`,
       target: trigger.target,
       trigger: fired,
     });
+
+    this.#runIds.add(started.runId);
+    this.#changed("fired", fired);
+
+    return started;
   };
 }

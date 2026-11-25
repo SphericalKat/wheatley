@@ -61,7 +61,11 @@ export class InMemorySecretStore implements SecretStore {
 
   readonly redact = (text: string): string => {
     const values = [...this.#file.values(), ...this.#env.values()]
-      .filter((value) => value.length >= MIN_REDACTED_LENGTH)
+      .flatMap((value) =>
+        value.length >= MIN_REDACTED_LENGTH
+          ? [value, JSON.stringify(value).slice(1, -1)]
+          : []
+      )
       .toSorted((left, right) => right.length - left.length);
 
     let redacted = text;

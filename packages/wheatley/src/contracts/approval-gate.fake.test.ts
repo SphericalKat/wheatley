@@ -2,7 +2,12 @@ import type { DeploymentConfig, PermissionAction } from "@wheatley/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { InMemoryApprovalGate } from "./approval-gate.fake.js";
-import type { ApprovalGateDeps, GatedToolCall } from "./approval-gate.js";
+import type {
+  ApprovalGateDeps,
+  DecisionOrigin,
+  GatedToolCall,
+  GateVerdict,
+} from "./approval-gate.js";
 import { InMemoryConfigStore } from "./config-store.fake.js";
 import { InMemoryDeliveryOutbox } from "./delivery-outbox.fake.js";
 import { InMemorySecretStore } from "./secret-store.fake.js";
@@ -25,10 +30,21 @@ const builtinDefaults = new Map<string, PermissionAction>([
 ]);
 
 let now = 0;
+const OPERATOR: DecisionOrigin = { kind: "operator" };
+
+const CHAT: DecisionOrigin = {
+  bindingId: "telegram-main",
+  chatId: "42",
+  kind: "chat",
+};
+
 let woken: string[] = [];
 let store: InMemoryConfigStore;
 let outbox: InMemoryDeliveryOutbox;
 let gate: InMemoryApprovalGate;
+
+const approvalIdOf = (verdict: GateVerdict): string =>
+  verdict.kind === "wait" ? verdict.approvalId : "";
 
 const call = (
   callKey: string,
@@ -64,9 +80,9 @@ beforeEach(() => {
     policy: config.agents.home?.permissionPolicy ?? [],
     secrets: store.secrets,
     timeoutMs: TIMEOUT_MS,
-    wake: async (callKeys) => {
+    wake: async (calls) => {
       await Promise.resolve();
-      woken.push(...callKeys);
+      woken.push(...calls.map(({ signalKey }) => signalKey));
     },
   };
 
@@ -99,17 +115,21 @@ describe("InMemoryApprovalGate", () => {
     const again = await gate.check(call("c1", "write_file"));
     const [pending] = await gate.listPending();
 
-    expect(first).toMatchObject({ expiresAt: now + TIMEOUT_MS, kind: "wait" });
+    expect(first).toMatchObject({
+      expiresAt: now + TIMEOUT_MS,
+      kind: "wait",
+      signalKey: `c1:${pending?.approvalId ?? ""}`,
+    });
     expect(again).toStrictEqual(first);
     expect(pending?.inputPreview).toContain("[redacted]");
     expect(pending?.inputPreview).not.toContain("sk-secret-value");
     await expect(
-      gate.decide(pending?.approvalId ?? "", { decision: "allow_once" })
+      gate.decide(pending?.approvalId ?? "", { decision: "allow_once" }, CHAT)
     ).resolves.toBe(true);
     await expect(
-      gate.decide(pending?.approvalId ?? "", { decision: "deny" })
+      gate.decide(pending?.approvalId ?? "", { decision: "deny" }, OPERATOR)
     ).resolves.toBe(false);
-    expect(woken).toStrictEqual(["c1"]);
+    expect(woken).toStrictEqual([`c1:${pending?.approvalId ?? ""}`]);
     await expect(gate.check(call("c1", "write_file"))).resolves.toStrictEqual({
       kind: "allow",
     });
@@ -122,15 +142,21 @@ describe("InMemoryApprovalGate", () => {
   it("serializes Approvals per Run and lets allow_conversation clear the next call", async () => {
     const first = await gate.check(call("c1", "write_file"));
     const second = await gate.check(call("c2", "write_file"));
+    const approvalId = approvalIdOf(first);
 
-    expect(second).toStrictEqual(first);
+    expect(second).toMatchObject({
+      approvalId,
+      kind: "wait",
+      signalKey: `c2:${approvalId}`,
+    });
     expect(await gate.listPending()).toHaveLength(1);
 
-    await gate.decide(first.kind === "wait" ? first.approvalId : "", {
-      decision: "allow_conversation",
-    });
+    await gate.decide(approvalId, { decision: "allow_conversation" }, CHAT);
 
-    expect(woken.toSorted()).toStrictEqual(["c1", "c2"]);
+    expect(woken.toSorted()).toStrictEqual([
+      `c1:${approvalId}`,
+      `c2:${approvalId}`,
+    ]);
     await expect(gate.check(call("c2", "write_file"))).resolves.toStrictEqual({
       kind: "allow",
     });
@@ -143,9 +169,11 @@ describe("InMemoryApprovalGate", () => {
 
   it("keeps an explicit deny rule above an allow_conversation grant", async () => {
     const verdict = await gate.check(call("c1", "write_file"));
-    await gate.decide(verdict.kind === "wait" ? verdict.approvalId : "", {
-      decision: "allow_conversation",
-    });
+    await gate.decide(
+      approvalIdOf(verdict),
+      { decision: "allow_conversation" },
+      OPERATOR
+    );
 
     await expect(gate.check(call("c2", "shell"))).resolves.toMatchObject({
       kind: "deny",
@@ -155,9 +183,11 @@ describe("InMemoryApprovalGate", () => {
 
   it("persists allow_always as a config rule and applies it at once", async () => {
     const verdict = await gate.check(call("c1", "write_file"));
-    await gate.decide(verdict.kind === "wait" ? verdict.approvalId : "", {
-      decision: "allow_always",
-    });
+    await gate.decide(
+      approvalIdOf(verdict),
+      { decision: "allow_always" },
+      OPERATOR
+    );
 
     const { config: saved } = await store.read();
 
@@ -174,10 +204,11 @@ describe("InMemoryApprovalGate", () => {
 
   it("returns the deny reason and times out an unanswered Approval", async () => {
     const denied = await gate.check(call("c1", "write_file"));
-    await gate.decide(denied.kind === "wait" ? denied.approvalId : "", {
-      decision: "deny",
-      reason: "not now",
-    });
+    await gate.decide(
+      approvalIdOf(denied),
+      { decision: "deny", reason: "not now" },
+      CHAT
+    );
 
     const verdict = await gate.check(call("c1", "write_file"));
 
@@ -204,5 +235,83 @@ describe("InMemoryApprovalGate", () => {
       kind: "deny",
       reason: "cancelled",
     });
+  });
+
+  it("gives a call that waits on another Approval first a new signal key for its own Approval", async () => {
+    const blocking = await gate.check(call("c1", "write_file"));
+    const parked = await gate.check(call("c2", "write_file"));
+
+    await gate.decide(approvalIdOf(blocking), { decision: "allow_once" }, CHAT);
+    const own = await gate.check(call("c2", "write_file"));
+
+    expect(own.kind).toBe("wait");
+    expect(approvalIdOf(own)).not.toBe(approvalIdOf(blocking));
+    expect(own.kind === "wait" ? own.signalKey : "").not.toBe(
+      parked.kind === "wait" ? parked.signalKey : ""
+    );
+  });
+
+  it("times out an expired blocking Approval and opens the waiting call's own Approval", async () => {
+    const blocking = await gate.check(call("c1", "write_file"));
+    await gate.check(call("c2", "write_file"));
+    now += TIMEOUT_MS;
+
+    const verdict = await gate.check(call("c2", "write_file"));
+    const pending = await gate.listPending();
+
+    expect(verdict).toMatchObject({
+      expiresAt: now + TIMEOUT_MS,
+      kind: "wait",
+    });
+    expect(pending.map((approval) => approval.approvalId)).toStrictEqual([
+      approvalIdOf(verdict),
+    ]);
+    await expect(gate.check(call("c1", "write_file"))).resolves.toMatchObject({
+      kind: "deny",
+      reason: "timeout",
+    });
+    expect(woken).toContain(`c1:${approvalIdOf(blocking)}`);
+  });
+
+  it("lets only the first of two concurrent decisions win", async () => {
+    const approvalId = approvalIdOf(await gate.check(call("c1", "write_file")));
+
+    await expect(
+      Promise.all([
+        gate.decide(approvalId, { decision: "allow_always" }, OPERATOR),
+        gate.decide(approvalId, { decision: "deny" }, CHAT),
+      ])
+    ).resolves.toStrictEqual([true, false]);
+    expect(
+      outbox.entries.filter(
+        (entry) => entry.delivery.kind === "approval_resolved"
+      )
+    ).toHaveLength(1);
+    await expect(gate.check(call("c1", "write_file"))).resolves.toStrictEqual({
+      kind: "allow",
+    });
+  });
+
+  it("rejects a decision from a Chat other than the originating Chat", async () => {
+    const approvalId = approvalIdOf(await gate.check(call("c1", "write_file")));
+
+    await expect(
+      gate.decide(
+        approvalId,
+        { decision: "allow_once" },
+        { bindingId: "telegram-main", chatId: "99", kind: "chat" }
+      )
+    ).resolves.toBe(false);
+    expect(await gate.listPending()).toHaveLength(1);
+  });
+
+  it("redacts a secret value that JSON escapes would change", async () => {
+    await store.secrets.set("QUOTED", 'se"cret\\value');
+    await gate.check(
+      call("c1", "write_file", { input: { token: 'se"cret\\value' } })
+    );
+    const [pending] = await gate.listPending();
+
+    expect(pending?.inputPreview).toBe('{"token":"[redacted]"}');
   });
 });

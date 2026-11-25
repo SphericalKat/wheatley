@@ -7,6 +7,7 @@ import type {
   CommandName as ProtocolCommandName,
   DeliveryKind as ProtocolDeliveryKind,
 } from "@wheatley/protocol";
+import { CommandNameSchema } from "@wheatley/protocol";
 import type {
   ApprovalDecision as SdkApprovalDecision,
   ApprovalOutcome as SdkApprovalOutcome,
@@ -32,6 +33,11 @@ describe("protocol and SDK vocabulary", () => {
       (command) => command.name
     );
 
-    expect(names).toHaveLength(7);
+    const protocolNames = new Set(
+      CommandNameSchema.anyOf.map((schema) => schema.const)
+    );
+
+    expect(new Set(names)).toStrictEqual(protocolNames);
+    expect(names).toHaveLength(protocolNames.size);
   });
 });

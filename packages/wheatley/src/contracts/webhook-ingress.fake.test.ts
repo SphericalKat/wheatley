@@ -30,7 +30,7 @@ const post = (
 beforeEach(async () => {
   state = "running";
   firings = [];
-  triggers = new InMemoryTriggerRuntime({
+  triggers = new InMemoryTriggerRuntime("home", {
     isActive: () => false,
     start: async (firing) => {
       await Promise.resolve();
@@ -41,7 +41,12 @@ beforeEach(async () => {
   });
   ingress = new InMemoryWebhookIngress({
     agent: (name) =>
-      name === "home" ? { state: () => state, triggers } : undefined,
+      name === "home"
+        ? {
+            state: () => state,
+            triggers: () => (state === "running" ? triggers : undefined),
+          }
+        : undefined,
     secrets: new InMemorySecretStore({ HOOK_TOKEN: "s3cret-token" }),
   });
 
@@ -107,7 +112,7 @@ describe("InMemoryWebhookIngress for Trigger webhooks", () => {
     }
   );
 
-  it("answers 503 for a degraded Agent and 405 for GET", async () => {
+  it("answers 503 for a degraded Agent without a Trigger runtime, before the Trigger and token checks, and 405 for GET", async () => {
     state = "degraded";
 
     await expect(
@@ -116,6 +121,9 @@ describe("InMemoryWebhookIngress for Trigger webhooks", () => {
           authorization: "Bearer s3cret-token",
         })
       )
+    ).resolves.toStrictEqual({ status: 503 });
+    await expect(
+      ingress.handle(post("/webhooks/home/trigger-404"))
     ).resolves.toStrictEqual({ status: 503 });
     await expect(
       ingress.handle({ ...post(`/webhooks/home/${triggerId}`), method: "GET" })
@@ -136,6 +144,59 @@ describe("InMemoryWebhookIngress for Trigger webhooks", () => {
         "agent"
       )
     ).rejects.toThrow(SeamError);
+  });
+});
+
+describe("InMemoryTriggerRuntime", () => {
+  it("gives each firing its own ID, emits trigger.changed, and records suppress_delivery per Run", async () => {
+    const emitted: string[] = [];
+
+    const runtime = new InMemoryTriggerRuntime(
+      "home",
+      {
+        isActive: () => false,
+        start: async (firing) => {
+          await Promise.resolve();
+          firings.push(firing);
+
+          return { runId: `run-${firings.length}` };
+        },
+      },
+      {
+        clock: { now: () => 0 },
+        events: {
+          emit: (name, payload) => {
+            emitted.push(
+              `${name}:${"change" in payload ? payload.change : ""}`
+            );
+          },
+        },
+      }
+    );
+
+    const trigger = await runtime.create(
+      {
+        name: "daily",
+        prompt: "Plan the day",
+        schedule: { at: "2026-11-27T08:00:00.000Z", kind: "once" },
+        target: { bindingId: "tg", chatId: "1" },
+      },
+      "agent"
+    );
+
+    const first = await runtime.fire(trigger.id);
+    await runtime.fire(trigger.id);
+
+    expect(new Set(firings.map((firing) => firing.firingId)).size).toBe(2);
+    expect(emitted).toStrictEqual([
+      "trigger.changed:created",
+      "trigger.changed:fired",
+      "trigger.changed:fired",
+    ]);
+    await expect(runtime.suppressDelivery(first.runId)).resolves.toBe(true);
+    await expect(runtime.suppressDelivery("run-chat")).resolves.toBe(false);
+    await expect(runtime.isDeliverySuppressed(first.runId)).resolves.toBe(true);
+    await expect(runtime.isDeliverySuppressed("run-2")).resolves.toBe(false);
   });
 });
 

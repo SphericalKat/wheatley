@@ -18,9 +18,12 @@ describe("toRpcError", () => {
     });
   });
 
-  it("maps a missing target to NotFound", () => {
+  it("maps a missing target to NotFound and a missing Agent to AgentNotFound", () => {
     expect(toRpcError(new SeamError("not_found", "Unknown Trigger")).code).toBe(
       RpcErrorCode.NotFound
     );
+    expect(
+      toRpcError(new SeamError("agent_not_found", "Unknown Agent")).code
+    ).toBe(RpcErrorCode.AgentNotFound);
   });
 });

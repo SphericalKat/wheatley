@@ -29,6 +29,7 @@ export type {
   FrontendContext,
   FrontendSink,
   InboundCommand,
+  InboundDecision,
   InboundMessage,
   MessageDelivery,
   MessageSource,

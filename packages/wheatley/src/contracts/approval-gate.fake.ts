@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   ApprovalOutcome,
   PendingApproval,
@@ -9,6 +11,7 @@ import type { ApprovalResolution } from "@wheatley/sdk";
 import type {
   ApprovalGate,
   ApprovalGateDeps,
+  DecisionOrigin,
   DenyReason,
   GatedToolCall,
   GateVerdict,
@@ -24,7 +27,8 @@ interface ApprovalRecord {
   readonly approval: PendingApproval;
   readonly callKey: string;
   readonly expiresAt: number | null;
-  readonly waiters: Set<string>;
+  /** Parked calls by `callKey`, with the `signalKey` of each. */
+  readonly waiters: Map<string, string>;
   outcome: ApprovalOutcome | undefined;
   reason: string | undefined;
 }
@@ -36,6 +40,27 @@ const isAllow = (outcome: ApprovalOutcome): boolean =>
   outcome === "allow_once" ||
   outcome === "allow_conversation" ||
   outcome === "allow_always";
+
+const signalKeyOf = (callKey: string, approvalId: string): string =>
+  `${callKey}:${approvalId}`;
+
+/** Registers `callKey` as a waiter of the Approval and returns its `wait` verdict. */
+const park = (record: ApprovalRecord, callKey: string): GateVerdict => {
+  const { approvalId } = record.approval;
+  const signalKey = signalKeyOf(callKey, approvalId);
+  record.waiters.set(callKey, signalKey);
+
+  return { approvalId, expiresAt: record.expiresAt, kind: "wait", signalKey };
+};
+
+const sameChat = (
+  origin: DecisionOrigin,
+  chat: PendingApproval["chat"]
+): boolean =>
+  origin.kind === "operator" ||
+  (chat !== null &&
+    origin.bindingId === chat.bindingId &&
+    origin.chatId === chat.chatId);
 
 const denial = (reason: DenyReason, message: string): GateVerdict => ({
   kind: "deny",
@@ -58,7 +83,6 @@ export class InMemoryApprovalGate implements ApprovalGate {
   readonly #rules: PermissionRule[];
   readonly #grants = new Set<string>();
   readonly #approvals = new Map<string, ApprovalRecord>();
-  #nextId = 1;
 
   constructor(
     agentName: string,
@@ -107,30 +131,38 @@ export class InMemoryApprovalGate implements ApprovalGate {
         record.outcome === undefined && record.approval.runId === call.runId
     );
 
-    if (blocking !== undefined) {
-      blocking.waiters.add(call.callKey);
-
-      return {
-        approvalId: blocking.approval.approvalId,
-        expiresAt: blocking.expiresAt,
-        kind: "wait",
-      };
+    if (blocking === undefined) {
+      return await this.#open(call);
     }
 
-    return await this.#open(call);
+    if (this.#expired(blocking)) {
+      await this.#resolve(blocking, "timeout");
+
+      return await this.#open(call);
+    }
+
+    return park(blocking, call.callKey);
   };
 
   readonly decide = async (
     approvalId: string,
-    resolution: ApprovalResolution
+    resolution: ApprovalResolution,
+    origin: DecisionOrigin
   ): Promise<boolean> => {
     await simulateIo();
     const record = this.#approvals.get(approvalId);
 
-    if (record === undefined || record.outcome !== undefined) {
+    if (
+      record === undefined ||
+      record.outcome !== undefined ||
+      !sameChat(origin, record.approval.chat)
+    ) {
       return false;
     }
 
+    // Claim the Approval before the first await, so a concurrent decision or cancelRun resolves false.
+    record.outcome = resolution.decision;
+    record.reason = resolution.reason;
     const { conversationId, toolName } = record.approval;
 
     if (resolution.decision === "allow_conversation") {
@@ -203,17 +235,8 @@ export class InMemoryApprovalGate implements ApprovalGate {
     call: GatedToolCall
   ): Promise<GateVerdict> => {
     if (record.outcome === undefined) {
-      const expired =
-        record.expiresAt !== null && this.#clock.now() >= record.expiresAt;
-
-      if (!expired) {
-        record.waiters.add(call.callKey);
-
-        return {
-          approvalId: record.approval.approvalId,
-          expiresAt: record.expiresAt,
-          kind: "wait",
-        };
+      if (!this.#expired(record)) {
+        return park(record, call.callKey);
       }
 
       await this.#resolve(record, "timeout");
@@ -245,9 +268,11 @@ export class InMemoryApprovalGate implements ApprovalGate {
         );
   };
 
+  readonly #expired = (record: ApprovalRecord): boolean =>
+    record.expiresAt !== null && this.#clock.now() >= record.expiresAt;
+
   readonly #open = async (call: GatedToolCall): Promise<GateVerdict> => {
-    const approvalId = `approval-${this.#nextId}`;
-    this.#nextId += 1;
+    const approvalId = `approval-${randomUUID()}`;
     const now = this.#clock.now();
 
     const expiresAt =
@@ -269,14 +294,17 @@ export class InMemoryApprovalGate implements ApprovalGate {
       toolName: call.toolName,
     };
 
-    this.#approvals.set(approvalId, {
+    const record: ApprovalRecord = {
       approval,
       callKey: call.callKey,
       expiresAt,
       outcome: undefined,
       reason: undefined,
-      waiters: new Set([call.callKey]),
-    });
+      waiters: new Map(),
+    };
+
+    this.#approvals.set(approvalId, record);
+    const verdict = park(record, call.callKey);
 
     if (call.chat !== null) {
       await this.#deps.outbox.enqueue({
@@ -298,7 +326,7 @@ export class InMemoryApprovalGate implements ApprovalGate {
       approval,
     });
 
-    return { approvalId, expiresAt, kind: "wait" };
+    return verdict;
   };
 
   readonly #resolve = async (
@@ -332,6 +360,11 @@ export class InMemoryApprovalGate implements ApprovalGate {
       reason,
       resolvedBy,
     });
-    await this.#deps.wake([...record.waiters]);
+    await this.#deps.wake(
+      [...record.waiters].map(([callKey, signalKey]) => ({
+        callKey,
+        signalKey,
+      }))
+    );
   };
 }

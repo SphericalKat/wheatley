@@ -153,6 +153,14 @@ export interface InboundCommand {
   readonly senderDisplayName?: string;
 }
 
+/** A Sender's decision on an Approval, from a Chat. */
+export interface InboundDecision {
+  /** The Chat where the Sender decided. */
+  readonly chatId: string;
+  readonly approvalId: string;
+  readonly resolution: ApprovalResolution;
+}
+
 /** Inbound side of a Frontend Binding, provided by the Agent. */
 export interface FrontendSink {
   /** The built-in command specs, for native command menus. */
@@ -166,13 +174,11 @@ export interface FrontendSink {
   /** Hands a built-in command to the Agent. Resolves once the Agent accepts it. */
   readonly command: (command: InboundCommand) => Promise<void>;
   /**
-   * Submits a decision on an Approval. Resolves `true` if this decision won, or `false` if the Approval already ended
-   * or does not exist. The first decision from any surface wins (ADR 0005).
+   * Submits a decision on an Approval from a Chat of this binding. Resolves `true` if this decision won, or `false` if
+   * the Approval already ended, does not exist, or belongs to another Chat (ADR 0002: only a Sender in the originating
+   * Chat can decide). The first decision from any surface wins (ADR 0005).
    */
-  readonly decide: (
-    approvalId: string,
-    resolution: ApprovalResolution
-  ) => Promise<boolean>;
+  readonly decide: (decision: InboundDecision) => Promise<boolean>;
 }
 
 /** An HTTP request that the Webhook Ingress forwards to a Frontend route. */
@@ -215,6 +221,11 @@ export interface FrontendContext {
   readonly log: Logger;
   /** A per-Agent directory for staged attachments. Wheatley deletes old files in it. */
   readonly stagingDir: string;
+  /**
+   * A persistent per-binding directory that survives daemon restarts, for adapter state such as the platform message
+   * of each `approval_requested` delivery. Wheatley creates it and never deletes files in it.
+   */
+  readonly dataDir: string;
   /** The per-file attachment limit. The default is 10 MiB. */
   readonly maxAttachmentBytes: number;
   /**

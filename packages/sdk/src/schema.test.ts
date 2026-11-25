@@ -7,6 +7,7 @@ import { z } from "zod";
 
 const context: ToolContext = {
   agentName: "home",
+  chat: null,
   conversationId: "conversation-1",
   log: { debug: () => {}, error: () => {}, info: () => {}, warn: () => {} },
   runId: "run-1",

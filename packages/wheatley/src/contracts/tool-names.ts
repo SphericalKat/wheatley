@@ -1,4 +1,7 @@
 const TOOL_PART = /^[a-z][a-z0-9_]*$/u;
+
+/** The MCP Tool name character set, which allows names such as `resolve-library-id`, `getIssue`, and `browser.navigate`. */
+const MCP_TOOL_PART = /^[A-Za-z0-9_.-]{1,128}$/u;
 const OWNER_PART = /^[a-z0-9][a-z0-9_-]*$/u;
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/gu;
 const ESCAPED_WILDCARD = /\\\*/gu;
@@ -16,10 +19,13 @@ export type ToolOrigin =
  * Builds the canonical Tool name (ADR 0006): `<tool>` for built-ins, `<plugin>:<tool>` for Plugins, and
  * `mcp:<server>:<tool>` for MCP Servers. The Permission Policy matches these names.
  *
- * Throws a `RangeError` if a part breaks its pattern, or for a Plugin named `mcp`.
+ * Built-in and Plugin Tool names match `^[a-z][a-z0-9_]*$`. MCP Tool names keep the name that the server reports and
+ * match `^[A-Za-z0-9_.-]{1,128}$`. Throws a `RangeError` if a part breaks its pattern, or for a Plugin named `mcp`.
  */
 export const canonicalToolName = (origin: ToolOrigin, tool: string): string => {
-  if (!TOOL_PART.test(tool)) {
+  const toolPattern = origin.kind === "mcp" ? MCP_TOOL_PART : TOOL_PART;
+
+  if (!toolPattern.test(tool)) {
     throw new RangeError(`Invalid Tool name: ${tool}`);
   }
 
@@ -43,7 +49,7 @@ export const canonicalToolName = (origin: ToolOrigin, tool: string): string => {
 
 /**
  * Returns true if a canonical Tool name matches a Permission Policy pattern. `*` matches any run of characters,
- * including `:`; every other character matches itself. For example `notes:*` matches `notes:add`, and `mcp:github:*`
+ * including `:`; every other character matches itself, case-sensitively. For example `notes:*` matches `notes:add`, and `mcp:github:*`
  * matches every Tool of the `github` MCP Server.
  */
 export const matchesToolPattern = (

@@ -15,6 +15,27 @@ describe("canonicalToolName", () => {
     ).toBe("mcp:github:create_issue");
   });
 
+  it.each(["resolve-library-id", "getIssue", "browser.navigate", "get_me"])(
+    "keeps the MCP Tool name %s as the server reports it",
+    (tool) => {
+      expect(canonicalToolName({ kind: "mcp", server: "context7" }, tool)).toBe(
+        `mcp:context7:${tool}`
+      );
+    }
+  );
+
+  it("rejects MCP-only characters in built-in and Plugin Tool names", () => {
+    expect(() => canonicalToolName({ kind: "builtin" }, "getFile")).toThrow(
+      RangeError
+    );
+    expect(() =>
+      canonicalToolName({ kind: "plugin", plugin: "notes" }, "add-note")
+    ).toThrow(RangeError);
+    expect(() =>
+      canonicalToolName({ kind: "mcp", server: "github" }, "a:b")
+    ).toThrow(RangeError);
+  });
+
   it("rejects the reserved Plugin name and names with a colon", () => {
     expect(() =>
       canonicalToolName({ kind: "plugin", plugin: "mcp" }, "x")
@@ -32,6 +53,9 @@ describe("matchesToolPattern", () => {
     ["notes:*", "notes:add", true],
     ["notes:*", "notebook:add", false],
     ["mcp:github:*", "mcp:github:create_issue", true],
+    ["mcp:context7:*", "mcp:context7:resolve-library-id", true],
+    ["mcp:github:getIssue", "mcp:github:getissue", false],
+    ["mcp:browser:browser.navigate", "mcp:browser:browserXnavigate", false],
     ["mcp:*", "mcp:slack:post", true],
     ["memory_*", "memory_write", true],
     ["*", "anything:at:all", true],

@@ -11,7 +11,9 @@ export type SeamErrorCode =
   | "memory_budget_exceeded"
   /** A name breaks its pattern, for example a Memory slug with `..`. */
   | "invalid_name"
-  /** The Agent, Approval, Trigger, Memory file, secret, or delivery does not exist. */
+  /** No Agent has this name. */
+  | "agent_not_found"
+  /** The Approval, Trigger, Run, Memory file, secret, or delivery does not exist. */
   | "not_found"
   /** The target already exists or is in a state that forbids the change. */
   | "conflict"
@@ -37,6 +39,7 @@ export class SeamError extends Error {
 }
 
 const RPC_CODES = {
+  agent_not_found: RpcErrorCode.AgentNotFound,
   agent_unavailable: RpcErrorCode.AgentUnavailable,
   config_invalid: RpcErrorCode.ConfigInvalid,
   conflict: RpcErrorCode.Conflict,

@@ -9,6 +9,7 @@ import {
   createModels,
   fauxAssistantMessage,
   fauxProvider,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import {
   CompactionTask,
@@ -16,8 +17,10 @@ import {
   defineExtension,
   defineSignal,
   defineTask,
+  defineTool,
   Harness,
   hook,
+  ToolTask,
 } from "@earendil-works/pi-durable";
 import type {
   HarnessOptions,
@@ -91,8 +94,67 @@ const WaitForApproval = defineTask<
 
 const compactionReasons: string[] = [];
 
+const GateSignal = defineSignal({
+  name: "wheatley.smoke.gate",
+  schema: obj({ decision: str() }),
+  version: 1,
+});
+
+/** The keys of one gated call: first a wait on another call's Approval, then a wait on its own Approval. */
+const GATE_KEYS = ["call-1:approval-a", "call-1:approval-b"] as const;
+const gateSleeps: string[] = [];
+const gatedTaskIds: TaskId[] = [];
+const echoed: string[] = [];
+
+const EchoTool = defineTool({
+  description: "Echo the text",
+  execute: async (args) => {
+    await Promise.resolve();
+    echoed.push(args.text);
+
+    return {};
+  },
+  name: "echo",
+  parameters: obj({ text: str() }),
+});
+
 const SmokeExtension = defineExtension({
   hooks: [
+    hook(ToolTask, {
+      beforeTool: async (call, api, hookContext) => {
+        const gated = call.name === EchoTool.name;
+
+        const states = gated
+          ? await Promise.all(
+              GATE_KEYS.map(
+                async (key) =>
+                  await api.readSignal(GateSignal, key, hookContext)
+              )
+            )
+          : [];
+
+        const openKey = GATE_KEYS.find(
+          (_key, index) => states[index] === undefined
+        );
+
+        if (gated) {
+          gatedTaskIds.push(api.taskId);
+        }
+
+        if (gated && openKey !== undefined && !gateSleeps.includes(openKey)) {
+          gateSleeps.push(openKey);
+        }
+
+        return gated && openKey !== undefined
+          ? {
+              sleep: {
+                signals: [GateSignal.key(openKey)],
+                until: api.now() + HOUR_MS,
+              },
+            }
+          : undefined;
+      },
+    }),
     hook(CompactionTask, {
       beforeCompact: (compaction) => {
         compactionReasons.push(compaction.reason);
@@ -103,6 +165,7 @@ const SmokeExtension = defineExtension({
   ],
   name: "wheatley-smoke",
   tasks: [WaitForApproval],
+  tools: [EchoTool],
 });
 
 let dir = "";
@@ -131,6 +194,9 @@ beforeEach(async () => {
     settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
   };
   compactionReasons.length = 0;
+  gateSleeps.length = 0;
+  gatedTaskIds.length = 0;
+  echoed.length = 0;
 });
 
 afterEach(async () => {
@@ -256,6 +322,71 @@ describe("@earendil-works/pi-durable 1.6.1", () => {
 
       expect(view.head?.kind).toBe("pi.compaction");
       expect(JSON.stringify(view.messages)).toContain(SUMMARY);
+    } finally {
+      await harness.close(context);
+    }
+  });
+
+  it("parks a beforeTool gate on a second, fresh key after the first wake and runs the call after both", async () => {
+    const harness = await openHarness();
+
+    const sleepingOn = async (key: string): Promise<TaskId> => {
+      await vi.waitFor(async () => {
+        const [taskId] = gatedTaskIds;
+
+        const task =
+          taskId === undefined
+            ? undefined
+            : await harness.getTask(taskId, context);
+
+        expect(gateSleeps.at(-1)).toBe(key);
+        expect(task?.state.status).toBe("sleeping");
+      });
+
+      const [taskId] = gatedTaskIds;
+
+      if (taskId === undefined) {
+        throw new Error("The gate never ran");
+      }
+
+      return taskId;
+    };
+
+    try {
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall(EchoTool.name, { text: "hi" }), {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("Done"),
+      ]);
+      const root = await harness.root(context, { agent: { model } });
+
+      const submission = await root.submit(
+        { content: "Echo hi", type: "input" },
+        context
+      );
+
+      for (const key of GATE_KEYS) {
+        // oxlint-disable-next-line no-await-in-loop -- Each wake must land before the gate sleeps on the next key.
+        const taskId = await sleepingOn(key);
+
+        // oxlint-disable-next-line no-await-in-loop -- Signals follow the gate's order.
+        await expect(
+          harness.signal(
+            taskId,
+            GateSignal,
+            key,
+            { decision: "allow_once" },
+            context
+          )
+        ).resolves.toBe("delivered");
+      }
+
+      await expect(submission.wait(context)).resolves.toMatchObject({
+        status: "done",
+      });
+      expect(gateSleeps).toStrictEqual([...GATE_KEYS]);
+      expect(echoed).toStrictEqual(["hi"]);
     } finally {
       await harness.close(context);
     }

@@ -69,7 +69,13 @@ export interface PluginProvider extends ToolProvider {
 /** Input of a provider factory. */
 export interface ProviderInput {
   readonly agentName: string;
+  /** `~/.wheatley/agents/<name>/`, or `/data/agents/<name>/` in Docker. Agent Skills are in its `skills/` folder. */
   readonly agentDir: string;
+  /**
+   * The Deployment home, `~/.wheatley/` or `/data/` in Docker. npm Plugins are installed in `extensions/` and shared
+   * Skills are in `skills/` below it. Relative local Plugin paths resolve against it.
+   */
+  readonly homeDir: string;
   readonly config: AgentConfig;
   readonly secrets: SecretReader;
   readonly log: Logger;

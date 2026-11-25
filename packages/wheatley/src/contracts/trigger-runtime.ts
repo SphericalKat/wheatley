@@ -24,7 +24,10 @@ export interface TriggerFiring {
   readonly trigger: Trigger;
   /** The Trigger prompt, with the webhook body appended for `webhook` firings. */
   readonly prompt: string;
-  /** The Chat that receives the result through the outbox unless the Run calls `suppress_delivery`. */
+  /**
+   * The Chat that receives the result through the outbox, unless the Run calls the `suppress_delivery` Tool (see
+   * `TriggerRuntime.isDeliverySuppressed`).
+   */
   readonly target: ChatKey;
 }
 
@@ -32,7 +35,10 @@ export interface TriggerFiring {
 export interface TriggerRunner {
   /**
    * Starts a non-interactive Run for a firing, in a new Conversation (`per_firing`) or the Trigger's shared
-   * Conversation (`shared`). Resolves with the Run ID once the Run is stored. The Agent enqueues the final reply.
+   * Conversation (`shared`). Resolves with the Run ID once the Run is stored.
+   *
+   * When the Run ends, the Agent calls `TriggerRuntime.isDeliverySuppressed(runId)`. If it resolves `false`, the Agent
+   * enqueues the final reply for `firing.target` with `sourceConversationId` set.
    */
   readonly start: (
     firing: TriggerFiring
@@ -48,12 +54,19 @@ export interface TriggerRunner {
  * Scheduling rules: an overdue `once` fires once at start; missed `cron` ticks are skipped and `nextFireAt` moves to
  * the next future tick; a `cron` tick is skipped while the Trigger's previous Run is active; webhook events run in
  * arrival order.
+ *
+ * The Triggers module also provides the Agent Tools `schedule_trigger`, `list_triggers`, `cancel_trigger`, and
+ * `suppress_delivery` through its `ToolProvider`. `schedule_trigger` targets `ToolContext.chat` by default.
+ * `suppress_delivery` stores a durable flag for `ToolContext.runId` that `isDeliverySuppressed` reads; it returns an
+ * error result in a Run that no Trigger started.
+ *
+ * Every change emits `trigger.changed`: `created`, `updated`, `deleted`, or `fired` (also for a scheduled firing).
  */
 export interface TriggerRuntime {
   readonly list: () => Promise<readonly Trigger[]>;
   readonly get: (triggerId: string) => Promise<Trigger | undefined>;
   /**
-   * Creates a Trigger and emits `trigger.changed`. Throws `SeamError("forbidden")` if an Agent creates a `webhook`
+   * Creates a Trigger. Throws `SeamError("forbidden")` if an Agent creates a `webhook`
    * Trigger, and `SeamError("invalid_name")` for an invalid cron expression or time zone.
    */
   readonly create: (
@@ -68,7 +81,7 @@ export interface TriggerRuntime {
   ) => Promise<Trigger>;
   /** Deletes a Trigger. Resolves `false` if it did not exist. Throws `SeamError("forbidden")` as `create` does. */
   readonly delete: (triggerId: string, actor: TriggerActor) => Promise<boolean>;
-  /** Fires a Trigger now, outside its schedule. Throws `SeamError("not_found")`. */
+  /** Fires a Trigger now, outside its schedule, and emits `trigger.changed` (`fired`). Throws `SeamError("not_found")`. */
   readonly fire: (triggerId: string) => Promise<{ readonly runId: string }>;
   /**
    * The secret name of a `webhook` Trigger's Bearer token, or `undefined` if the Trigger does not exist, is paused,
@@ -85,4 +98,9 @@ export interface TriggerRuntime {
     triggerId: string,
     event: WebhookEvent
   ) => Promise<{ readonly eventId: string }>;
+  /**
+   * True if the Trigger Run `runId` called `suppress_delivery`, so the Agent must not enqueue its final reply. Resolves
+   * `false` for any other Run.
+   */
+  readonly isDeliverySuppressed: (runId: string) => Promise<boolean>;
 }

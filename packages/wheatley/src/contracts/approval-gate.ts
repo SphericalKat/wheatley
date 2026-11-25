@@ -47,14 +47,34 @@ export type GateVerdict =
       readonly message: string;
     }
   /**
-   * Park the call in a pi-durable signal sleep until `deps.wake` names its `callKey` or the deadline passes, then
-   * call `check` again. `expiresAt` is epoch milliseconds, or `null` for no deadline.
+   * Park the call in a pi-durable signal sleep on `signalKey` until `deps.wake` names that key or the deadline passes,
+   * then call `check` again. `expiresAt` is epoch milliseconds, or `null` for no deadline.
+   *
+   * `signalKey` is `<callKey>:<approvalId>`: the same for every check of one call on one Approval, and new when the
+   * call waits on another Approval. pi-durable consumes a key on the wake that uses it and ends a second sleep on it
+   * with `invalid_park`, so a call that waits twice (step 7, then step 8) needs two keys.
    */
   | {
       readonly kind: "wait";
       readonly approvalId: string;
+      readonly signalKey: string;
       readonly expiresAt: number | null;
     };
+
+/** A parked call: the pi-durable task to signal and the key that it sleeps on. */
+export interface ParkedCall {
+  readonly callKey: string;
+  readonly signalKey: string;
+}
+
+/** Who decides an Approval: a Sender in a Chat, or the Operator through the CLI or dashboard. */
+export type DecisionOrigin =
+  | {
+      readonly kind: "chat";
+      readonly bindingId: string;
+      readonly chatId: string;
+    }
+  | { readonly kind: "operator" };
 
 /**
  * Evaluates the Permission Policy and runs Approvals for one Agent (ADR 0011). The pi adapter calls `check` from a
@@ -73,22 +93,29 @@ export interface ApprovalGate {
    * 6. A pending Approval for `callKey` returns `wait`, or `deny` (`timeout`) after its deadline, which also
    *    resolves it as `timeout`.
    * 7. If another Approval of the same Run is pending, returns `wait` on that Approval without a new prompt, so
-   *    Approvals are serialized per Run.
+   *    Approvals are serialized per Run. If that Approval's deadline passed, the gate first resolves it as `timeout`
+   *    (with the side effects of `decide`) and continues with step 8.
    * 8. Otherwise opens an Approval: stores it, enqueues `approval_requested` for the Chat, emits
    *    `approval.requested`, and returns `wait`.
+   *
+   * Approval IDs are unguessable (for example a random UUID), because a Chat decision carries only the ID. The
+   * `inputPreview` is `SecretStore.redact(JSON.stringify(call.input))` cut to 500 characters; `redact` also replaces
+   * the JSON-escaped form of each secret value, so escapes cannot hide a secret.
    */
   readonly check: (call: GatedToolCall) => Promise<GateVerdict>;
   /**
    * Resolves a pending Approval. The first decision from any surface wins; later calls and unknown IDs resolve
-   * `false`.
+   * `false`. A `chat` origin must equal the Approval's originating Chat (ADR 0002), else the call resolves `false`
+   * and changes nothing. The Operator can decide every Approval.
    *
-   * On success, in order: stores the decision; applies `allow_conversation` (grant) or `allow_always`
-   * (`ConfigStore.prependPermissionRule` and the live policy); enqueues `approval_resolved`; emits
-   * `approval.resolved`; calls `deps.wake` for every call waiting on the Approval.
+   * On success, in order: stores the decision before the first `await`, so a concurrent call sees it; applies
+   * `allow_conversation` (grant) or `allow_always` (`ConfigStore.prependPermissionRule` and the live policy);
+   * enqueues `approval_resolved`; emits `approval.resolved`; calls `deps.wake` for every call waiting on the Approval.
    */
   readonly decide: (
     approvalId: string,
-    resolution: ApprovalResolution
+    resolution: ApprovalResolution,
+    origin: DecisionOrigin
   ) => Promise<boolean>;
   /**
    * Resolves every pending Approval of the Run as `cancelled` for `/stop`, with the same side effects as `decide`.
@@ -113,8 +140,8 @@ export interface ApprovalGateDeps {
   readonly secrets: Pick<SecretStore, "redact">;
   readonly outbox: Pick<DeliveryOutbox, "enqueue">;
   /**
-   * Wakes the parked calls with these keys, for example through `harness.signal`. Called after the decision is
-   * stored, so a woken call that runs `check` sees it.
+   * Wakes the parked calls, for example through `harness.signal(callKey, signal, signalKey, ...)`. Called after the
+   * decision is stored, so a woken call that runs `check` sees it.
    */
-  readonly wake: (callKeys: readonly string[]) => Promise<void>;
+  readonly wake: (calls: readonly ParkedCall[]) => Promise<void>;
 }

@@ -111,9 +111,20 @@ export class InMemoryWebhookIngress implements WebhookIngress {
     request: IngressRequest
   ): Promise<WebhookResponse> => {
     const agent = this.#deps.agent(agentName);
-    const secretName = await agent?.triggers.webhookTokenSecret(triggerId);
 
-    if (agent === undefined || secretName === undefined) {
+    if (agent === undefined) {
+      return status(404);
+    }
+
+    const triggers = agent.state() === "running" ? agent.triggers() : undefined;
+
+    if (triggers === undefined) {
+      return status(503);
+    }
+
+    const secretName = await triggers.webhookTokenSecret(triggerId);
+
+    if (secretName === undefined) {
       return status(404);
     }
 
@@ -130,12 +141,8 @@ export class InMemoryWebhookIngress implements WebhookIngress {
       return status(401);
     }
 
-    if (agent.state() !== "running") {
-      return status(503);
-    }
-
     const { authorization: _authorization, ...headers } = request.headers;
-    await agent.triggers.acceptWebhookEvent(triggerId, {
+    await triggers.acceptWebhookEvent(triggerId, {
       body: request.body,
       headers,
       receivedAt: Date.now(),

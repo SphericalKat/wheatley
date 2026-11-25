@@ -28,10 +28,13 @@ export interface IngressRequest {
 /** What the Ingress needs to know about one Agent. */
 export interface IngressAgent {
   readonly state: () => AgentState;
-  readonly triggers: Pick<
-    TriggerRuntime,
-    "webhookTokenSecret" | "acceptWebhookEvent"
-  >;
+  /**
+   * The Agent's Trigger runtime while the Agent is `running`, else `undefined`: a degraded Agent can lack the module,
+   * and a stopped Agent has closed `agent.sqlite`.
+   */
+  readonly triggers: () =>
+    | Pick<TriggerRuntime, "webhookTokenSecret" | "acceptWebhookEvent">
+    | undefined;
 }
 
 /** What the Ingress needs from the Deployment. */
@@ -47,10 +50,11 @@ export interface WebhookIngressDeps {
  *
  * Responses of `handle` for `POST /webhooks/<agent>/<trigger-id>`, checked in this order:
  * 1. `405` for a method other than `POST`.
- * 2. `404` for an unknown Agent, unknown Trigger, or a Trigger that is not an active `webhook` Trigger.
- * 3. `401` for a missing or wrong `Authorization: Bearer <token>` (compared with `crypto.timingSafeEqual`).
- * 4. `503` if the Agent is not `running`.
- * 5. `202` after `acceptWebhookEvent` resolved.
+ * 2. `404` for an unknown Agent.
+ * 3. `503` if the Agent is not `running` or has no Trigger runtime.
+ * 4. `404` for an unknown Trigger, or a Trigger that is not an active `webhook` Trigger.
+ * 5. `401` for a missing or wrong `Authorization: Bearer <token>` (compared with `crypto.timingSafeEqual`).
+ * 6. `202` after `acceptWebhookEvent` resolved.
  *
  * `POST /frontends/<agent>/<binding-id>/<suffix>` goes to the registered handler, which verifies the request
  * itself; `404` if none is registered, `503` if the Agent is not `running`.

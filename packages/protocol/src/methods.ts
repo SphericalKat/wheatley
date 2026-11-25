@@ -121,6 +121,27 @@ export const methods = {
     Type.Object({ approvals: Type.Array(PendingApprovalSchema) })
   ),
 
+  /**
+   * Sends a one-shot prompt for `wheatley ask`. Resolves once the Agent stored the message and its Run. The Run uses
+   * the CLI Chat's current Conversation (`cli` binding, Chat `default`), as `chat.send` does, so the dashboard shows it.
+   *
+   * `interactive: false` (for a CLI without a TTY) makes the gate deny every `ask` Tool without a prompt (ADR 0011).
+   * The client matches the reply by `runId`: the `chat.message` event with that `runId`, then `run.finished`.
+   */
+  "chat.ask": method(
+    params({
+      agent: AgentNameSchema,
+      attachments: Type.Optional(Type.Array(AttachmentUploadSchema)),
+      interactive: Type.Boolean(),
+      senderDisplayName: Type.Optional(Type.String({ maxLength: 200 })),
+      text: Type.String({ minLength: 1 }),
+    }),
+    Type.Object({
+      conversationId: IdSchema,
+      messageId: IdSchema,
+      runId: IdSchema,
+    })
+  ),
   "chat.command": method(
     params({
       agent: AgentNameSchema,

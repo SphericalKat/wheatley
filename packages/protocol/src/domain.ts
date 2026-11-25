@@ -28,6 +28,13 @@ export type Duration = Static<typeof DurationSchema>;
 /** A count of zero or more. */
 export const Count = Type.Integer({ minimum: 0 });
 
+/** A secret name in `secrets.yaml` or the environment, never its value. */
+export const SecretNameSchema = Type.String({
+  pattern: "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
+});
+
+export type SecretName = Static<typeof SecretNameSchema>;
+
 /** The Supervisor state of an Agent. */
 export const AgentStateSchema = Type.Union([
   Type.Literal("starting"),
@@ -126,12 +133,15 @@ export type PermissionAction = Static<typeof PermissionActionSchema>;
 
 /**
  * One Permission Policy rule. `tool` is a canonical Tool name with optional `*` wildcards, for example `shell`,
- * `notes:*`, or `mcp:github:*`.
+ * `notes:*`, `mcp:github:*`, or `mcp:context7:resolve-library-id`. Matching is case-sensitive, because MCP Tool names
+ * can contain uppercase letters.
  */
 export const PermissionRuleSchema = Type.Object(
   {
     action: PermissionActionSchema,
-    tool: Type.String({ pattern: String.raw`^[a-z0-9_*][a-z0-9_*:\-]*$` }),
+    tool: Type.String({
+      pattern: String.raw`^[A-Za-z0-9_*.][A-Za-z0-9_*.:\-]*$`,
+    }),
   },
   { additionalProperties: false }
 );
@@ -278,7 +288,7 @@ export const AttachmentInfoSchema = Type.Object({
 
 export type AttachmentInfo = Static<typeof AttachmentInfoSchema>;
 
-/** A file that a client uploads with `chat.send`. `data` is base64. */
+/** A file that a client uploads with `chat.send` or `chat.ask`. `data` is base64. */
 export const AttachmentUploadSchema = Type.Object(
   {
     data: Type.String({ contentEncoding: "base64" }),
@@ -351,7 +361,7 @@ export const TriggerScheduleSchema = Type.Union([
     {
       kind: Type.Literal("webhook"),
       /** The name of the Bearer token secret in `secrets.yaml`. */
-      tokenSecret: Type.String({ minLength: 1 }),
+      tokenSecret: SecretNameSchema,
     },
     { additionalProperties: false }
   ),
@@ -512,13 +522,6 @@ export const SecretSourceSchema = Type.Union([
 ]);
 
 export type SecretSource = Static<typeof SecretSourceSchema>;
-
-/** A secret name in `secrets.yaml` or the environment, never its value. */
-export const SecretNameSchema = Type.String({
-  pattern: "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
-});
-
-export type SecretName = Static<typeof SecretNameSchema>;
 
 /** A secret and the config entries that refer to it. */
 export const SecretInfoSchema = Type.Object({

@@ -126,7 +126,7 @@ export class InMemoryConfigStore implements ConfigStore {
     const agentConfig = this.#config.agents[agent];
 
     if (agentConfig === undefined) {
-      throw new SeamError("not_found", `Unknown Agent: ${agent}`);
+      throw new SeamError("agent_not_found", `Unknown Agent: ${agent}`);
     }
 
     const policy = agentConfig.permissionPolicy ?? [];

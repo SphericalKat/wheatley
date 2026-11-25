@@ -1,4 +1,8 @@
-import { decode, DeploymentConfigSchema } from "@wheatley/protocol";
+import {
+  decode,
+  DeploymentConfigSchema,
+  TriggerInputSchema,
+} from "@wheatley/protocol";
 import { describe, expect, it } from "vitest";
 
 const validConfig = {
@@ -68,9 +72,45 @@ describe("DeploymentConfigSchema", () => {
     expect(decoded).toMatchObject({ ok: false });
   });
 
+  it("accepts rules for MCP Tool names with uppercase letters, dots, and hyphens", () => {
+    const decoded = decode(DeploymentConfigSchema, {
+      ...validConfig,
+      agents: {
+        home: {
+          ...validConfig.agents.home,
+          permissionPolicy: [
+            { action: "allow", tool: "mcp:context7:resolve-library-id" },
+            { action: "ask", tool: "mcp:github:getIssue" },
+            { action: "deny", tool: "mcp:browser:browser.*" },
+          ],
+        },
+      },
+    });
+
+    expect(decoded.ok).toBe(true);
+  });
+
   it("rejects an unsupported config version", () => {
     expect(
       decode(DeploymentConfigSchema, { ...validConfig, version: 2 })
     ).toMatchObject({ ok: false });
+  });
+});
+
+const webhookTrigger = (tokenSecret: string) => ({
+  name: "CI",
+  prompt: "Summarize",
+  schedule: { kind: "webhook", tokenSecret },
+  target: { bindingId: "tg", chatId: "1" },
+});
+
+describe("TriggerInputSchema", () => {
+  it("accepts a webhook token secret only with a valid secret name", () => {
+    expect(decode(TriggerInputSchema, webhookTrigger("HOOK_TOKEN")).ok).toBe(
+      true
+    );
+    expect(decode(TriggerInputSchema, webhookTrigger("my-token")).ok).toBe(
+      false
+    );
   });
 });

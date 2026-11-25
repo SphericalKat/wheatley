@@ -62,7 +62,10 @@ export interface DeliveryOutbox {
    * Resolves `false` if the entry is not `failed`.
    */
   readonly retry: (deliveryId: string) => Promise<boolean>;
-  /** Moves a `failed` entry to `dismissed` and emits `delivery.cleared`. Resolves `false` if it is not `failed`. */
+  /**
+   * Moves a `failed` entry to `dismissed` and emits `delivery.cleared` (`dismissed`). Resolves `false` if it is not
+   * `failed`.
+   */
   readonly dismiss: (deliveryId: string) => Promise<boolean>;
 }
 
@@ -73,6 +76,9 @@ export interface DeliveryOutboxDeps {
    * unknown binding is a permanent error.
    */
   readonly deliver: (bindingId: string, delivery: Delivery) => Promise<void>;
-  /** Called once per confirmed entry with a `sourceConversationId`, after the entry is marked `delivered`. */
+  /**
+   * Called once per confirmed entry with a `sourceConversationId`, after the entry is marked `delivered`. A rejection
+   * is logged; the entry stays `delivered` and the outbox does not call `deliver` or `onDelivered` again for it.
+   */
   readonly onDelivered: (entry: OutboxEntry) => Promise<void>;
 }

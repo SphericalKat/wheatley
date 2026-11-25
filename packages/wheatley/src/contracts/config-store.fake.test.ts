@@ -74,7 +74,7 @@ describe("InMemoryConfigStore", () => {
       async () => await store.prependPermissionRule("nobody", rule)
     );
 
-    expect(error.code).toBe("not_found");
+    expect(error.code).toBe("agent_not_found");
   });
 });
 

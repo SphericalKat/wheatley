@@ -32,6 +32,9 @@ export interface MemorySearchOptions {
  * The Memory of one Agent: Markdown files under `agents/<name>/memory/` as the source of truth, plus a derived FTS5
  * index and Conversation archive in `agent.sqlite` (ADR 0009). Names are `MEMORY` (for `MEMORY.md`) or a slug that
  * matches `^[a-z0-9][a-z0-9-]{0,63}$` (for `<slug>.md`).
+ *
+ * The Memory module gets a `MaintenanceRunner` from the core Agent as a dependency and starts consolidation Runs
+ * through it, with the `memory.consolidation.model` override.
  */
 export interface MemoryStore {
   /** Reads `MEMORY.md` for injection. The caller freezes the result until the next Conversation or `/compact`. */
@@ -67,4 +70,12 @@ export interface MemoryStore {
   readonly purgeConversation: (conversationId: string) => Promise<number>;
   /** Rebuilds the index from the files on disk. Resolves with the number of indexed files. */
   readonly reindex: () => Promise<number>;
+  /**
+   * The prompt of the silent pre-compaction flush turn, or `undefined` to skip the turn.
+   *
+   * The core Agent calls it before every compaction, from its pi-durable `beforeCompact` hook and for `/compact`. It
+   * runs the prompt as one turn in the Conversation that compacts, with the Memory Tools, and delivers nothing to the
+   * Chat. The model saves facts to Memory with the Memory Tools before the summary replaces the old messages.
+   */
+  readonly compactionFlushPrompt: () => string | undefined;
 }

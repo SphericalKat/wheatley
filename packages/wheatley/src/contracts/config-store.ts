@@ -37,8 +37,9 @@ export interface SecretStore extends SecretReader {
   /** Returns one value for `secrets.reveal`. Throws `SeamError("not_found")` for an unknown name. */
   readonly reveal: (name: string) => Promise<string>;
   /**
-   * Replaces every occurrence of every secret value in `text` with `[redacted]`. Approvals use it for `inputPreview`
-   * and the logger for records. Values shorter than 4 characters are not replaced.
+   * Replaces every occurrence of every secret value in `text` with `[redacted]`, and every occurrence of its
+   * JSON-escaped form (`JSON.stringify(value)` without the quotes), so it also works on JSON text. Approvals use it for
+   * `inputPreview` and the logger for records. Values shorter than 4 characters are not replaced.
    */
   readonly redact: (text: string) => string;
 }
@@ -67,7 +68,7 @@ export interface ConfigStore {
    * Prepends `rule` to the Agent's `permissionPolicy` for an `allow_always` Approval (ADR 0011).
    *
    * Has no revision check: it reads the current file, patches it, and writes it in one serialized step. Does nothing
-   * if the first rule already equals `rule`. Throws `SeamError("not_found")` for an unknown Agent.
+   * if the first rule already equals `rule`. Throws `SeamError("agent_not_found")` for an unknown Agent.
    */
   readonly prependPermissionRule: (
     agent: string,

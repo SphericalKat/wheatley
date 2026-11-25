@@ -18,6 +18,10 @@ import type { Clock } from "./module.js";
 /** The default `MEMORY.md` character cap. */
 export const DEFAULT_MEMORY_MAX_CHARS = 4000;
 
+/** The flush prompt of the fake. */
+export const FAKE_FLUSH_PROMPT =
+  "Save durable facts from this Conversation to Memory before it compacts.";
+
 const MEMORY = "MEMORY";
 const NAME = /^(?:MEMORY|[a-z0-9][a-z0-9-]{0,63})$/u;
 
@@ -47,13 +51,16 @@ export class InMemoryMemoryStore implements MemoryStore {
   readonly #archive: ArchivedMessage[] = [];
   readonly #maxChars: number;
   readonly #clock: Clock;
+  readonly #flushPrompt: string | undefined;
 
   constructor(
     maxChars: number = DEFAULT_MEMORY_MAX_CHARS,
-    clock: Clock = systemClock
+    clock: Clock = systemClock,
+    flushPrompt: string | undefined = FAKE_FLUSH_PROMPT
   ) {
     this.#maxChars = maxChars;
     this.#clock = clock;
+    this.#flushPrompt = flushPrompt;
   }
 
   readonly snapshot = async (): Promise<MemorySnapshot> => {
@@ -205,4 +212,6 @@ export class InMemoryMemoryStore implements MemoryStore {
 
     return this.#files.size;
   };
+
+  readonly compactionFlushPrompt = (): string | undefined => this.#flushPrompt;
 }

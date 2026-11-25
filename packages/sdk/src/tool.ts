@@ -2,7 +2,11 @@ import type { JsonValue } from "./json.js";
 import type { Logger } from "./logger.js";
 import type { SchemaInput } from "./schema.js";
 
-/** One block of Tool output. The shape matches MCP `CallToolResult` content, so MCP results pass through. */
+/**
+ * One block of Tool output. `text` and `image` have the shape of the MCP `CallToolResult` blocks of the same type, so
+ * they pass through. The MCP provider converts every other MCP block (`audio`, `resource_link`, embedded `resource`)
+ * and `structuredContent` to `text` blocks.
+ */
 export type ToolContent =
   | { readonly type: "text"; readonly text: string }
   | {
@@ -28,6 +32,11 @@ export interface ToolContext {
   readonly agentName: string;
   readonly conversationId: string;
   readonly runId: string;
+  /**
+   * The Chat that started the Run, or `null` for a Run without a Chat (Trigger and maintenance Runs). Tools that act
+   * on "this Chat", such as `schedule_trigger`, use it as the target.
+   */
+  readonly chat: { readonly bindingId: string; readonly chatId: string } | null;
   /** Stable across retries of the same call. Use it as an idempotency key for external side effects. */
   readonly toolCallId: string;
   /** The working directory of the Agent. */
