@@ -162,8 +162,8 @@ export interface PiAdapter {
     requestId: string
   ) => Promise<string>;
   /**
-   * Adds `text` to the Conversation's model context without a Run, for example a delivered Trigger result. The model
-   * sees it as a user message from the next model request. A busy Conversation places it at the next boundary.
+   * Adds `text` to the Conversation's model context without a Run. The model sees it as a user message from the next
+   * model request. A busy Conversation places it at the next boundary.
    * `requestId` deduplicates as for `submit`.
    */
   readonly addContext: (

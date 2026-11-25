@@ -33,7 +33,6 @@ import { SeamError } from "../../contracts/errors.js";
 import type {
   AgentExtensions,
   ExtensionCatalog,
-  ToolDescriptor,
   ToolProvider,
 } from "../../contracts/extension-catalog.js";
 import type {
@@ -58,6 +57,7 @@ import { ConcurrencyGate } from "../concurrency-gate.js";
 import { SerialQueue } from "../config/atomic-file.js";
 import { CLI_BINDING_ID } from "../config/validate.js";
 import { errorMessage } from "../error-message.js";
+import { toolErrorResult, withExtraTools } from "../tool-routing.js";
 import { AgentStore, CORE_NAMESPACE, coreMigrations } from "./agent-store.js";
 import type { RunDelivery } from "./agent-store.js";
 import { openPiAdapter } from "./pi-adapter.js";
@@ -85,11 +85,14 @@ export const DEFAULT_APPROVAL_TIMEOUT = "15m";
 /** The default limit of concurrent Runs of one Agent without `maxConcurrentRuns`. */
 export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
 
-/** The time limit of one Tool call (ADR 0006). An Approval wait happens before the call and does not count. */
+/** The time limit of one Tool call (ADR 0006). The Approval wait and the wait for a Tool slot do not count. */
 export const TOOL_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** The most Tool calls that one Agent runs at the same time (ADR 0006). Later calls wait for a slot. */
 export const MAX_CONCURRENT_TOOL_CALLS = 8;
+
+/** The one `ConcurrencyGate` key of the Agent's Tool slots: all Tools of the Agent share the limit. */
+const TOOL_SLOT_KEY = "tools";
 
 /** The file name of the pi-durable storage inside the Agent folder (ADR 0001). */
 export const HARNESS_FILE = "harness.sqlite";
@@ -124,56 +127,6 @@ const deliveryFor = (
   isCliChat(chat)
     ? null
     : { bindingId: chat.bindingId, chatId: chat.chatId, source };
-
-/**
- * Adds module Tools after the catalog Tools. Throws if a module Tool has the name of another Tool, because the model
- * could not tell the two apart.
- */
-const withModuleTools = (
-  extensions: AgentExtensions,
-  providers: readonly ToolProvider[]
-): AgentExtensions => {
-  if (providers.length === 0) {
-    return extensions;
-  }
-
-  const names = new Set(extensions.tools().map((tool) => tool.name));
-
-  for (const provider of providers) {
-    for (const tool of provider.tools()) {
-      if (names.has(tool.name)) {
-        throw new Error(`Two providers offer the Tool ${tool.name}`);
-      }
-
-      names.add(tool.name);
-    }
-  }
-
-  const owner = (name: string): ToolProvider | undefined =>
-    providers.find((provider) =>
-      provider.tools().some((tool) => tool.name === name)
-    );
-
-  return {
-    ...extensions,
-    executeTool: async (name, input, ctx) => {
-      const provider = owner(name);
-
-      return provider === undefined
-        ? await extensions.executeTool(name, input, ctx)
-        : await provider.execute(name, input, ctx);
-    },
-    tools: () => [
-      ...extensions.tools(),
-      ...providers.flatMap((provider) => provider.tools()),
-    ],
-  };
-};
-
-/** A Tool list that the Agent replaces once its modules mount. */
-interface ToolListRef {
-  tools: () => readonly ToolDescriptor[];
-}
 
 /** What hosted modules get from the Agent besides their own context. */
 export interface AgentHost {
@@ -229,17 +182,22 @@ export interface AgentOptions {
   readonly approvals?: ApprovalGateFactory;
   /** The outbox for replies to Chats other than the CLI Chat. Without it, the Agent logs and drops such replies. */
   readonly outbox?: Pick<DeliveryOutbox, "enqueue">;
-  /** The Memory snapshot, the pre-compaction flush, and the Conversation archive (ADR 0009). */
-  readonly memory?: Pick<
-    MemoryStore,
-    "snapshot" | "compactionFlushPrompt" | "archive"
-  >;
+  /** The Memory snapshot prompt, the pre-compaction flush, and the Conversation archive (ADR 0009). */
+  readonly memory?: Pick<MemoryStore, "compactionFlushPrompt" | "archive"> & {
+    /**
+     * The Memory section of the system prompt from the current `MEMORY.md`, or an empty string. The Agent freezes it in
+     * the Conversation instructions at Conversation start and after `/compact`.
+     */
+    readonly snapshotPrompt: () => Promise<string>;
+  };
   /** True if a Trigger Run called `suppress_delivery`. */
   readonly isDeliverySuppressed?: (runId: string) => Promise<boolean>;
   readonly modules?: readonly HostedModule[];
   /**
-   * Applies the migrations of every module to `agent.sqlite`, for example with a pre-migration backup. It rejects if
-   * the Agent must not start, and the Supervisor then marks the Agent `degraded`. The default runs them directly.
+   * Applies the migrations of every module to `agent.sqlite`, for example with a pre-migration backup. The default runs
+   * them directly.
+   *
+   * Errors: a rejection stops `Agent.open`, which closes `agent.sqlite` and rejects with the same error.
    */
   readonly migrate?: (
     db: DatabaseSync,
@@ -414,15 +372,13 @@ export class Agent {
 
       const gateFactory = options.approvals ?? createPolicyOnlyGate;
 
-      // Module Tools join the Tool list after the modules mount, so the default action reads the Agent's merged list.
-      const merged: ToolListRef = { tools: extensions.tools };
-
       const gate = gateFactory({
         agentName: options.name,
         clock: options.clock,
         db,
+        // Module Tools join the Tool list once the modules mount, so this reads the Agent's list when it exists.
         defaultAction: (toolName) =>
-          merged
+          (agent === undefined ? extensions : agent.#extensions)
             .tools()
             .find((tool) => tool.name === toolName && tool.source === "builtin")
             ?.defaultAction,
@@ -441,7 +397,6 @@ export class Agent {
         await extensions.close();
       });
       await agent.#mountModules();
-      merged.tools = agent.#extensions.tools;
 
       harness.adapter = await agent.#openPi();
       await agent.#startModules();
@@ -717,7 +672,7 @@ export class Agent {
       this.#pendingStarts.push(mounted.start);
     }
 
-    this.#extensions = withModuleTools(this.#extensions, moduleTools);
+    this.#extensions = withExtraTools(this.#extensions, moduleTools);
   };
 
   /**
@@ -808,17 +763,10 @@ export class Agent {
   };
 
   readonly #instructions = async (): Promise<string | undefined> => {
-    const snapshot =
-      this.#options.memory === undefined
-        ? undefined
-        : await this.#options.memory.snapshot();
-
     const parts = [
       this.#options.config.instructions,
       this.#extensions.skillCatalogPrompt(),
-      snapshot === undefined || snapshot.text === ""
-        ? undefined
-        : `<memory>\n${snapshot.text}\n</memory>`,
+      await this.#options.memory?.snapshotPrompt(),
     ].filter(
       (part): part is string => part !== undefined && part.trim() !== ""
     );
@@ -1362,18 +1310,22 @@ export class Agent {
       });
     }
 
-    // ADR 0006: every Tool call runs within a per-call time limit and the Agent's Tool concurrency limit.
-    const signals = [
+    // ADR 0006: every Tool call runs within the Agent's Tool concurrency limit and a per-call time limit. The time
+    // limit starts once the call holds a slot, so the wait for a slot does not count.
+    const cancel = AbortSignal.any([
       signal,
-      AbortSignal.timeout(TOOL_TIMEOUT_MS),
       ...(run === undefined ? [] : [run.controller.signal]),
-    ];
+    ]);
 
-    const toolSignal = AbortSignal.any(signals);
     let result: ToolResult;
 
     try {
-      const lease = await this.#toolSlots.acquire("tools", toolSignal);
+      const lease = await this.#toolSlots.acquire(TOOL_SLOT_KEY, cancel);
+
+      const toolSignal = AbortSignal.any([
+        cancel,
+        AbortSignal.timeout(TOOL_TIMEOUT_MS),
+      ]);
 
       try {
         result = await this.#extensions.executeTool(call.toolName, call.input, {
@@ -1390,10 +1342,7 @@ export class Agent {
         lease.release();
       }
     } catch (error) {
-      result = {
-        content: [{ text: errorMessage(error), type: "text" }],
-        isError: true,
-      };
+      result = toolErrorResult(errorMessage(error));
     }
 
     if (runId !== "") {

@@ -37,12 +37,9 @@ const packageRoot = path.resolve(import.meta.dirname, "..");
 const ownManifest = await readManifest(packageRoot);
 const target = path.join(packageRoot, "dist", "node_modules");
 
-await rm(target, { force: true, recursive: true });
-
-for (const name of VENDORED) {
-  // oxlint-disable-next-line no-await-in-loop -- Two small packages copy one after the other.
+/** Copies the compiled `dist/` and a minimal manifest of the workspace package `name` into `target`. */
+const vendor = async (name: string): Promise<void> => {
   const source = await realpath(path.join(packageRoot, "node_modules", name));
-  // oxlint-disable-next-line no-await-in-loop -- See above.
   const manifest = await readManifest(source);
   const dir = path.join(target, name);
 
@@ -57,14 +54,11 @@ for (const name of VENDORED) {
     }
   }
 
-  // oxlint-disable-next-line no-await-in-loop -- See above.
   await mkdir(dir, { recursive: true });
-  // oxlint-disable-next-line no-await-in-loop -- See above.
   await cp(path.join(source, "dist"), path.join(dir, "dist"), {
     filter: (file) => !file.endsWith(".map"),
     recursive: true,
   });
-  // oxlint-disable-next-line no-await-in-loop -- See above.
   await writeFile(
     path.join(dir, "package.json"),
     `${JSON.stringify(
@@ -81,6 +75,10 @@ for (const name of VENDORED) {
       2
     )}\n`
   );
-}
+};
+
+await rm(target, { force: true, recursive: true });
+
+await Promise.all(VENDORED.map(vendor));
 
 process.stdout.write(`Vendored ${VENDORED.join(" and ")} into ${target}\n`);

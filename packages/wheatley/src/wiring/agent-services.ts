@@ -12,7 +12,7 @@ import type { HostedModule } from "../core/agent/agent.js";
 import type { ApprovalGateFactory } from "../core/agent/policy-gate.js";
 import type { AgentServices } from "../core/deployment.js";
 import type { EventBus } from "../core/events.js";
-import { memoryModule } from "../memory/module.js";
+import { formatSnapshotPrompt, memoryModule } from "../memory/module.js";
 import type { MemoryApi } from "../memory/module.js";
 import type { OpsApi } from "../ops/module.js";
 import { deliveryOutboxModule, triggersModule } from "../triggers/module.js";
@@ -189,7 +189,8 @@ export const createAgentServices =
           await requireMemory().store.archive(message);
         },
         compactionFlushPrompt: () => apis.memory?.store.compactionFlushPrompt(),
-        snapshot: async () => await requireMemory().store.snapshot(),
+        snapshotPrompt: async () =>
+          formatSnapshotPrompt(await requireMemory().store.snapshot()),
       },
       migrate:
         migrateAgent === undefined

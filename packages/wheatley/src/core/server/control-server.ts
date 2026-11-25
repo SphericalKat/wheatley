@@ -10,6 +10,7 @@ import type { Logger } from "@wheatley/sdk";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 
+import { errorMessage } from "../error-message.js";
 import type { EventBus } from "../events.js";
 import type { Router } from "../rpc/router.js";
 import { Connection } from "./connection.js";
@@ -169,7 +170,7 @@ export class ControlServer {
       }
     } catch (error) {
       this.#options.log.warn("A dashboard file could not be served", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
 

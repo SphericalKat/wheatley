@@ -24,7 +24,12 @@ export interface WheatleyOptions extends Omit<
 
 /** A running Wheatley daemon with its Deployment-scoped modules. */
 export interface WheatleyDaemon extends Daemon {
+  /**
+   * The Webhook Ingress. It listens only if `webhooks` in `config.yaml` enables it, and `close` stops it after every
+   * Agent stops.
+   */
   readonly ingress: WebhookIngressModuleApi;
+  /** The ops module: migrations with a pre-migration backup, the backup list, and the dashboard assets folder. */
   readonly ops: OpsApi;
 }
 

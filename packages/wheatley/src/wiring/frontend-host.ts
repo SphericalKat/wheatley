@@ -38,7 +38,13 @@ export const FRONTENDS_DIR = "frontends";
 /** The folder inside the Agent folder for staged attachments of every binding. */
 export const STAGING_DIR = "staging";
 
-/** Mounts a Frontend webhook route on the Webhook Ingress. */
+/**
+ * Mounts a Frontend webhook route on the Webhook Ingress at `/frontends/<agent>/<bindingId>/<pathSuffix>`. The returned
+ * route unmounts it.
+ *
+ * Errors: throws `SeamError` `invalid_name` if `pathSuffix` is empty, contains `..`, or contains a character
+ * outside `A-Z a-z 0-9 . _ ~ - /`. Throws `conflict` if the path is already mounted. The host passes no function if the Webhook Ingress is disabled.
+ */
 export type RegisterFrontendRoute = (
   agent: string,
   bindingId: string,

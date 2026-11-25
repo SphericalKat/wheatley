@@ -25,6 +25,7 @@ export interface ApprovalHost {
   readonly clock: Clock;
   /** The open `agent.sqlite` handle, with the migrations of every module applied. The gate stores Approvals in it. */
   readonly db: DatabaseSync;
+  /** The Agent's logger. The gate logs failures that it does not return to the caller, for example a failed wake. */
   readonly log: Logger;
 }
 

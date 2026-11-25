@@ -9,6 +9,7 @@ import type {
   ToolProvider,
 } from "../contracts/extension-catalog.js";
 import { errorMessage } from "../core/error-message.js";
+import { findToolOwner, toolErrorResult } from "../core/tool-routing.js";
 import { createDiscordFrontend } from "../frontends/discord/module.js";
 import { createSlackFrontend } from "../frontends/slack/slack-frontend.js";
 import { createTelegramFrontend } from "../frontends/telegram/frontend.js";
@@ -37,11 +38,6 @@ export const builtinFrontends = (): readonly Frontend[] => [
   createDiscordFrontend(),
 ];
 
-const toolErrorResult = (text: string) => ({
-  content: [{ text, type: "text" as const }],
-  isError: true,
-});
-
 /** Closes a provider and logs a failure, so one provider cannot stop the others from closing. */
 const closeQuietly = async (
   provider: ToolProvider,
@@ -67,11 +63,6 @@ const mergeProviders = (
 ): AgentExtensions => {
   const providers: readonly ToolProvider[] = [builtin, plugins, mcp, skills];
 
-  const owner = (name: string): ToolProvider | undefined =>
-    providers.find((provider) =>
-      provider.tools().some((tool) => tool.name === name)
-    );
-
   return {
     close: async () => {
       await Promise.all(
@@ -81,7 +72,7 @@ const mergeProviders = (
       );
     },
     executeTool: async (name, toolInput, ctx) =>
-      (await owner(name)?.execute(name, toolInput, ctx)) ??
+      (await findToolOwner(providers, name)?.execute(name, toolInput, ctx)) ??
       toolErrorResult(`Unknown Tool: ${name}`),
     frontends: () =>
       new Map(

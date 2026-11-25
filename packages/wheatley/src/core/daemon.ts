@@ -37,13 +37,19 @@ export interface DaemonOptions extends DeploymentOptions {
   readonly staticDir?: string;
   /**
    * Attaches Deployment-scoped services, such as the Webhook Ingress, after the Deployment reads `config.yaml` and
-   * before any Agent starts. The daemon calls the returned `close` after it stops every Agent.
+   * before any Agent starts.
+   *
+   * Ordering: the daemon calls the returned `close` after it stops every Agent, also if a later start step fails.
+   *
+   * Errors: if `attach` rejects, `startDaemon` closes the Deployment and rejects with the same error. `attach` must
+   * stop the services that it started before it rejects.
    */
   readonly attach?: (deployment: Deployment) => Promise<AttachedServices>;
 }
 
 /** Deployment-scoped services that `DaemonOptions.attach` started. */
 export interface AttachedServices {
+  /** Stops the services. The daemon calls it once, after every Agent stopped. */
   readonly close: () => Promise<void>;
 }
 
@@ -61,6 +67,9 @@ export interface Daemon {
 /**
  * Starts a Deployment and its Control Server. The router sends Deployment methods to the Deployment, and Agent methods
  * to the core handlers and hosted modules of the named Agent.
+ *
+ * Errors: rejects if `attach`, the Agent start, or the Control Server listener fails. The Deployment and the attached
+ * services are closed before the promise rejects.
  */
 export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
   const deployment = await Deployment.create(options);
@@ -93,31 +102,32 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
       ),
   });
 
-  const attached = await options.attach?.(deployment);
+  let attached: AttachedServices | undefined;
+  let server: ControlServer;
 
   try {
+    attached = await options.attach?.(deployment);
     await deployment.start();
+    server = await ControlServer.listen({
+      allowedOrigins: settings?.allowedOrigins ?? [],
+      events: deployment.events,
+      host: options.host ?? settings?.host ?? DEFAULT_DAEMON_HOST,
+      log: deployment.logs.logger("control-server"),
+      port: options.port ?? settings?.port ?? DEFAULT_DAEMON_PORT,
+      router,
+      staticDir: options.staticDir,
+      socketPath:
+        options.socketPath === null
+          ? undefined
+          : (options.socketPath ??
+            path.join(options.homeDir, DAEMON_SOCKET_FILE)),
+      version: options.version,
+    });
   } catch (error) {
     await deployment.close();
     await attached?.close();
     throw error;
   }
-
-  const server = await ControlServer.listen({
-    allowedOrigins: settings?.allowedOrigins ?? [],
-    events: deployment.events,
-    host: options.host ?? settings?.host ?? DEFAULT_DAEMON_HOST,
-    log: deployment.logs.logger("control-server"),
-    port: options.port ?? settings?.port ?? DEFAULT_DAEMON_PORT,
-    router,
-    staticDir: options.staticDir,
-    socketPath:
-      options.socketPath === null
-        ? undefined
-        : (options.socketPath ??
-          path.join(options.homeDir, DAEMON_SOCKET_FILE)),
-    version: options.version,
-  });
 
   const drainMs = parseDuration(
     settings?.drainTimeout ?? DEFAULT_DRAIN_TIMEOUT
