@@ -10,10 +10,12 @@ import type {
   Trigger,
   TriggerInput,
   TriggerSchedule,
+  WebhooksConfig,
 } from "@wheatley/protocol";
 import { useState } from "react";
 
 import { useRpcQuery, useServices, useStore } from "../hooks.js";
+import { webhookEndpoint } from "../models/triggers.js";
 import { errorMessage } from "../store.js";
 import {
   ActionButton,
@@ -359,14 +361,75 @@ const describeSchedule = (schedule: TriggerSchedule): string => {
   return `webhook, token ${schedule.tokenSecret}`;
 };
 
+/** A value in monospace with a button that copies it to the clipboard. */
+const CopyableValue = ({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}) => {
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-zinc-500">{label}</span>
+      <code className="rounded bg-zinc-100 px-1.5 py-0.5 break-all select-all dark:bg-zinc-950">
+        {value}
+      </code>
+      <ActionButton
+        onClick={async () => {
+          setError(null);
+
+          try {
+            await navigator.clipboard.writeText(value);
+          } catch (error_) {
+            setError(errorMessage(error_));
+          }
+        }}
+        title={`Copy ${label}`}
+      >
+        Copy
+      </ActionButton>
+      <ErrorText error={error} />
+    </span>
+  );
+};
+
+const WebhookTarget = ({
+  agent,
+  triggerId,
+  webhooks,
+}: {
+  readonly agent: string;
+  readonly triggerId: string;
+  readonly webhooks: WebhooksConfig | undefined;
+}) => {
+  const { path, url } = webhookEndpoint(agent, triggerId, webhooks);
+
+  return (
+    <div className="space-y-1">
+      <CopyableValue label="POST" value={url ?? path} />
+      {url === null ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          The Webhook Ingress is off. Set webhooks.enabled to true in
+          config.yaml.
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
 const TriggerRow = ({
   agent,
   bindings,
   trigger,
+  webhooks,
 }: {
   readonly agent: string;
   readonly bindings: readonly string[];
   readonly trigger: Trigger;
+  readonly webhooks: WebhooksConfig | undefined;
 }) => {
   const { client } = useServices();
   const [editing, setEditing] = useState(false);
@@ -396,6 +459,14 @@ const TriggerRow = ({
           {describeSchedule(trigger.schedule)}
         </span>
       </div>
+      <CopyableValue label="Trigger ID" value={trigger.id} />
+      {trigger.schedule.kind === "webhook" ? (
+        <WebhookTarget
+          agent={agent}
+          triggerId={trigger.id}
+          webhooks={webhooks}
+        />
+      ) : null}
       <p className="text-sm whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">
         {trigger.prompt}
       </p>
@@ -617,6 +688,7 @@ export const TriggersView = ({ agent }: { readonly agent: string }) => {
                 bindings={bindings}
                 key={trigger.id}
                 trigger={trigger}
+                webhooks={deploymentConfig?.webhooks}
               />
             ))}
           </ul>
