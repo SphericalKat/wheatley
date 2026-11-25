@@ -1,8 +1,7 @@
 import { createConnection } from "node:net";
 import { parseArgs } from "node:util";
 
-import { daemonSocketPath } from "../core/daemon-socket.js";
-import type { SocketEnv } from "../core/daemon-socket.js";
+import { daemonSocket } from "../core/daemon-socket.js";
 import { errorMessage } from "../core/error-message.js";
 import { createOpsCommands, hostCliDeps } from "../ops/cli.js";
 import type { OpsCliDeps } from "../ops/cli.js";
@@ -47,22 +46,13 @@ export interface CliOverrides {
   readonly ops?: Partial<OpsCliDeps>;
 }
 
-/** Resolves `true` if a daemon accepts connections on the Unix socket of `home`. */
-export const isDaemonRunning = async (
-  home: string,
-  env: SocketEnv
-): Promise<boolean> => {
-  let socketPath: string;
-
-  try {
-    socketPath = daemonSocketPath(home, env);
-  } catch {
-    // No daemon can listen on a home without a usable socket path.
-    return false;
-  }
-
+/**
+ * Resolves `true` if a daemon accepts connections on the Unix socket of `home` (see `daemonSocket`). Resolves `false`
+ * if the connection fails for any reason, for example a missing socket file. It does not reject.
+ */
+export const isDaemonRunning = async (home: string): Promise<boolean> => {
   const { promise, resolve } = Promise.withResolvers<boolean>();
-  const socket = createConnection(socketPath);
+  const socket = createConnection(daemonSocket(home).path);
 
   socket.once("connect", () => {
     socket.destroy();
@@ -91,7 +81,7 @@ const runOpsCommand = async (
   overrides: Partial<OpsCliDeps> | undefined
 ): Promise<number> => {
   const commands = createOpsCommands({
-    ...hostCliDeps(async () => await isDaemonRunning(home, io.env)),
+    ...hostCliDeps(async () => await isDaemonRunning(home)),
     homeDir: home,
     ...overrides,
   });

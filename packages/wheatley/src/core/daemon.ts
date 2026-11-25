@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { parseDuration } from "@wheatley/protocol";
 
 import type { RpcHandlerMap } from "../contracts/module.js";
-import { daemonSocketPath, prepareDaemonSocketDir } from "./daemon-socket.js";
+import { daemonSocket, prepareDaemonSocketDir } from "./daemon-socket.js";
 import { Deployment } from "./deployment.js";
 import type { DeploymentOptions } from "./deployment.js";
 import { createAgentRpc } from "./rpc/agent-handlers.js";
@@ -28,7 +28,7 @@ export interface DaemonOptions extends DeploymentOptions {
   readonly port?: number;
   /** Overrides `daemon.host` of `config.yaml`. */
   readonly host?: string;
-  /** Overrides the Unix socket path. `null` disables the socket. The default comes from `daemonSocketPath`. */
+  /** Overrides the Unix socket path. `null` disables the socket. The default comes from `daemonSocket`. */
   readonly socketPath?: string | null;
   /** The bundled dashboard folder that the Control Server serves on `/`. */
   readonly staticDir?: string;
@@ -61,13 +61,30 @@ export interface Daemon {
   readonly close: () => Promise<void>;
 }
 
+/** The socket path of the options, or `undefined` if they disable the socket. Prepares a default fallback folder. */
+const resolveSocketPath = async (
+  options: DaemonOptions
+): Promise<string | undefined> => {
+  if (options.socketPath !== undefined) {
+    return options.socketPath ?? undefined;
+  }
+
+  const socket = daemonSocket(options.homeDir);
+
+  if (socket.fallbackDir !== undefined) {
+    await prepareDaemonSocketDir(socket.fallbackDir);
+  }
+
+  return socket.path;
+};
+
 /**
  * Starts a Deployment and its Control Server. The router sends Deployment methods to the Deployment, and Agent methods
  * to the core handlers and hosted modules of the named Agent.
  *
- * Errors: rejects if the home has no usable Unix socket path (see `daemonSocketPath`), or if `attach`, the Agent
- * start, or the Control Server listener fails. The Deployment and the attached
- * services are closed before the promise rejects.
+ * Errors: rejects if the fallback socket folder is not owner-only (see `prepareDaemonSocketDir`), or if `attach`, the
+ * Agent start, or the Control Server listener fails. The Deployment and the attached services are closed before the
+ * promise rejects.
  */
 export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
   const deployment = await Deployment.create(options);
@@ -104,16 +121,8 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
   let server: ControlServer;
 
   try {
-    // The socket path is checked before any service or Agent starts, so a home without one fails fast.
-    const socketPath =
-      options.socketPath === null
-        ? undefined
-        : (options.socketPath ??
-          daemonSocketPath(options.homeDir, options.env));
-
-    if (socketPath !== undefined && options.socketPath === undefined) {
-      await prepareDaemonSocketDir(options.homeDir, socketPath);
-    }
+    // The daemon checks the socket folder before any service or Agent starts, so a bad folder fails fast.
+    const socketPath = await resolveSocketPath(options);
 
     attached = await options.attach?.(deployment);
     await deployment.start();

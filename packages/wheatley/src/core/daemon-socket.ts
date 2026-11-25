@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
+import { realpathSync, statSync } from "node:fs";
 import { lstat, mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 /** The Unix socket of the Control Server inside the Deployment home. */
@@ -22,11 +22,19 @@ const HOME_HASH_LENGTH = 16;
 /** The mode of the folder of a fallback socket: the owner only. */
 const PRIVATE_DIR_MODE = 0o700;
 
-/** The group and other permission bits are the six lowest bits of a file mode. */
-const OWNER_BITS_DIVISOR = 0o100;
+/** A file mode is a multiple of this value if its six lowest bits, the group and other permissions, are all zero. */
+const GROUP_AND_OTHER_BITS_MODULUS = 0o100;
 
-/** The environment variables that choose the fallback folder. */
-export type SocketEnv = Readonly<Record<string, string | undefined>>;
+/** The base of the fallback folder if the systemd user runtime folder does not exist. */
+const SHARED_TMP_DIR = "/tmp";
+
+/** The Unix socket of a Deployment home. */
+export interface DaemonSocket {
+  /** The socket path that the daemon listens on and that every client connects to. */
+  readonly path: string;
+  /** The owner-only folder that holds `path`, or `undefined` if `path` is in the home. */
+  readonly fallbackDir: string | undefined;
+}
 
 /** The longest socket path in bytes. `sun_path` also holds the closing NUL byte. */
 const maxSocketPathBytes = (): number =>
@@ -35,84 +43,88 @@ const maxSocketPathBytes = (): number =>
 const fits = (socketPath: string): boolean =>
   Buffer.byteLength(socketPath) <= maxSocketPathBytes();
 
-const userId = (): string => String(process.getuid?.() ?? "user");
+const isOpenToOthers = (mode: number): boolean =>
+  mode % GROUP_AND_OTHER_BITS_MODULUS !== 0;
 
-/** The owner-only folder of fallback sockets: in `$XDG_RUNTIME_DIR` if it is an absolute path, else in `os.tmpdir()`. */
-const fallbackDir = (env: SocketEnv): string => {
-  const runtimeDir = env.XDG_RUNTIME_DIR;
-
-  const base =
-    runtimeDir !== undefined && path.isAbsolute(runtimeDir)
-      ? runtimeDir
-      : tmpdir();
-
-  return path.join(base, `wheatley-${userId()}`);
+const isDirectory = (dir: string): boolean => {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
 };
 
-const fallbackPath = (home: string, env: SocketEnv): string => {
+/** The home with symlinks resolved. A home that does not exist yet keeps its absolute path. */
+const canonicalHome = (home: string): string => {
+  const resolved = path.resolve(home);
+
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+};
+
+/**
+ * The fallback folder comes from the file system, not from environment variables, so a daemon and a client with
+ * different `XDG_RUNTIME_DIR` or `TMPDIR` values agree on it.
+ */
+const fallbackDirOf = (): string => {
+  const uid = process.getuid?.();
+  const runtimeDir = `/run/user/${uid}`;
+
+  const base =
+    uid !== undefined && process.platform === "linux" && isDirectory(runtimeDir)
+      ? runtimeDir
+      : SHARED_TMP_DIR;
+
+  return path.join(base, `wheatley-${uid ?? "user"}`);
+};
+
+/**
+ * The Unix socket of the Control Server for a Deployment home. The daemon listens on it, and every client connects to
+ * it.
+ *
+ * Invariants: the path is `<home>/daemon.sock` if that path fits in `sun_path`. Else it is
+ * `<base>/wheatley-<uid>/<hash>.sock`. The base is `/run/user/<uid>` on Linux if that folder exists, else `/tmp`. The
+ * hash comes from the home with symlinks resolved. The result depends only on the home and the file system, so every
+ * spelling of one home gives the same result in every process of the user.
+ *
+ * Errors: does not throw.
+ */
+export const daemonSocket = (home: string): DaemonSocket => {
+  const canonical = canonicalHome(home);
+  const inHome = path.join(canonical, DAEMON_SOCKET_FILE);
+
+  if (fits(inHome)) {
+    return { fallbackDir: undefined, path: inHome };
+  }
+
+  const fallbackDir = fallbackDirOf();
+
   const hash = createHash("sha256")
-    .update(home)
+    .update(canonical)
     .digest("hex")
     .slice(0, HOME_HASH_LENGTH);
 
-  return path.join(fallbackDir(env), `${hash}.sock`);
+  return { fallbackDir, path: path.join(fallbackDir, `${hash}.sock`) };
 };
 
 /**
- * The Unix socket path of the Control Server for a Deployment home. The daemon listens on it, and every client
- * connects to it, so both sides must call this function with the same home and environment.
+ * Creates the owner-only folder `dir` if it is missing, and checks that only the current user can access it.
  *
- * Invariants: the result is `<home>/daemon.sock` if that path fits in `sun_path`. Else it is a short path in an
- * owner-only folder under `$XDG_RUNTIME_DIR` or `os.tmpdir()`, named from a hash of the resolved home. The result for
- * one home and environment is always the same.
+ * Ordering: call it with `daemonSocket(home).fallbackDir` before the daemon listens on the fallback socket.
  *
- * Errors: throws if neither path fits in `sun_path`.
+ * Errors: rejects if `dir` is not a folder, belongs to another user, or allows access by the group or other users.
  */
-export const daemonSocketPath = (home: string, env: SocketEnv): string => {
-  const resolved = path.resolve(home);
-  const inHome = path.join(resolved, DAEMON_SOCKET_FILE);
-
-  if (fits(inHome)) {
-    return inHome;
-  }
-
-  const fallback = fallbackPath(resolved, env);
-
-  if (fits(fallback)) {
-    return fallback;
-  }
-
-  throw new Error(
-    `The Unix socket path ${inHome} is longer than ${maxSocketPathBytes()} bytes, and the fallback ${fallback} is too. Use a shorter --home, or set XDG_RUNTIME_DIR or TMPDIR to a shorter folder.`
-  );
-};
-
-/**
- * Makes sure that the folder of a socket path from `daemonSocketPath` can hold the daemon socket. For a fallback path,
- * it creates the owner-only folder if it is missing.
- *
- * Ordering: call it before the daemon listens on the path.
- *
- * Errors: rejects if the fallback folder is not a folder, belongs to another user, or allows access by other users.
- */
-export const prepareDaemonSocketDir = async (
-  home: string,
-  socketPath: string
-): Promise<void> => {
-  const dir = path.dirname(socketPath);
-
-  if (dir === path.resolve(home)) {
-    return;
-  }
-
+export const prepareDaemonSocketDir = async (dir: string): Promise<void> => {
   await mkdir(dir, { mode: PRIVATE_DIR_MODE, recursive: true });
 
   const info = await lstat(dir);
   const uid = process.getuid?.();
   const ownedByOthers = uid !== undefined && info.uid !== uid;
-  const openToOthers = info.mode % OWNER_BITS_DIVISOR !== 0;
 
-  if (!info.isDirectory() || ownedByOthers || openToOthers) {
+  if (!info.isDirectory() || ownedByOthers || isOpenToOthers(info.mode)) {
     throw new Error(
       `The socket folder ${dir} must be a folder that only the current user can access`
     );
