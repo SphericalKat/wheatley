@@ -41,6 +41,16 @@ class ChatState {
     this.#idle.resolve(undefined);
   }
 
+  readonly removeApproval = (approvalId: string): void => {
+    const index = this.approvals.findIndex(
+      (approval) => approval.approvalId === approvalId
+    );
+
+    if (index !== -1) {
+      this.approvals.splice(index, 1);
+    }
+  };
+
   /** This chat sent a message. */
   readonly sent = (messageId: string): void => {
     if (this.#echoed.delete(messageId)) {
@@ -117,13 +127,7 @@ const render = (
     state.approvals.push(event.payload.approval);
     io.stdout(approvalQuestion(event.payload.approval));
   } else if (event.name === "approval.resolved") {
-    const index = state.approvals.findIndex(
-      (approval) => approval.approvalId === event.payload.approvalId
-    );
-
-    if (index !== -1) {
-      state.approvals.splice(index, 1);
-    }
+    state.removeApproval(event.payload.approvalId);
   } else if (isCliChatRun(event) && event.name === "run.started") {
     state.started(event.payload.run.runId);
   } else if (isCliChatRun(event) && event.name === "run.finished") {
@@ -147,8 +151,9 @@ const handleLine = async (
   const [approval] = state.approvals;
 
   if (approval !== undefined) {
+    // Events that arrive during the request can already remove this Approval and queue the next one.
     if (await decideApproval(io, client, agent, approval, line)) {
-      state.approvals.shift();
+      state.removeApproval(approval.approvalId);
     }
 
     return;
