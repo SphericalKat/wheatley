@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { Logger } from "@wheatley/sdk";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import { dropOldest } from "./bounded.js";
 import type { ApprovalRecord } from "./schemas.js";

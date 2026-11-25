@@ -1,19 +1,19 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { isJsonValue } from "@wheatley/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
 import type {
   ExtensionStatus,
   JsonValue,
   PluginConfig,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   Frontend,
   Logger,
   PluginContributions,
   ToolContext,
   ToolResult,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type {
   PluginProvider,

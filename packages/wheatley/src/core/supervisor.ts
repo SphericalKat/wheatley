@@ -1,5 +1,5 @@
-import type { AgentState, EventPayload } from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+import type { AgentState, EventPayload } from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import type { Clock, EventSink } from "../contracts/module.js";
 import { SerialQueue } from "./config/atomic-file.js";

@@ -1,8 +1,8 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { JsonValue } from "@wheatley/protocol";
-import type { ToolContext, ToolResult } from "@wheatley/sdk";
+import type { JsonValue } from "@wheatley-ai/protocol";
+import type { ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ModuleInstance } from "../contracts/module.js";

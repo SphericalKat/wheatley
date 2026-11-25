@@ -1,6 +1,6 @@
-import { webhookTriggerPath } from "@wheatley/protocol";
-import type { AgentState } from "@wheatley/protocol";
-import type { WebhookRequest } from "@wheatley/sdk";
+import { webhookTriggerPath } from "@wheatley-ai/protocol";
+import type { AgentState } from "@wheatley-ai/protocol";
+import type { WebhookRequest } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import type { ModuleInstance } from "../contracts/module.js";

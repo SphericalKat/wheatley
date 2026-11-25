@@ -1,4 +1,8 @@
-import type { ConfigIssue, SecretInfo, SecretSource } from "@wheatley/protocol";
+import type {
+  ConfigIssue,
+  SecretInfo,
+  SecretSource,
+} from "@wheatley-ai/protocol";
 import { isMap, isScalar, parseDocument } from "yaml";
 import type { Document } from "yaml";
 

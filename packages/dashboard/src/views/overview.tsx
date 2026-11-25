@@ -1,4 +1,4 @@
-import type { AgentHealth } from "@wheatley/protocol";
+import type { AgentHealth } from "@wheatley-ai/protocol";
 
 import { useServices, useStore } from "../hooks.js";
 import { formatRoute } from "../router.js";

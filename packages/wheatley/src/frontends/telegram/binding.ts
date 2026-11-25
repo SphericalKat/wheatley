@@ -8,7 +8,7 @@ import type {
   WebhookRequest,
   WebhookResponse,
   WebhookRoute,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 import { Value } from "typebox/value";
 
 import { ApprovalPromptStore } from "./approvals.js";

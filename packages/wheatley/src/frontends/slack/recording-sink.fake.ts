@@ -3,8 +3,8 @@ import type {
   InboundCommand,
   InboundDecision,
   InboundMessage,
-} from "@wheatley/sdk";
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 
 /** A `FrontendSink` that records every call. `decide` resolves `decideResult`. */
 export class RecordingSink implements FrontendSink {

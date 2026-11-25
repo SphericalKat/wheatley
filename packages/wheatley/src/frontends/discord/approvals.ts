@@ -6,7 +6,7 @@ import type {
   ApprovalDecision,
   ApprovalOutcome,
   ApprovalRequestedDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 import type * as DiscordJs from "discord.js";
 
 import type { DiscordRuntime } from "./discord-runtime.js";

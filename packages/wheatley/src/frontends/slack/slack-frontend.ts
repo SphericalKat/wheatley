@@ -1,4 +1,4 @@
-import type { Frontend } from "@wheatley/sdk";
+import type { Frontend } from "@wheatley-ai/sdk";
 
 import type { AgentModule, RpcHandlerMap } from "../../contracts/module.js";
 import type { Migration } from "../../db/migrations.js";

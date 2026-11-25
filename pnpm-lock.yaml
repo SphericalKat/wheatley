@@ -215,7 +215,7 @@ importers:
       '@ui-sdk/react':
         specifier: 0.1.0-beta.17
         version: 0.1.0-beta.17(@types/react@19.3.1)(@ui-sdk/core@0.1.0-beta.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@wheatley/protocol':
+      '@wheatley-ai/protocol':
         specifier: workspace:*
         version: link:../protocol
       react:
@@ -316,13 +316,13 @@ importers:
       '@types/ws':
         specifier: 8.18.2
         version: 8.18.2
-      '@wheatley/dashboard':
+      '@wheatley-ai/dashboard':
         specifier: workspace:*
         version: link:../dashboard
-      '@wheatley/protocol':
+      '@wheatley-ai/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@wheatley/sdk':
+      '@wheatley-ai/sdk':
         specifier: workspace:*
         version: link:../sdk
 

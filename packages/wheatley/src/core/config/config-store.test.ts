@@ -1,7 +1,7 @@
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { DeploymentConfig } from "@wheatley/protocol";
+import type { DeploymentConfig } from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SeamError } from "../../contracts/errors.js";

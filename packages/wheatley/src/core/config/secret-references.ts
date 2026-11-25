@@ -1,9 +1,9 @@
-import { isJsonValue } from "@wheatley/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
 import type {
   DeploymentConfig,
   JsonValue,
   SecretInfo,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 /** One config entry that names a secret. */
 export type SecretReference = SecretInfo["references"][number];

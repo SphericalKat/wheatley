@@ -6,8 +6,8 @@ import {
   encodeRequest,
   encodeResult,
   RpcErrorCode,
-} from "@wheatley/protocol";
-import type { JsonObject, MethodName, RpcId } from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
+import type { JsonObject, MethodName, RpcId } from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 const request = (body: JsonObject): string =>

@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { AgentNameSchema, decode } from "@wheatley/protocol";
+import { AgentNameSchema, decode } from "@wheatley-ai/protocol";
 
 import {
   readTextIfExists,

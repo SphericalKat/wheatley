@@ -1,4 +1,4 @@
-import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
+import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
 import { useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

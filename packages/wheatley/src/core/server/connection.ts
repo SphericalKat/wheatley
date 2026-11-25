@@ -9,7 +9,7 @@ import {
   PROTOCOL_VERSION,
   RpcError,
   RpcErrorCode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   EventName,
   EventPayload,
@@ -18,8 +18,8 @@ import type {
   RpcErrorObject,
   RpcId,
   RpcRequest,
-} from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 import type { RawData, WebSocket } from "ws";
 
 import { SeamError, toRpcError } from "../../contracts/errors.js";

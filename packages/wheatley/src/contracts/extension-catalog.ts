@@ -5,7 +5,7 @@ import type {
   PermissionAction,
   SkillInfo,
   ToolSource,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   Frontend,
   JsonSchema,
@@ -13,7 +13,7 @@ import type {
   SecretReader,
   ToolContext,
   ToolResult,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 /** A Tool as the Agent offers it to the model. */
 export interface ToolDescriptor {

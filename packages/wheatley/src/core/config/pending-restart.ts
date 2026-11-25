@@ -5,7 +5,7 @@ import type {
   DeploymentConfig,
   PendingRestart,
   ProviderConfig,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 /** The settings that one running Agent started with. */
 export interface AppliedAgent {

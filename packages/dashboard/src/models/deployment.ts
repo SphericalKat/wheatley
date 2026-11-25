@@ -1,4 +1,4 @@
-import type { DaemonStatus } from "@wheatley/protocol";
+import type { DaemonStatus } from "@wheatley-ai/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";

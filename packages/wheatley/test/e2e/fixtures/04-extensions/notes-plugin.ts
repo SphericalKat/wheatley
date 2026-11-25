@@ -2,9 +2,9 @@
 import { appendFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { decode } from "@wheatley/protocol";
-import { definePlugin } from "@wheatley/sdk";
-import type { JsonSchema, JsonValue, ToolResult } from "@wheatley/sdk";
+import { decode } from "@wheatley-ai/protocol";
+import { definePlugin } from "@wheatley-ai/sdk";
+import type { JsonSchema, JsonValue, ToolResult } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 

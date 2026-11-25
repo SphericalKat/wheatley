@@ -5,7 +5,7 @@ import {
   encodeRequest,
   PROTOCOL_VERSION,
   RpcError,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   MethodName,
   MethodParams,
@@ -13,7 +13,7 @@ import type {
   RpcEvent,
   RpcId,
   RpcResult,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 

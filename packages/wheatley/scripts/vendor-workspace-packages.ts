@@ -1,11 +1,11 @@
 // Copies the compiled workspace packages that the daemon imports at runtime into `dist/node_modules/`. Node.js finds
-// them there from every file in `dist/`, so the npm tarball installs without the private `@wheatley/protocol` on a
+// them there from every file in `dist/`, so the npm tarball installs without the private `@wheatley-ai/protocol` on a
 // registry and without the `workspace:` protocol in its manifest (ADR 0008).
 import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** The workspace packages that `dist/` imports at runtime. */
-const VENDORED = ["@wheatley/protocol", "@wheatley/sdk"] as const;
+const VENDORED = ["@wheatley-ai/protocol", "@wheatley-ai/sdk"] as const;
 
 interface Manifest {
   readonly name: string;

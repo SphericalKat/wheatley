@@ -2,7 +2,7 @@ import type {
   CallToolResult,
   ContentBlock,
 } from "@modelcontextprotocol/client";
-import type { ToolContent, ToolResult } from "@wheatley/sdk";
+import type { ToolContent, ToolResult } from "@wheatley-ai/sdk";
 
 /** A Tool result that reports `text` to the model as an error. */
 export const errorResult = (text: string): ToolResult => ({

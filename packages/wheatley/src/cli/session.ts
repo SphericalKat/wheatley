@@ -1,4 +1,4 @@
-import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
+import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
 
 import { daemonSocket } from "../core/daemon-socket.js";
 import { errorMessage } from "../core/error-message.js";

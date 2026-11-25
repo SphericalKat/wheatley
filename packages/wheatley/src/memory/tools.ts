@@ -2,13 +2,13 @@ import {
   isJsonValue,
   MemoryNameSchema,
   MemorySearchScopeSchema,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   ExtensionStatus,
   JsonValue,
   MemorySearchHit,
-} from "@wheatley/protocol";
-import type { JsonSchema, ToolContext, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { JsonSchema, ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";

@@ -1,5 +1,5 @@
-import { TOOL_INPUT_PREVIEW_MAX_LENGTH } from "@wheatley/protocol";
-import type { JsonValue } from "@wheatley/protocol";
+import { TOOL_INPUT_PREVIEW_MAX_LENGTH } from "@wheatley-ai/protocol";
+import type { JsonValue } from "@wheatley-ai/protocol";
 
 import type { SecretStore } from "../contracts/config-store.js";
 

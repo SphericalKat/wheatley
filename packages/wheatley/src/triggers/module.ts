@@ -1,5 +1,8 @@
-import { DEFAULT_WEBHOOK_HOST, DEFAULT_WEBHOOK_PORT } from "@wheatley/protocol";
-import type { WebhooksConfig } from "@wheatley/protocol";
+import {
+  DEFAULT_WEBHOOK_HOST,
+  DEFAULT_WEBHOOK_PORT,
+} from "@wheatley-ai/protocol";
+import type { WebhooksConfig } from "@wheatley-ai/protocol";
 
 import type {
   DeliveryOutbox,

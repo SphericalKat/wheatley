@@ -1,4 +1,4 @@
-import type { Logger, RunEvent } from "@wheatley/sdk";
+import type { Logger, RunEvent } from "@wheatley-ai/sdk";
 
 import type { StreamingMode } from "./config.js";
 import { NO_MENTIONS } from "./discord-runtime.js";

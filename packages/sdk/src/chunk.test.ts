@@ -1,4 +1,4 @@
-import { chunkMarkdown } from "@wheatley/sdk";
+import { chunkMarkdown } from "@wheatley-ai/sdk";
 import { describe, expect, it } from "vitest";
 
 const LIMIT = 40;

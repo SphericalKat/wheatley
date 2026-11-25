@@ -1,7 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 
-import { defineTool, isStandardJsonSchema } from "@wheatley/sdk";
-import type { JsonSchema, ToolContext } from "@wheatley/sdk";
+import { defineTool, isStandardJsonSchema } from "@wheatley-ai/sdk";
+import type { JsonSchema, ToolContext } from "@wheatley-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 

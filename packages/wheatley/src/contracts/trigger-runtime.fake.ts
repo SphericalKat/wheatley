@@ -1,4 +1,8 @@
-import type { Trigger, TriggerInput, TriggerPatch } from "@wheatley/protocol";
+import type {
+  Trigger,
+  TriggerInput,
+  TriggerPatch,
+} from "@wheatley-ai/protocol";
 
 import { SeamError } from "./errors.js";
 import { simulateIo } from "./fake-io.js";

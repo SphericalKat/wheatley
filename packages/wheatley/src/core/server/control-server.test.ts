@@ -3,8 +3,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { encodeRequest, RpcError, RpcErrorCode } from "@wheatley/protocol";
-import type { RpcEvent } from "@wheatley/protocol";
+import { encodeRequest, RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
+import type { RpcEvent } from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";

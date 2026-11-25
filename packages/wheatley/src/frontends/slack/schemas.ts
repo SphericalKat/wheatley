@@ -1,5 +1,5 @@
-import { decode, isJsonValue } from "@wheatley/protocol";
-import type { JsonObject, JsonValue } from "@wheatley/sdk";
+import { decode, isJsonValue } from "@wheatley-ai/protocol";
+import type { JsonObject, JsonValue } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 
@@ -8,7 +8,7 @@ const NonEmpty = Type.String({ minLength: 1 });
 const isJsonObject = (value: JsonValue): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Converts a TypeBox schema into the plain JSON Schema document that `@wheatley/sdk` accepts. */
+/** Converts a TypeBox schema into the plain JSON Schema document that `@wheatley-ai/sdk` accepts. */
 export const toJsonSchema = (schema: TSchema): JsonObject => {
   // TypeBox keeps its metadata in non-enumerable properties, which the clone drops.
   const document = structuredClone(schema);

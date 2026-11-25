@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import { TriggerScheduleSchema } from "@wheatley/protocol";
+import { TriggerScheduleSchema } from "@wheatley-ai/protocol";
 import type {
   EventPayload,
   Trigger,
   TriggerInput,
   TriggerPatch,
   TriggerSchedule,
-} from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 

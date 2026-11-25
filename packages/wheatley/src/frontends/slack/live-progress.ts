@@ -1,4 +1,4 @@
-import type { Logger, RunEvent } from "@wheatley/sdk";
+import type { Logger, RunEvent } from "@wheatley-ai/sdk";
 
 import { BackgroundTasks } from "./background-tasks.js";
 import { parseChatId } from "./chat-id.js";

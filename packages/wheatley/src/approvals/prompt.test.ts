@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { PassThrough } from "node:stream";
 
-import type { PendingApproval } from "@wheatley/protocol";
+import type { PendingApproval } from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 import { promptForApproval, renderApprovalPrompt } from "./prompt.js";

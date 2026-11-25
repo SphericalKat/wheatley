@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { DELIVERY_PREVIEW_MAX_LENGTH } from "@wheatley/protocol";
-import type { FailedDelivery } from "@wheatley/protocol";
-import { isDeliveryError } from "@wheatley/sdk";
-import type { Delivery, Logger } from "@wheatley/sdk";
+import { DELIVERY_PREVIEW_MAX_LENGTH } from "@wheatley-ai/protocol";
+import type { FailedDelivery } from "@wheatley-ai/protocol";
+import { isDeliveryError } from "@wheatley-ai/sdk";
+import type { Delivery, Logger } from "@wheatley-ai/sdk";
 
 import type {
   DeliveryOutbox,

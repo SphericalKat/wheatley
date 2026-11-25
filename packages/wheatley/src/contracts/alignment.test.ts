@@ -6,16 +6,16 @@ import type {
   ApprovalResolution as ProtocolApprovalResolution,
   CommandName as ProtocolCommandName,
   DeliveryKind as ProtocolDeliveryKind,
-} from "@wheatley/protocol";
-import { CommandNameSchema } from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
+import { CommandNameSchema } from "@wheatley-ai/protocol";
 import type {
   ApprovalDecision as SdkApprovalDecision,
   ApprovalOutcome as SdkApprovalOutcome,
   ApprovalResolution as SdkApprovalResolution,
   CommandName as SdkCommandName,
   DeliveryKind as SdkDeliveryKind,
-} from "@wheatley/sdk";
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 describe("protocol and SDK vocabulary", () => {

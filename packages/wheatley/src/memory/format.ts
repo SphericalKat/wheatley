@@ -1,4 +1,4 @@
-import type { MemoryFile } from "@wheatley/protocol";
+import type { MemoryFile } from "@wheatley-ai/protocol";
 
 import { memoryFileName } from "./names.js";
 

@@ -3,8 +3,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { inspect } from "node:util";
 
-import { API_VERSION } from "@wheatley/sdk";
-import type { Plugin } from "@wheatley/sdk";
+import { API_VERSION } from "@wheatley-ai/sdk";
+import type { Plugin } from "@wheatley-ai/sdk";
 import { resolve as resolveModule } from "import-meta-resolve";
 
 import { RESERVED_PLUGIN_NAME } from "../contracts/tool-names.js";
@@ -58,7 +58,7 @@ export const resolvePluginUrl = (source: string, homeDir: string): string => {
 
 /**
  * Resolves and imports one Plugin module, then validates its default export against the `Plugin` contract of
- * `@wheatley/sdk`.
+ * `@wheatley-ai/sdk`.
  *
  * Node caches modules by URL, so two Agents that list the same `source` share the module. Each Agent calls `setup`
  * separately, so they share no Plugin instance (ADR 0006).

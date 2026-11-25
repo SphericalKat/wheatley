@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { open, unlink } from "node:fs/promises";
 import path from "node:path";
 
-import type { Attachment } from "@wheatley/sdk";
+import type { Attachment } from "@wheatley-ai/sdk";
 
 import type {
   TelegramClient,

@@ -1,4 +1,4 @@
-import { AgentNameSchema, decode } from "@wheatley/protocol";
+import { AgentNameSchema, decode } from "@wheatley-ai/protocol";
 import { useId, useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

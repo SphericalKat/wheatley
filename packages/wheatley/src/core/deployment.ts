@@ -2,7 +2,7 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { Models } from "@earendil-works/pi-ai";
-import { PROTOCOL_VERSION } from "@wheatley/protocol";
+import { PROTOCOL_VERSION } from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   AgentHealth,
@@ -13,8 +13,8 @@ import type {
   MethodParams,
   MethodResult,
   PendingRestart,
-} from "@wheatley/protocol";
-import type { SecretReader } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { SecretReader } from "@wheatley-ai/sdk";
 
 import type {
   ConfigSaveInput,

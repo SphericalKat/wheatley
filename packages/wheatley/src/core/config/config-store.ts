@@ -6,8 +6,8 @@ import type {
   DeploymentConfig,
   JsonValue,
   PermissionRule,
-} from "@wheatley/protocol";
-import { isJsonValue } from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
+import { isJsonValue } from "@wheatley-ai/protocol";
 import { Document, parseDocument } from "yaml";
 
 import type {

@@ -4,7 +4,7 @@ import type {
   ApprovalOutcome,
   ApprovalRequestedDelivery,
   ApprovalResolvedDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 /** Block Kit blocks, as `chat.postMessage` and `chat.update` accept them. */
 export type SlackBlocks = Extract<

@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { Attachment } from "@wheatley/sdk";
-import { DeliveryError } from "@wheatley/sdk";
+import type { Attachment } from "@wheatley-ai/sdk";
+import { DeliveryError } from "@wheatley-ai/sdk";
 import type { AttachmentPayload } from "discord.js";
 
 import { errorText } from "./errors.js";

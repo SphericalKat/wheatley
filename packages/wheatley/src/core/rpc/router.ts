@@ -5,14 +5,14 @@ import {
   methods,
   RpcError,
   RpcErrorCode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   JsonObject,
   JsonValue,
   MethodName,
   MethodParams,
   MethodResult,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type {
   RpcContext,

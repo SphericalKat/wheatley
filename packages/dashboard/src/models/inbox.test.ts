@@ -1,5 +1,5 @@
-import { RpcError, RpcErrorCode } from "@wheatley/protocol";
-import type { EventPayload } from "@wheatley/protocol";
+import { RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
+import type { EventPayload } from "@wheatley-ai/protocol";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { startHarness } from "../../mock/harness.js";

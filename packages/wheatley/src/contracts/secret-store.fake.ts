@@ -1,4 +1,4 @@
-import type { SecretInfo, SecretSource } from "@wheatley/protocol";
+import type { SecretInfo, SecretSource } from "@wheatley-ai/protocol";
 
 import type { SecretStore } from "./config-store.js";
 import { SeamError } from "./errors.js";

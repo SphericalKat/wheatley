@@ -3,8 +3,8 @@ import type {
   ApprovalResolvedDelivery,
   Delivery,
   MessageDelivery,
-} from "@wheatley/sdk";
-import { chunkMarkdown } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { chunkMarkdown } from "@wheatley-ai/sdk";
 
 import {
   approvalOutcomeText,

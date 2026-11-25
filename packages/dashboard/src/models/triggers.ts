@@ -2,8 +2,8 @@ import {
   DEFAULT_WEBHOOK_HOST,
   DEFAULT_WEBHOOK_PORT,
   webhookTriggerPath,
-} from "@wheatley/protocol";
-import type { WebhooksConfig } from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
+import type { WebhooksConfig } from "@wheatley-ai/protocol";
 
 /** Wildcard bind addresses and the loopback address of the same family that a local client can send requests to. */
 const LOOPBACK_FOR_WILDCARD: ReadonlyMap<string, string> = new Map([

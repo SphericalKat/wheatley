@@ -1,11 +1,15 @@
-import { chunkMarkdown, DeliveryError, isDeliveryError } from "@wheatley/sdk";
+import {
+  chunkMarkdown,
+  DeliveryError,
+  isDeliveryError,
+} from "@wheatley-ai/sdk";
 import type {
   ApprovalRequestedDelivery,
   ApprovalResolvedDelivery,
   Delivery,
   Logger,
   MessageDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type { ApprovalPromptStore } from "./approvals.js";
 import {

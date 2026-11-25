@@ -1,5 +1,5 @@
-import { CommandNameSchema, decode } from "@wheatley/protocol";
-import type { AttachmentUpload, ChatMessage } from "@wheatley/protocol";
+import { CommandNameSchema, decode } from "@wheatley-ai/protocol";
+import type { AttachmentUpload, ChatMessage } from "@wheatley-ai/protocol";
 import { useCallback, useEffect, useState } from "react";
 
 import { useEvent, useServices, useStore } from "../hooks.js";

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { AttachmentUpload } from "@wheatley/protocol";
+import type { AttachmentUpload } from "@wheatley-ai/protocol";
 
 import type { RpcHandlerMap } from "../../contracts/module.js";
 import { CLI_CHAT, WORKSPACE_DIR } from "../agent/agent.js";

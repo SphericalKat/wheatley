@@ -20,7 +20,7 @@ import {
   fromJsonSchema,
   McpServer,
 } from "@modelcontextprotocol/server";
-import type { ApprovalRequestedDelivery } from "@wheatley/sdk";
+import type { ApprovalRequestedDelivery } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { startHarness, waitFor } from "./harness.js";

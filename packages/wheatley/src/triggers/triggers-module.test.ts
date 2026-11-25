@@ -1,7 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { EventName, EventPayload, TriggerInput } from "@wheatley/protocol";
-import type { ToolContext, ToolResult } from "@wheatley/sdk";
+import type {
+  EventName,
+  EventPayload,
+  TriggerInput,
+} from "@wheatley-ai/protocol";
+import type { ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { SeamError } from "../contracts/errors.js";

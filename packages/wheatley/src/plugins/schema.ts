@@ -1,6 +1,6 @@
 import { compile } from "@earendil-works/pi-schema";
 import type { ValidationError } from "@earendil-works/pi-schema";
-import { isStandardJsonSchema } from "@wheatley/sdk";
+import { isStandardJsonSchema } from "@wheatley-ai/sdk";
 import type {
   JsonSchema,
   JsonValue,
@@ -8,7 +8,7 @@ import type {
   StandardJsonSchemaV1,
   StandardSchemaIssue,
   StandardSchemaResult,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import { errorMessage, isJsonObject } from "./guards.js";
 

@@ -1,6 +1,6 @@
-import { DISPLAY_NAME_MAX_LENGTH } from "@wheatley/protocol";
-import { parseCommandText } from "@wheatley/sdk";
-import type { FrontendContext, FrontendSink } from "@wheatley/sdk";
+import { DISPLAY_NAME_MAX_LENGTH } from "@wheatley-ai/protocol";
+import { parseCommandText } from "@wheatley-ai/sdk";
+import type { FrontendContext, FrontendSink } from "@wheatley-ai/sdk";
 
 import type { ApprovalPromptStore } from "./approvals.js";
 import { parseApprovalCallback } from "./approvals.js";

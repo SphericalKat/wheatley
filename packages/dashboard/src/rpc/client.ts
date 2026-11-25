@@ -4,7 +4,7 @@ import {
   PROTOCOL_VERSION,
   RpcError,
   RpcErrorCode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   EventName,
   EventPayload,
@@ -14,7 +14,7 @@ import type {
   RpcEvent,
   RpcId,
   RpcResult,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import { createStore } from "../store.js";
 import type { Store } from "../store.js";

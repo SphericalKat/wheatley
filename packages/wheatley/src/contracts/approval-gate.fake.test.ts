@@ -1,4 +1,4 @@
-import type { DeploymentConfig, PermissionAction } from "@wheatley/protocol";
+import type { DeploymentConfig, PermissionAction } from "@wheatley-ai/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { InMemoryApprovalGate } from "./approval-gate.fake.js";

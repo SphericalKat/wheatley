@@ -1,4 +1,4 @@
-import type { RunSummary, RunTimelineItem } from "@wheatley/protocol";
+import type { RunSummary, RunTimelineItem } from "@wheatley-ai/protocol";
 import { useEffect, useState } from "react";
 
 import { useEvent, useRpcQuery, useServices } from "../hooks.js";

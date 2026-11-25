@@ -1,5 +1,5 @@
-import type { PermissionAction } from "@wheatley/protocol";
-import type { JsonSchema, Tool, ToolResult } from "@wheatley/sdk";
+import type { PermissionAction } from "@wheatley-ai/protocol";
+import type { JsonSchema, Tool, ToolResult } from "@wheatley-ai/sdk";
 
 import type {
   ToolDescriptor,

@@ -1,5 +1,5 @@
-import { DeliveryError, isDeliveryError } from "@wheatley/sdk";
-import type { DeliveryErrorOptions } from "@wheatley/sdk";
+import { DeliveryError, isDeliveryError } from "@wheatley-ai/sdk";
+import type { DeliveryErrorOptions } from "@wheatley-ai/sdk";
 
 const MS_PER_SECOND = 1000;
 const HTTP_TOO_MANY_REQUESTS = 429;

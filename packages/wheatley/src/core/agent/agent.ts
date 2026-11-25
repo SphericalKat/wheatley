@@ -8,7 +8,7 @@ import {
   parseDuration,
   TOOL_INPUT_PREVIEW_MAX_LENGTH,
   TOOL_OUTPUT_PREVIEW_MAX_LENGTH,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   MethodResult,
   AgentConfig,
@@ -21,14 +21,14 @@ import type {
   RunOrigin,
   RunTimelineItem,
   ToolInfo,
-} from "@wheatley/protocol";
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 import type {
   CommandSpec,
   Logger,
   SecretReader,
   ToolResult,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type { ApprovalGate } from "../../contracts/approval-gate.js";
 import type {

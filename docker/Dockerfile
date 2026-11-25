@@ -8,7 +8,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --recursive run build \
   && node packages/wheatley/scripts/bundle-dashboard.ts \
-  && pnpm --filter wheatley deploy --prod /opt/wheatley
+  && pnpm --filter @wheatley-ai/cli deploy --prod /opt/wheatley
 
 FROM node:26-trixie-slim
 ENV NODE_ENV=production \

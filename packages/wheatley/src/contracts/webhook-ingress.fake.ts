@@ -4,7 +4,7 @@ import type {
   WebhookResponse,
   WebhookRoute,
   WebhookRouteHandler,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 
 import type {
   IngressRequest,

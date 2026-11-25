@@ -1,4 +1,4 @@
-import type { TriggerSchedule } from "@wheatley/protocol";
+import type { TriggerSchedule } from "@wheatley-ai/protocol";
 import { Cron } from "croner";
 
 import { SeamError } from "../contracts/errors.js";

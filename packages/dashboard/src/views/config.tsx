@@ -5,14 +5,14 @@ import {
   PermissionActionSchema,
   decode,
   isJsonValue,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   ConfigIssue,
   PendingRestart,
   PermissionAction,
   PermissionRule,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { useEffect, useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

@@ -54,13 +54,15 @@ describe("update plan", () => {
     const plan = await planUpdate({ current: "1.0.0", method: "npm", runner });
 
     expect(plan).toStrictEqual({
-      command: ["npm", "install", "--global", "wheatley@1.5.0"],
+      command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
       current: "1.0.0",
       kind: "update",
       newerMajor: "2.0.0",
       target: "1.5.0",
     });
-    expect(runner.lines).toStrictEqual(["npm view wheatley versions --json"]);
+    expect(runner.lines).toStrictEqual([
+      "npm view @wheatley-ai/cli versions --json",
+    ]);
   });
 
   it("installs with pnpm for a pnpm install", async () => {
@@ -74,7 +76,7 @@ describe("update plan", () => {
       "pnpm",
       "add",
       "--global",
-      "wheatley@1.0.1",
+      "@wheatley-ai/cli@1.0.1",
     ]);
   });
 
@@ -138,7 +140,7 @@ describe("applyUpdate", () => {
 
     await applyUpdate(
       {
-        command: ["npm", "install", "--global", "wheatley@1.5.0"],
+        command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
         current: "1.0.0",
         kind: "update",
         newerMajor: undefined,
@@ -149,7 +151,7 @@ describe("applyUpdate", () => {
 
     expect(runner.commands).toStrictEqual([
       {
-        args: ["install", "--global", "wheatley@1.5.0"],
+        args: ["install", "--global", "@wheatley-ai/cli@1.5.0"],
         command: "npm",
         inheritStdio: true,
       },

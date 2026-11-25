@@ -31,7 +31,7 @@ export const mockServerPlugin = (): Plugin => ({
       return;
     }
 
-    // The SSR pipeline resolves `@wheatley/protocol` from source. A static import would make Vite bundle the mock into
+    // The SSR pipeline resolves `@wheatley-ai/protocol` from source. A static import would make Vite bundle the mock into
     // the config file, which needs the protocol package built first.
     const loaded = await server.ssrLoadModule("/mock/server.ts");
 

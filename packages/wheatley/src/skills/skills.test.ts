@@ -8,8 +8,8 @@ import type {
   DeploymentConfig,
   JsonValue,
   PermissionRule,
-} from "@wheatley/protocol";
-import type { Logger, ToolContext, ToolResult } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Logger, ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { InMemoryApprovalGate } from "../contracts/approval-gate.fake.js";

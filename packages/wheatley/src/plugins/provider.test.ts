@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { AgentConfig, PluginConfig } from "@wheatley/protocol";
-import type { Logger, ToolContext } from "@wheatley/sdk";
+import type { AgentConfig, PluginConfig } from "@wheatley-ai/protocol";
+import type { Logger, ToolContext } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type {

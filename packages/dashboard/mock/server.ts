@@ -16,7 +16,7 @@ import {
   PROTOCOL_VERSION,
   RpcError,
   RpcErrorCode,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   AgentHealth,
@@ -33,7 +33,7 @@ import type {
   PendingRestart,
   RunSummary,
   Trigger,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { parse } from "yaml";

@@ -1,6 +1,6 @@
-import { decode, SecretRefSchema } from "@wheatley/protocol";
-import type { SecretRef } from "@wheatley/protocol";
-import type { JsonSchema, JsonValue, SecretReader } from "@wheatley/sdk";
+import { decode, SecretRefSchema } from "@wheatley-ai/protocol";
+import type { SecretRef } from "@wheatley-ai/protocol";
+import type { JsonSchema, JsonValue, SecretReader } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { BUILTIN_COMMANDS, isDeliveryError } from "@wheatley/sdk";
+import { BUILTIN_COMMANDS, isDeliveryError } from "@wheatley-ai/sdk";
 import type {
   DeliveryError,
   FrontendBinding,
@@ -14,7 +14,7 @@ import type {
   JsonObject,
   JsonValue,
   MessageDelivery,
-} from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { InMemorySecretStore } from "../../contracts/secret-store.fake.js";

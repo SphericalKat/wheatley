@@ -1,8 +1,8 @@
 import path from "node:path";
 
-import { decode } from "@wheatley/protocol";
-import type { AgentConfig, SkillInfo } from "@wheatley/protocol";
-import type { JsonSchema, ToolContext, ToolResult } from "@wheatley/sdk";
+import { decode } from "@wheatley-ai/protocol";
+import type { AgentConfig, SkillInfo } from "@wheatley-ai/protocol";
+import type { JsonSchema, ToolContext, ToolResult } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 

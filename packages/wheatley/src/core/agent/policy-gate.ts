@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { PermissionAction, PermissionRule } from "@wheatley/protocol";
-import type { Logger } from "@wheatley/sdk";
+import type { PermissionAction, PermissionRule } from "@wheatley-ai/protocol";
+import type { Logger } from "@wheatley-ai/sdk";
 
 import type {
   ApprovalGate,

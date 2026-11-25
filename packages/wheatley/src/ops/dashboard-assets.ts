@@ -41,7 +41,7 @@ export const bundleDashboardAssets = async (
 ): Promise<number> => {
   if (!(await hasEntry(sourceDir))) {
     throw new Error(
-      `No dashboard build in ${sourceDir}. Build it first: pnpm --filter @wheatley/dashboard run build`
+      `No dashboard build in ${sourceDir}. Build it first: pnpm --filter @wheatley-ai/dashboard run build`
     );
   }
 

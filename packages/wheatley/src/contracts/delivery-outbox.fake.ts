@@ -1,6 +1,6 @@
-import type { FailedDelivery } from "@wheatley/protocol";
-import { isDeliveryError } from "@wheatley/sdk";
-import type { Delivery } from "@wheatley/sdk";
+import type { FailedDelivery } from "@wheatley-ai/protocol";
+import { isDeliveryError } from "@wheatley-ai/sdk";
+import type { Delivery } from "@wheatley-ai/sdk";
 
 import type {
   DeliveryOutbox,

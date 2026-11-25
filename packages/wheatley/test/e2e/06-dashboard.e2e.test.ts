@@ -15,8 +15,12 @@ import path from "node:path";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai";
-import { RpcErrorCode } from "@wheatley/protocol";
-import type { AgentConfig, EventName, EventPayload } from "@wheatley/protocol";
+import { RpcErrorCode } from "@wheatley-ai/protocol";
+import type {
+  AgentConfig,
+  EventName,
+  EventPayload,
+} from "@wheatley-ai/protocol";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { WebSocket } from "ws";
 

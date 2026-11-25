@@ -1,4 +1,4 @@
-import { parseDuration } from "@wheatley/protocol";
+import { parseDuration } from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 describe("parseDuration", () => {

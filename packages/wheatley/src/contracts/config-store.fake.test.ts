@@ -1,4 +1,4 @@
-import type { DeploymentConfig } from "@wheatley/protocol";
+import type { DeploymentConfig } from "@wheatley-ai/protocol";
 import { describe, expect, it } from "vitest";
 
 import { InMemoryConfigStore } from "./config-store.fake.js";

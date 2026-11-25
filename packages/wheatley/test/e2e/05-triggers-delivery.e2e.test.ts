@@ -11,8 +11,8 @@ import type {
   Context,
   FauxResponseFactory,
 } from "@earendil-works/pi-ai";
-import type { FailedDelivery, TriggerInput } from "@wheatley/protocol";
-import type { Delivery, MessageDelivery } from "@wheatley/sdk";
+import type { FailedDelivery, TriggerInput } from "@wheatley-ai/protocol";
+import type { Delivery, MessageDelivery } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, expect, it, vi } from "vitest";

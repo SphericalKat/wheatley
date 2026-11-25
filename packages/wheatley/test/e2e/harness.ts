@@ -16,8 +16,8 @@ import type {
   EventName,
   EventPayload,
   RpcEvent,
-} from "@wheatley/protocol";
-import type { Frontend } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { Frontend } from "@wheatley-ai/sdk";
 import { stringify } from "yaml";
 
 import { DaemonClient } from "../../src/cli/client.js";

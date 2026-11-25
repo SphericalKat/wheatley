@@ -1,4 +1,4 @@
-import type { DaemonStatus } from "@wheatley/protocol";
+import type { DaemonStatus } from "@wheatley-ai/protocol";
 
 import { errorMessage } from "../core/error-message.js";
 import type { CliIo } from "./io.js";

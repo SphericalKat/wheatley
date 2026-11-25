@@ -1,4 +1,4 @@
-import type { JsonObject, Logger } from "@wheatley/sdk";
+import type { JsonObject, Logger } from "@wheatley-ai/sdk";
 
 /** One record of `RecordingLogger`. */
 export interface LogRecord {

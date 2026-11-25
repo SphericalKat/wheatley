@@ -1,6 +1,6 @@
 import { Button } from "@ui-sdk/react/button";
-import { SecretNameSchema, decode } from "@wheatley/protocol";
-import type { SecretInfo } from "@wheatley/protocol";
+import { SecretNameSchema, decode } from "@wheatley-ai/protocol";
+import type { SecretInfo } from "@wheatley-ai/protocol";
 import { useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

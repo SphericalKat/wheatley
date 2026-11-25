@@ -1,4 +1,8 @@
-import type { PendingApproval, RpcEvent, RunSummary } from "@wheatley/protocol";
+import type {
+  PendingApproval,
+  RpcEvent,
+  RunSummary,
+} from "@wheatley-ai/protocol";
 
 import { errorMessage } from "../core/error-message.js";
 import type { CliIo } from "./io.js";

@@ -1,4 +1,4 @@
-import { DISPLAY_NAME_MAX_LENGTH } from "@wheatley/protocol";
+import { DISPLAY_NAME_MAX_LENGTH } from "@wheatley-ai/protocol";
 import type {
   ApprovalRequestedDelivery,
   ApprovalResolvedDelivery,
@@ -9,8 +9,12 @@ import type {
   FrontendSink,
   MessageDelivery,
   RunEvent,
-} from "@wheatley/sdk";
-import { chunkMarkdown, DeliveryError, parseCommandText } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import {
+  chunkMarkdown,
+  DeliveryError,
+  parseCommandText,
+} from "@wheatley-ai/sdk";
 import type * as DiscordJs from "discord.js";
 
 import {

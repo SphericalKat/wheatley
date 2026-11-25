@@ -1,5 +1,5 @@
-import { LogLevelSchema, decode } from "@wheatley/protocol";
-import type { LogLevel } from "@wheatley/protocol";
+import { LogLevelSchema, decode } from "@wheatley-ai/protocol";
+import type { LogLevel } from "@wheatley-ai/protocol";
 import { useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";

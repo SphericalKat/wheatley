@@ -1,4 +1,4 @@
-import { DeliveryError, isDeliveryError } from "@wheatley/sdk";
+import { DeliveryError, isDeliveryError } from "@wheatley-ai/sdk";
 import { describe, expect, it } from "vitest";
 
 describe("isDeliveryError", () => {

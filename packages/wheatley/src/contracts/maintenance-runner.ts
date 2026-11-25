@@ -1,4 +1,4 @@
-import type { ModelChoice } from "@wheatley/protocol";
+import type { ModelChoice } from "@wheatley-ai/protocol";
 
 /** One internal maintenance Run, for example Memory consolidation. */
 export interface MaintenanceRunRequest {

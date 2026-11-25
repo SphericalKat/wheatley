@@ -1,4 +1,4 @@
-import type { FailedDelivery } from "@wheatley/protocol";
+import type { FailedDelivery } from "@wheatley-ai/protocol";
 
 import { useServices, useStore } from "../hooks.js";
 import { approvalKey, deliveryKey } from "../models/inbox.js";

@@ -1,4 +1,4 @@
-import type { SecretInfo } from "@wheatley/protocol";
+import type { SecretInfo } from "@wheatley-ai/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage, withEntry, withMember } from "../store.js";

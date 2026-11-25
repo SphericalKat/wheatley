@@ -4,8 +4,8 @@ import type {
   PendingApproval,
   PermissionAction,
   PermissionRule,
-} from "@wheatley/protocol";
-import type { ApprovalResolution } from "@wheatley/sdk";
+} from "@wheatley-ai/protocol";
+import type { ApprovalResolution } from "@wheatley-ai/sdk";
 
 import type { ConfigStore, SecretStore } from "./config-store.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";

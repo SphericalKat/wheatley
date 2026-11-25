@@ -5,7 +5,7 @@ import {
   RunTimelineItemSchema,
   decode,
   isJsonValue,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import type {
   ChatMessage,
   RunOrigin,
@@ -13,7 +13,7 @@ import type {
   RunSummary,
   RunTimelineItem,
   RunUsage,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 
 import type { Migration } from "../../db/migrations.js";
 

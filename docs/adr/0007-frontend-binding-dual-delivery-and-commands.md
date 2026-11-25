@@ -13,4 +13,4 @@ Each **Frontend Binding** receives outbound work through two channels: a require
 - Minimal **Frontend** adapters omit `onEvent` and rely on `deliver(Delivery)` alone.
 - Streaming **Frontend** adapters correlate ephemeral drafts with the final `message` delivery through `runId`.
 - `FrontendSink` exposes the built-in command specs (`/new`, `/model`, `/compact`, `/stop`, `/goal`, `/status`, `/restart`) so adapters can register native command menus.
-- Each **Frontend Binding** owns platform-specific message chunking and Markdown formatting, using an optional helper in `@wheatley/sdk`.
+- Each **Frontend Binding** owns platform-specific message chunking and Markdown formatting, using an optional helper in `@wheatley-ai/sdk`.

@@ -1,4 +1,4 @@
-import { DeliveryError, isDeliveryError } from "@wheatley/sdk";
+import { DeliveryError, isDeliveryError } from "@wheatley-ai/sdk";
 
 /**
  * Discord JSON error codes that no retry can fix: Unknown Channel, Unknown Message, Unknown User, Missing Access,

@@ -1,4 +1,4 @@
-import type { GatePressure } from "@wheatley/protocol";
+import type { GatePressure } from "@wheatley-ai/protocol";
 
 /** The slot limit of a provider credential without `maxConcurrent` in `config.yaml`. */
 export const DEFAULT_PROVIDER_CONCURRENCY = 4;

@@ -13,8 +13,8 @@ import type {
   InboundMessage,
   JsonObject,
   JsonValue,
-} from "@wheatley/sdk";
-import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+} from "@wheatley-ai/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 import {
   ApplicationCommandOptionType,
   ButtonStyle,

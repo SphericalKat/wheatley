@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parseDuration } from "@wheatley/protocol";
+import { parseDuration } from "@wheatley-ai/protocol";
 
 import type { RpcHandlerMap } from "../contracts/module.js";
 import { daemonSocket, prepareDaemonSocketDir } from "./daemon-socket.js";

@@ -14,7 +14,7 @@ import type {
   SkillInfo,
   ToolInfo,
   Trigger,
-} from "@wheatley/protocol";
+} from "@wheatley-ai/protocol";
 import { stringify } from "yaml";
 
 import { DEFAULT_MEMORY_MAX_CHARS } from "../src/models/config-editor.js";

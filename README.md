@@ -11,52 +11,67 @@ Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript
 
 ## Install
 
-The `wheatley` package is `"private": true`. You cannot install it from the npm registry yet.
+Each release publishes these artifacts:
 
-### Build from source
+- The npm package [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli). It contains the daemon, the CLI, and the dashboard.
+- The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
+- The Docker image `ghcr.io/sphericalkat/wheatley`.
+- A GitHub release with a `v<version>` tag and the changelog.
 
-1. Clone the repository and open its folder.
-2. Install the dependencies:
+### Install from npm
 
-   ```bash
-   pnpm install
-   ```
-
-3. Build every package and the dashboard:
+1. Install the latest release globally:
 
    ```bash
-   pnpm build
+   npm install --global @wheatley-ai/cli
    ```
 
-4. Run the CLI:
+   With `pnpm`:
 
    ```bash
-   node packages/wheatley/bin/wheatley.js --help
+   pnpm add --global @wheatley-ai/cli
    ```
 
-The examples below use `wheatley`. In a source checkout, use `node packages/wheatley/bin/wheatley.js` instead.
-
-### Install from a tarball
-
-1. Build from source, as shown above.
-2. Pack the package. The `prepack` script builds it again:
+2. Check the installed version:
 
    ```bash
-   cd packages/wheatley
-   npm pack
+   npm list --global @wheatley-ai/cli
    ```
 
-3. Install the tarball:
+3. Continue with the [Quick start](#quick-start).
+
+The package puts the `wheatley` command on your `PATH`. To install one version, add it to the package name, for example `@wheatley-ai/cli@0.1.0`.
+
+### Run with Docker
+
+The image is based on `node:26-trixie-slim`. The container keeps the Deployment home in the `/data` volume and runs `wheatley daemon`. Each release pushes these image tags:
+
+| Tag                       | Points to                                       |
+| ------------------------- | ----------------------------------------------- |
+| `<major>.<minor>.<patch>` | One release, for example `0.1.0`.               |
+| `<major>.<minor>`         | The newest patch release of that minor version. |
+| `<major>`                 | The newest release of that major version.       |
+| `latest`                  | The newest release.                             |
+
+Before version `1.0.0`, a minor version can contain breaking changes.
+
+1. If the image is private, log in to the GitHub Container Registry with a token that has the `read:packages` scope:
 
    ```bash
-   npm install --global ./wheatley-0.0.0.tgz
+   docker login ghcr.io
    ```
 
-The installed package puts the `wheatley` command on your `PATH`.
+2. Pull the latest image:
+
+   ```bash
+   docker pull ghcr.io/sphericalkat/wheatley:latest
+   ```
+
+3. Continue with [Docker Compose](#run-with-docker-compose) or [`docker run`](#run-with-docker-run).
 
 ### Run with Docker Compose
 
-The image is based on `node:26-trixie-slim`. The container keeps the Deployment home in the `/data` volume and runs `wheatley daemon`. The Compose file publishes port `7420` on `127.0.0.1` of the host only.
+The Compose file in `docker/docker-compose.yml` uses the image tag in `WHEATLEY_TAG`. The default tag is `0`. The Compose file publishes port `7420` on `127.0.0.1` of the host only.
 
 1. Open the `docker` folder:
 
@@ -64,11 +79,13 @@ The image is based on `node:26-trixie-slim`. The container keeps the Deployment 
    cd docker
    ```
 
-2. Build the image:
+2. Pull the image:
 
    ```bash
-   docker compose build
+   docker compose pull
    ```
+
+   To use another tag, set `WHEATLEY_TAG`, for example `WHEATLEY_TAG=latest docker compose pull`. Use the same value for each `docker compose` command.
 
 3. Create `config.yaml` and `secrets.yaml` in `/data`:
 
@@ -96,7 +113,98 @@ The image is based on `node:26-trixie-slim`. The container keeps the Deployment 
 
 7. Open the dashboard at <http://127.0.0.1:7420/>.
 
-To update, rebuild the image and run `docker compose up -d` again. The Compose file also names the image `ghcr.io/sphericalkat/wheatley`, but the repository does not publish that image yet.
+To update, run these commands in the `docker` folder:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To build the image from your checkout instead, run `docker compose build`.
+
+### Run with `docker run`
+
+Use these commands if you do not have the Compose file.
+
+1. Create the volume for the Deployment home:
+
+   ```bash
+   docker volume create wheatley-data
+   ```
+
+2. Create `config.yaml` and `secrets.yaml`:
+
+   ```bash
+   docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest wheatley init
+   ```
+
+3. Make the Control Server listen on all container interfaces:
+
+   ```bash
+   docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest sh -c 'printf "daemon:\n  host: 0.0.0.0\n  port: 7420\n" >> /data/config.yaml'
+   ```
+
+4. Add your API key to `secrets.yaml`:
+
+   ```bash
+   docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest sh -c 'echo "ANTHROPIC_API_KEY: <your key>" >> /data/secrets.yaml'
+   ```
+
+5. Start the daemon:
+
+   ```bash
+   docker run -d --name wheatley --init --restart unless-stopped --stop-timeout 45 \
+     -p 127.0.0.1:7420:7420 -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest
+   ```
+
+6. Open the dashboard at <http://127.0.0.1:7420/>.
+
+To update, pull the image, then remove the container and start it again with the command in step 5:
+
+```bash
+docker pull ghcr.io/sphericalkat/wheatley:latest
+docker rm --force wheatley
+```
+
+The Deployment home stays in the `wheatley-data` volume.
+
+### Build from source
+
+1. Clone the repository and open its folder.
+2. Install the dependencies:
+
+   ```bash
+   pnpm install
+   ```
+
+3. Build every package and the dashboard:
+
+   ```bash
+   pnpm build
+   ```
+
+4. Run the CLI:
+
+   ```bash
+   node packages/wheatley/bin/wheatley.js --help
+   ```
+
+The examples below use `wheatley`. In a source checkout, use `node packages/wheatley/bin/wheatley.js` instead.
+
+### Install from a tarball
+
+1. Build from source, as shown above.
+2. Pack the package in the repository root. The `prepack` script builds it again:
+
+   ```bash
+   pnpm --filter @wheatley-ai/cli pack
+   ```
+
+3. Install the tarball:
+
+   ```bash
+   npm install --global ./wheatley-ai-cli-<version>.tgz
+   ```
 
 ## Quick start
 
@@ -345,7 +453,7 @@ wheatley service status
 
 ### Update
 
-`wheatley update` updates an npm or pnpm install within its major version:
+`wheatley update` updates an npm or pnpm install of `@wheatley-ai/cli` within its major version:
 
 ```bash
 wheatley update --check
@@ -353,7 +461,11 @@ wheatley update
 wheatley update --manager pnpm
 ```
 
+`wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
+
 `wheatley update` refuses to run in a source checkout. Use `git` there. In Docker, `wheatley update` prints the Docker Compose commands.
+
+After an update, restart the daemon, for example with `wheatley service restart`.
 
 ### Restore an Agent database
 
@@ -372,6 +484,59 @@ Wheatley backs up `agents/<name>/agent.sqlite` before a database migration and b
    wheatley restore <agent> <backup>
    ```
 
+## Write a Plugin
+
+A Plugin adds Tools and Frontends to an Agent. The SDK package `@wheatley-ai/sdk` contains the Plugin contract and its types.
+
+1. Create an ESM package for the Plugin and install the SDK:
+
+   ```bash
+   npm install @wheatley-ai/sdk
+   ```
+
+2. Default-export the Plugin from the package entry point:
+
+   ```ts
+   import { definePlugin } from "@wheatley-ai/sdk";
+
+   export default definePlugin({
+     apiVersion: 1,
+     name: "hello",
+     version: "1.0.0",
+     setup: () => ({
+       tools: [
+         {
+           name: "greet",
+           description: "Greets the user",
+           inputSchema: { type: "object", properties: {} },
+           execute: async () => ({
+             content: [{ type: "text", text: "Hello" }],
+           }),
+         },
+       ],
+     }),
+   });
+   ```
+
+3. Install the Plugin package in the `extensions` folder of the Deployment home:
+
+   ```bash
+   npm install --prefix ~/.wheatley/extensions <plugin package>
+   ```
+
+4. Add the Plugin to the Agent in `config.yaml`, and restart the Agent:
+
+   ```yaml
+   agents:
+     default:
+       plugins:
+         - source: <plugin package>
+   ```
+
+`source` can also be a file path. A path that starts with `./` or `../` resolves against the Deployment home. A path that starts with `~/` resolves against your home directory.
+
+The Agent sees each Plugin Tool as `<plugin>:<tool>`, for example `hello:greet`. A Plugin Tool uses the `ask` action by default. Wheatley skips a Plugin with another `apiVersion`.
+
 ## Development
 
 Run these commands from the repository root:
@@ -386,9 +551,32 @@ Run these commands from the repository root:
 
 If your shell uses an older Node.js version, run `eval "$(fnm env)" && fnm use` first.
 
+### Release process
+
+The `Release` workflow in `.github/workflows/release.yml` uses [release-please](https://github.com/googleapis/release-please). It runs on each push to `main`.
+
+1. Write each commit title as a Conventional Commit, for example `feat: add a Trigger view` or `fix: close the socket`. release-please reads these titles to choose the next version and write `CHANGELOG.md`.
+2. release-please opens or updates a release pull request. The pull request changes the version in the root `package.json`, `packages/wheatley/package.json`, and `packages/sdk/package.json`.
+3. Merge the release pull request.
+4. The workflow creates the `v<version>` tag and the GitHub release.
+5. The workflow publishes `@wheatley-ai/sdk` and `@wheatley-ai/cli` to npm.
+6. The workflow pushes the `linux/amd64` and `linux/arm64` image to `ghcr.io/sphericalkat/wheatley`.
+
+Before version `1.0.0`, a `feat` commit raises the minor version, and a `fix` commit raises the patch version.
+
+The workflow publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers). It uses no npm token. Each npm package must have a trusted publisher with these values:
+
+| Field                | Value          |
+| -------------------- | -------------- |
+| Organization or user | `SphericalKat` |
+| Repository           | `wheatley`     |
+| Workflow filename    | `release.yml`  |
+| Environment          | (empty)        |
+
+The repository must have **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** turned on.
+
 ## Known limitations
 
-- The `wheatley` package is not on the npm registry, and the Docker image is not published.
 - A Unix socket path has a length limit of about 100 bytes. If the home path is too long, the daemon fails with `listen EINVAL` on `daemon.sock`. Keep the home path short.
 - The dashboard does not show the Trigger ID or the webhook URL of a Trigger.
 - Webhooks support only static Bearer tokens. HMAC signatures are not supported.
