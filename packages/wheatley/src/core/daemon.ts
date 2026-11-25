@@ -79,7 +79,7 @@ export const startDaemon = async (options: DaemonOptions): Promise<Daemon> => {
 
   const router = createRouter({
     agent: async (name) => {
-      const agent = await deployment.readyAgent(name);
+      const agent = await deployment.waitForAgent(name);
       const cached = agentRpc.get(agent);
 
       if (cached !== undefined) {

@@ -75,7 +75,7 @@ export class SerialQueue {
 
   /**
    * Resolves once no step is queued or running. It also waits for steps that callers queue while it waits. It never
-   * rejects, also if a step fails.
+   * rejects, even if a step fails.
    */
   readonly idle = async (): Promise<void> => {
     const tail = this.#tail;

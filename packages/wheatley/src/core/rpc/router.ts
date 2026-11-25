@@ -25,9 +25,10 @@ export interface RouterSources {
   /** Deployment-wide handler maps. The router checks them first. */
   readonly deployment: readonly RpcHandlerMap[];
   /**
-   * The handler maps of one Agent. It can wait for an Agent that is starting or restarting. Rejects with
-   * `SeamError("agent_not_found")` for an unknown Agent and `SeamError("agent_unavailable")` for an Agent that is not
-   * running.
+   * The handler maps of one Agent. If the Agent is starting, stopping, or restarting, it waits for a limited time for
+   * that call to finish. Rejects at once with `SeamError("agent_not_found")` for an unknown Agent. Rejects with
+   * `SeamError("agent_unavailable")` if the Agent is not running after the wait, for example `degraded`, `stopped`, or
+   * still `starting` when the wait limit ends.
    */
   readonly agent: (name: string) => Promise<readonly RpcHandlerMap[]>;
   /** The names of the running Agents, for methods whose `agent` param is optional. */

@@ -242,6 +242,53 @@ describe("Deployment", () => {
       expect(opened.health("broken").state).toBe("running");
     });
   });
+  it("fails waitForAgent with agent_unavailable if the Agent is still starting when the wait limit ends", async () => {
+    await writeFile(
+      path.join(home.dir, "config.yaml"),
+      configYaml(["alpha"], 4)
+    );
+    const timers: (() => void)[] = [];
+    let modelsReady: Promise<unknown> = Promise.resolve();
+
+    const setTimer: SetTimer = (fire) => {
+      timers.push(fire);
+
+      return () => {};
+    };
+
+    const opened = await openDeployment({
+      models: async () => {
+        await modelsReady;
+
+        return llm.models;
+      },
+      setTimer,
+    });
+
+    const hold = Promise.withResolvers<undefined>();
+
+    modelsReady = hold.promise;
+
+    const restarted = opened.restartAgent("alpha");
+
+    await vi.waitFor(() => {
+      expect(opened.health("alpha").state).toBe("starting");
+    });
+
+    const armed = timers.length;
+    const waited = opened.waitForAgent("alpha");
+
+    await vi.waitFor(() => {
+      expect(timers).toHaveLength(armed + 1);
+    });
+    timers.at(-1)?.();
+
+    await expect(waited).rejects.toMatchObject({ code: "agent_unavailable" });
+
+    hold.resolve(undefined);
+    await expect(restarted).resolves.toBe("running");
+  });
+
   it("renames and deletes Agents with their folders and checks expectedRevision first", async () => {
     await writeFile(
       path.join(home.dir, "config.yaml"),

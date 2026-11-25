@@ -88,8 +88,8 @@ export interface DeploymentOptions {
   readonly setTimer?: SetTimer;
 }
 
-/** The longest time that `readyAgent` waits for the start, stop, or restart of an Agent to finish. */
-export const AGENT_START_WAIT_MS = 30_000;
+/** The longest time that `waitForAgent` waits for the start, stop, or restart of an Agent to finish. */
+const AGENT_START_WAIT_MS = 30_000;
 
 /** The health fields of an Agent that is not running. */
 const IDLE_STATUS: AgentStatus = {
@@ -244,17 +244,14 @@ export class Deployment {
    * Errors: throws `agent_not_found` at once for an unknown Agent. Throws `agent_unavailable` if the Agent is not running
    * after the wait, for example `degraded` or `stopped`, or if the wait times out while it is still `starting`.
    */
-  readonly readyAgent = async (name: string): Promise<Agent> => {
-    const running = this.#supervisor.get(name)?.instance;
+  readonly waitForAgent = async (name: string): Promise<Agent> => {
+    const state = this.#supervisor.get(name);
 
-    if (running !== undefined) {
-      return running;
+    if (state?.instance !== undefined) {
+      return state.instance;
     }
 
-    if (
-      this.#supervisor.get(name) === undefined &&
-      this.#current.agents[name] === undefined
-    ) {
+    if (state === undefined && this.#current.agents[name] === undefined) {
       throw new SeamError("agent_not_found", `Unknown Agent: ${name}`);
     }
 
