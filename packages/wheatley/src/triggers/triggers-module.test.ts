@@ -63,6 +63,7 @@ const createModule = async (): Promise<ModuleInstance<TriggersModuleApi>> => {
   };
 
   const instance = await triggersModule.create(ctx, {
+    bindingIds: ["cli", "tg"],
     runner: {
       isActive: (triggerId) => activeTriggers.has(triggerId),
       start: async (firing) => {
@@ -476,6 +477,47 @@ it("schedules a reminder for the current Chat through the schedule_trigger Tool"
 
   expect(firings.map((firing) => firing.prompt)).toStrictEqual([
     "Remind me to stretch",
+  ]);
+});
+
+it("rejects a schedule_trigger target with an unknown Frontend Binding and stores nothing", async () => {
+  const { api } = await startModule();
+
+  const result = await api.tools.execute(
+    "schedule_trigger",
+    {
+      name: "reminder",
+      prompt: "Say hello",
+      schedule: { delay: "1m", kind: "once" },
+      target: { bindingId: "current", chatId: "current" },
+    },
+    toolContext("chat-run")
+  );
+
+  expect(result.isError).toBe(true);
+  expect(JSON.stringify(result.content)).toContain(
+    "Unknown Frontend Binding: current"
+  );
+  await expect(api.runtime.list()).resolves.toStrictEqual([]);
+});
+
+it("accepts a schedule_trigger target on another known Frontend Binding", async () => {
+  const { api } = await startModule();
+
+  const result = await api.tools.execute(
+    "schedule_trigger",
+    {
+      name: "reminder",
+      prompt: "Say hello",
+      schedule: { delay: "1m", kind: "once" },
+      target: { bindingId: "cli", chatId: "default" },
+    },
+    toolContext("chat-run")
+  );
+
+  expect(result.isError).toBeUndefined();
+  await expect(api.runtime.list()).resolves.toMatchObject([
+    { target: { bindingId: "cli", chatId: "default" } },
   ]);
 });
 
