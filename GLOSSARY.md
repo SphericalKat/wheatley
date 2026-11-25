@@ -14,7 +14,7 @@ Wheatley is a self-hosted, always-on personal assistant that hosts one or more i
 
 **Permission Policy**: The rules of one **Agent** that set each tool to allow, ask, or deny. Every **Sender** of that **Agent** gets the same **Permission Policy**. _Avoid_: ACL, role, scope
 
-**Approval**: A decision by a **Sender** in the originating **Chat**, or by the **Operator**, to let or stop one tool call that the **Permission Policy** sets to ask. _Avoid_: Confirmation, consent
+**Approval**: A decision by a **Sender** in the originating **Chat**, or by the **Operator**, to allow (once, for the **Conversation**, or always) or deny a tool call that the **Permission Policy** sets to ask. _Avoid_: Confirmation, consent
 
 **Frontend**: A kind of chat surface through which a **Sender** talks to an **Agent**, for example Telegram, Slack, or the CLI. _Avoid_: Channel, client, interface
 
