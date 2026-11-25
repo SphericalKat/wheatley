@@ -1,6 +1,11 @@
+import { createConnection } from "node:net";
+import path from "node:path";
 import { parseArgs } from "node:util";
 
+import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
 import { errorMessage } from "../core/error-message.js";
+import { createOpsCommands, hostCliDeps } from "../ops/cli.js";
+import type { OpsCliDeps } from "../ops/cli.js";
 import { runAsk } from "./ask.js";
 import { runChat } from "./chat.js";
 import { runDaemon } from "./daemon.js";
@@ -20,8 +25,12 @@ Commands:
   chat      Chat with an Agent in its CLI Chat
   ask       Send one prompt to an Agent and print the reply
   status    Show the health of the Deployment
+  service   Install or control the Wheatley service: install, start, stop, restart, status
+  update    Update Wheatley within its major version (--check, --manager npm|pnpm)
+  restore   List the backups of an Agent, or restore agent.sqlite: restore <agent> [backup]
 
 Options:
+  -h, --help         Show this help
   --home <dir>       The Deployment home (default: $WHEATLEY_HOME or ~/.wheatley)
   --url <ws-url>     Connect over TCP instead of the Unix socket in the home folder
   --agent <name>     The Agent of chat and ask
@@ -34,7 +43,93 @@ Options:
 /** Embedding overrides of `runCli`. */
 export interface CliOverrides {
   readonly daemon?: DaemonCommandOptions["overrides"];
+  /** Replaces host dependencies of `service`, `update`, and `restore`, for example a fake command runner. */
+  readonly ops?: Partial<OpsCliDeps>;
 }
+
+/** Resolves `true` if a daemon accepts connections on the Unix socket of `home`. */
+export const isDaemonRunning = async (home: string): Promise<boolean> => {
+  const { promise, resolve } = Promise.withResolvers<boolean>();
+  const socket = createConnection(path.join(home, DAEMON_SOCKET_FILE));
+
+  socket.once("connect", () => {
+    socket.destroy();
+    resolve(true);
+  });
+  socket.once("error", () => {
+    resolve(false);
+  });
+
+  return await promise;
+};
+
+const OPS_COMMANDS = ["service", "update", "restore"] as const;
+
+type OpsCommandName = (typeof OPS_COMMANDS)[number];
+
+const isOpsCommand = (command: string | undefined): command is OpsCommandName =>
+  OPS_COMMANDS.some((name) => name === command);
+
+/** Runs `service`, `update`, or `restore` with the ops line-based output. */
+const runOpsCommand = async (
+  command: OpsCommandName,
+  argv: readonly string[],
+  io: CliIo,
+  home: string,
+  overrides: Partial<OpsCliDeps> | undefined
+): Promise<number> => {
+  const commands = createOpsCommands({
+    ...hostCliDeps(async () => await isDaemonRunning(home)),
+    homeDir: home,
+    ...overrides,
+  });
+
+  return await commands[command](argv, {
+    err: (line) => {
+      io.stderr(`${line}\n`);
+    },
+    out: (line) => {
+      io.stdout(`${line}\n`);
+    },
+  });
+};
+
+/** The ops arguments without `--home`, and the `--home` value if one was given. */
+interface OpsArguments {
+  readonly home: string | undefined;
+  readonly rest: readonly string[];
+}
+
+const HOME_FLAG = "--home";
+
+/**
+ * Takes `--home <dir>` and `--home=<dir>` out of ops arguments, which the ops commands do not parse themselves.
+ *
+ * Errors: throws if `--home` has no value.
+ */
+const takeHomeOption = (argv: readonly string[]): OpsArguments => {
+  const rest: string[] = [];
+  let home: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? "";
+
+    if (arg.startsWith(`${HOME_FLAG}=`)) {
+      home = arg.slice(HOME_FLAG.length + 1);
+    } else if (arg === HOME_FLAG) {
+      home = argv[index + 1];
+      index += 1;
+
+      if (home === undefined || home.startsWith("-")) {
+        throw new Error(`Option '${HOME_FLAG} <dir>' argument missing`);
+      }
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  return { home, rest };
+};
 
 const readPrompt = async (
   io: CliIo,
@@ -67,6 +162,29 @@ export const runCli = async (
   io: CliIo,
   overrides: CliOverrides = {}
 ): Promise<number> => {
+  let ops: OpsArguments;
+
+  try {
+    ops = takeHomeOption(argv);
+  } catch (error) {
+    io.stderr(`${errorMessage(error)}\n${USAGE}`);
+
+    return 2;
+  }
+
+  const [first, ...opsArgs] = ops.rest;
+
+  // The ops commands parse their own flags, so they skip the root parser.
+  if (isOpsCommand(first)) {
+    return await runOpsCommand(
+      first,
+      opsArgs,
+      io,
+      resolveHome(ops.home, io.env),
+      overrides.ops
+    );
+  }
+
   let parsed: ReturnType<typeof parseCliArgs>;
 
   try {
@@ -78,6 +196,13 @@ export const runCli = async (
   }
 
   const { values, positionals } = parsed;
+
+  if (values.help === true) {
+    io.stdout(USAGE);
+
+    return 0;
+  }
+
   const [command, ...rest] = positionals;
   const home = resolveHome(values.home, io.env);
   const version = await packageVersion();
@@ -151,6 +276,7 @@ const parseCliArgs = (argv: readonly string[]) =>
     args: [...argv],
     options: {
       agent: { type: "string" },
+      help: { short: "h", type: "boolean" },
       home: { type: "string" },
       host: { type: "string" },
       model: { type: "string" },

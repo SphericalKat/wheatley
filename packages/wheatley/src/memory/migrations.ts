@@ -6,7 +6,6 @@ import type { Migration } from "../db/migrations.js";
  * - `memory_files_fts`: the derived FTS5 index of the Markdown files. `reindex` rebuilds it from disk.
  * - `memory_messages` and `memory_messages_fts`: the user and assistant Conversation archive and its index. Triggers
  *   keep the external-content index in step with the archive.
- * - `memory_snapshots`: the frozen `MEMORY.md` snapshot of each Conversation.
  * - `memory_consolidations`: the consolidation log.
  */
 export const memoryMigrations: readonly Migration[] = [
@@ -67,5 +66,13 @@ export const memoryMigrations: readonly Migration[] = [
       `);
     },
     version: 1,
+  },
+  {
+    name: "drop memory snapshots",
+    // The Conversation instructions in `harness.sqlite` hold the frozen `MEMORY.md` snapshot, so this table is unused.
+    up: (db) => {
+      db.exec("DROP TABLE memory_snapshots;");
+    },
+    version: 2,
   },
 ];

@@ -29,6 +29,19 @@ let home: Awaited<ReturnType<typeof temporaryDir>>;
 let llm: FakeLlm;
 let events: EventRecorder;
 
+/** The Agent's Memory hooks over a fake store, with an empty snapshot prompt. */
+const agentMemory = (store: InMemoryMemoryStore): AgentOptions["memory"] => ({
+  archive: async (message) => {
+    await store.archive(message);
+  },
+  compactionFlushPrompt: () => store.compactionFlushPrompt(),
+  snapshotPrompt: async () => {
+    await Promise.resolve();
+
+    return "";
+  },
+});
+
 const openAgent = async (
   overrides: Partial<AgentOptions> = {}
 ): Promise<Agent> =>
@@ -455,7 +468,10 @@ describe("Agent", () => {
 
     llm.faux.setResponses(Array.from({ length: 40 }, () => respond));
 
-    const agent = await openAgent({ memory, models: llm.models });
+    const agent = await openAgent({
+      memory: agentMemory(memory),
+      models: llm.models,
+    });
 
     try {
       for (const [index, word] of [
@@ -543,7 +559,7 @@ describe("Agent", () => {
 
   it("archives Chat messages and replies in Memory, but not maintenance Runs", async () => {
     const memory = new InMemoryMemoryStore();
-    const agent = await openAgent({ memory });
+    const agent = await openAgent({ memory: agentMemory(memory) });
 
     try {
       llm.faux.setResponses([

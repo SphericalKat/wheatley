@@ -51,7 +51,12 @@ export const ARCHIVE_DIR = "archive";
 export type AgentServices = Partial<
   Pick<
     AgentOptions,
-    "approvals" | "outbox" | "memory" | "isDeliverySuppressed" | "modules"
+    | "approvals"
+    | "outbox"
+    | "memory"
+    | "isDeliverySuppressed"
+    | "modules"
+    | "migrate"
   >
 >;
 

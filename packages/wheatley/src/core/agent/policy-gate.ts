@@ -1,4 +1,7 @@
+import type { DatabaseSync } from "node:sqlite";
+
 import type { PermissionAction, PermissionRule } from "@wheatley/protocol";
+import type { Logger } from "@wheatley/sdk";
 
 import type {
   ApprovalGate,
@@ -20,6 +23,10 @@ export interface ApprovalHost {
   readonly wake: (calls: readonly ParkedCall[]) => Promise<void>;
   readonly events: EventSink;
   readonly clock: Clock;
+  /** The open `agent.sqlite` handle, with the migrations of every module applied. The gate stores Approvals in it. */
+  readonly db: DatabaseSync;
+  /** The Agent's logger. The gate logs failures that it does not return to the caller, for example a failed wake. */
+  readonly log: Logger;
 }
 
 /** Creates the `ApprovalGate` of one Agent. The Approvals module provides the real factory. */

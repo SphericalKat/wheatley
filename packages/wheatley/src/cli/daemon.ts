@@ -1,8 +1,8 @@
 import { once } from "node:events";
 
-import { startDaemon } from "../core/daemon.js";
-import type { DaemonOptions } from "../core/daemon.js";
 import { errorMessage } from "../core/error-message.js";
+import { startWheatley } from "../wiring/daemon.js";
+import type { WheatleyOptions } from "../wiring/daemon.js";
 import type { CliIo } from "./io.js";
 
 /** Options of `wheatley daemon`. */
@@ -12,21 +12,22 @@ export interface DaemonCommandOptions {
   readonly port: number | undefined;
   readonly version: string;
   /** Overrides for embedding, for example a fake model provider in tests. */
-  readonly overrides?: Partial<DaemonOptions>;
+  readonly overrides?: Partial<WheatleyOptions>;
 }
 
 /**
- * `wheatley daemon`: runs the Deployment and the Control Server in the foreground until `SIGINT` or `SIGTERM`, then
- * drains and stops. Log records go to stderr as JSON lines. Resolves with the exit code.
+ * `wheatley daemon`: runs the Deployment with every module, the Webhook Ingress, and the Control Server in the
+ * foreground until `SIGINT` or `SIGTERM`, then drains and stops. Log records go to stderr as JSON lines. Resolves with
+ * the exit code.
  */
 export const runDaemon = async (
   io: CliIo,
   options: DaemonCommandOptions
 ): Promise<number> => {
-  let daemon: Awaited<ReturnType<typeof startDaemon>>;
+  let daemon: Awaited<ReturnType<typeof startWheatley>>;
 
   try {
-    daemon = await startDaemon({
+    daemon = await startWheatley({
       env: io.env,
       homeDir: options.home,
       host: options.host,

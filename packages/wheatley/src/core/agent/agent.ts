@@ -25,11 +25,15 @@ import type {
 import type { Logger, SecretReader, ToolResult } from "@wheatley/sdk";
 
 import type { ApprovalGate } from "../../contracts/approval-gate.js";
-import type { DeliveryOutbox } from "../../contracts/delivery-outbox.js";
+import type {
+  DeliveryOutbox,
+  OutboxEntry,
+} from "../../contracts/delivery-outbox.js";
 import { SeamError } from "../../contracts/errors.js";
 import type {
   AgentExtensions,
   ExtensionCatalog,
+  ToolProvider,
 } from "../../contracts/extension-catalog.js";
 import type {
   MaintenanceRunner,
@@ -53,6 +57,7 @@ import { ConcurrencyGate } from "../concurrency-gate.js";
 import { SerialQueue } from "../config/atomic-file.js";
 import { CLI_BINDING_ID } from "../config/validate.js";
 import { errorMessage } from "../error-message.js";
+import { toolErrorResult, withExtraTools } from "../tool-routing.js";
 import { AgentStore, CORE_NAMESPACE, coreMigrations } from "./agent-store.js";
 import type { RunDelivery } from "./agent-store.js";
 import { openPiAdapter } from "./pi-adapter.js";
@@ -80,6 +85,15 @@ export const DEFAULT_APPROVAL_TIMEOUT = "15m";
 /** The default limit of concurrent Runs of one Agent without `maxConcurrentRuns`. */
 export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
 
+/** The time limit of one Tool call (ADR 0006). The Approval wait and the wait for a Tool slot do not count. */
+export const TOOL_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** The most Tool calls that one Agent runs at the same time (ADR 0006). Later calls wait for a slot. */
+export const MAX_CONCURRENT_TOOL_CALLS = 8;
+
+/** The one `ConcurrencyGate` key of the Agent's Tool slots: all Tools of the Agent share the limit. */
+const TOOL_SLOT_KEY = "tools";
+
 /** The file name of the pi-durable storage inside the Agent folder (ADR 0001). */
 export const HARNESS_FILE = "harness.sqlite";
 
@@ -88,6 +102,10 @@ export const AGENT_DB_FILE = "agent.sqlite";
 
 /** The working directory of the Agent's Tools, inside the Agent folder. */
 export const WORKSPACE_DIR = "workspace";
+
+/** How the model sees a Trigger result that was delivered to its Chat (ADR 0010). */
+const deliveredContext = (text: string): string =>
+  `A Trigger Run sent this message to this Chat:\n\n${text}`;
 
 const isCliChat = (chat: ChatKey | null): boolean =>
   chat?.bindingId === CLI_CHAT.bindingId && chat.chatId === CLI_CHAT.chatId;
@@ -115,6 +133,12 @@ export interface AgentHost {
   readonly maintenance: MaintenanceRunner;
   readonly triggers: TriggerRunner;
   readonly approvals: ApprovalGate;
+  /** The Agent's chat entry points for Frontend Bindings. They throw `agent_unavailable` until the Harness opens. */
+  readonly chat: Pick<Agent, "send" | "command">;
+  /** The Plugins, MCP Servers, Skills, and Frontends from the `ExtensionCatalog`, without module Tools. */
+  readonly extensions: AgentExtensions;
+  /** Copies a delivered Trigger result into the target Chat's current Conversation (ADR 0010, copy-on-confirm). */
+  readonly recordDelivered: (entry: OutboxEntry) => Promise<void>;
 }
 
 /** A module that the Agent hosts: it runs its migrations, creates it, mounts its JSON-RPC handlers, and starts it. */
@@ -130,6 +154,10 @@ export interface HostedModule {
 /** A created hosted module without its typed API. */
 export interface MountedModule {
   readonly rpc: RpcHandlerMap;
+  /** Tools that the module adds after the `ExtensionCatalog` Tools, for example the Memory and Trigger Tools. */
+  readonly tools?: ToolProvider;
+  /** The status of the Frontend Bindings that the module runs, for Agent health. */
+  readonly frontends?: () => readonly BindingStatus[];
   readonly start?: () => Promise<void>;
   readonly stop?: () => Promise<void>;
 }
@@ -154,14 +182,27 @@ export interface AgentOptions {
   readonly approvals?: ApprovalGateFactory;
   /** The outbox for replies to Chats other than the CLI Chat. Without it, the Agent logs and drops such replies. */
   readonly outbox?: Pick<DeliveryOutbox, "enqueue">;
-  /** The Memory snapshot, the pre-compaction flush, and the Conversation archive (ADR 0009). */
-  readonly memory?: Pick<
-    MemoryStore,
-    "snapshot" | "compactionFlushPrompt" | "archive"
-  >;
+  /** The Memory snapshot prompt, the pre-compaction flush, and the Conversation archive (ADR 0009). */
+  readonly memory?: Pick<MemoryStore, "compactionFlushPrompt" | "archive"> & {
+    /**
+     * The Memory section of the system prompt from the current `MEMORY.md`, or an empty string. The Agent freezes it in
+     * the Conversation instructions at Conversation start and after `/compact`.
+     */
+    readonly snapshotPrompt: () => Promise<string>;
+  };
   /** True if a Trigger Run called `suppress_delivery`. */
   readonly isDeliverySuppressed?: (runId: string) => Promise<boolean>;
   readonly modules?: readonly HostedModule[];
+  /**
+   * Applies the migrations of every module to `agent.sqlite`, for example with a pre-migration backup. The default runs
+   * them directly.
+   *
+   * Errors: a rejection stops `Agent.open`, which closes `agent.sqlite` and rejects with the same error.
+   */
+  readonly migrate?: (
+    db: DatabaseSync,
+    namespaces: readonly MigrationNamespace[]
+  ) => Promise<void>;
   /** `/restart` asks the Supervisor to restart this Agent. */
   readonly onRestartRequested: () => void;
   /** The Harness failed after a storage error. The Supervisor restarts the Agent. */
@@ -252,9 +293,12 @@ export class Agent {
   readonly #options: AgentOptions;
   readonly #db: DatabaseSync;
   readonly #store: AgentStore;
-  readonly #extensions: AgentExtensions;
+  /** The catalog extensions, merged with module Tools once the modules mount. */
+  #extensions: AgentExtensions;
+  readonly #moduleFrontends: (() => readonly BindingStatus[])[] = [];
   readonly #gate: ApprovalGate;
   readonly #runSlots: ConcurrencyGate;
+  readonly #toolSlots = new ConcurrencyGate(() => MAX_CONCURRENT_TOOL_CALLS);
   readonly #workspaceDir: string;
   readonly #active = new Map<string, ActiveRun>();
   readonly #runByConversation = new Map<string, string>();
@@ -295,10 +339,14 @@ export class Agent {
     let agent: Agent | undefined;
 
     try {
-      runMigrations(db, [
+      const namespaces: MigrationNamespace[] = [
         { migrations: coreMigrations, namespace: CORE_NAMESPACE },
         ...(options.modules ?? []).map((module) => module.migrations),
-      ]);
+      ];
+
+      await (options.migrate === undefined
+        ? Promise.try(() => runMigrations(db, namespaces))
+        : options.migrate(db, namespaces));
 
       const abort = new AbortController();
 
@@ -327,12 +375,15 @@ export class Agent {
       const gate = gateFactory({
         agentName: options.name,
         clock: options.clock,
+        db,
+        // Module Tools join the Tool list once the modules mount, so this reads the Agent's list when it exists.
         defaultAction: (toolName) =>
-          extensions
+          (agent === undefined ? extensions : agent.#extensions)
             .tools()
             .find((tool) => tool.name === toolName && tool.source === "builtin")
             ?.defaultAction,
         events: options.events,
+        log: options.log,
         policy: options.config.permissionPolicy ?? [],
         timeoutMs: timeout === null ? null : parseDuration(timeout),
         wake: async (calls) => {
@@ -389,7 +440,10 @@ export class Agent {
 
     return {
       activeRuns: this.#active.size,
-      frontends: [{ id: CLI_BINDING_ID, state: "ready", type: "cli" }],
+      frontends: [
+        { id: CLI_BINDING_ID, state: "ready", type: "cli" },
+        ...this.#moduleFrontends.flatMap((frontends) => frontends()),
+      ],
       mcpServers: health.mcpServers,
       plugins: health.plugins,
       skillWarnings: health.skillWarnings,
@@ -587,9 +641,14 @@ export class Agent {
 
     const host: AgentHost = {
       approvals: this.#gate,
+      chat: { command: this.command, send: this.send },
+      extensions: this.#extensions,
       maintenance: this.maintenance,
+      recordDelivered: this.#recordDelivered,
       triggers: this.triggers,
     };
+
+    const moduleTools: ToolProvider[] = [];
 
     for (const module of this.#options.modules ?? []) {
       // oxlint-disable-next-line no-await-in-loop -- Modules are created one at a time in configuration order.
@@ -601,8 +660,58 @@ export class Agent {
         this.#stops.push(mounted.stop);
       }
 
+      if (mounted.tools !== undefined) {
+        moduleTools.push(mounted.tools);
+        this.#stops.push(mounted.tools.close);
+      }
+
+      if (mounted.frontends !== undefined) {
+        this.#moduleFrontends.push(mounted.frontends);
+      }
+
       this.#pendingStarts.push(mounted.start);
     }
+
+    this.#extensions = withExtraTools(this.#extensions, moduleTools);
+  };
+
+  /**
+   * Copies a delivered Trigger result into the current Conversation of its target Chat, so the Chat history and the
+   * model context of its next Run show it (ADR 0010). The CLI Chat records Trigger results when the Run ends, so this
+   * skips it.
+   */
+  readonly #recordDelivered = async (entry: OutboxEntry): Promise<void> => {
+    const { delivery } = entry;
+
+    if (delivery.kind !== "message" || isCliChat(entry)) {
+      return;
+    }
+
+    const chat: ChatKey = { bindingId: entry.bindingId, chatId: entry.chatId };
+    const conversationId = await this.#chatConversation(chat);
+    const at = this.#now();
+
+    this.#recordMessage(chat, conversationId, {
+      at,
+      messageId: entry.deliveryId,
+      role: "assistant",
+      source: delivery.source,
+      text: delivery.text,
+    });
+    await this.#requirePi().addContext(
+      conversationId,
+      deliveredContext(delivery.text),
+      `delivered:${entry.deliveryId}`
+    );
+    await this.#archive(
+      { bindingId: chat.bindingId, chatId: chat.chatId, kind: "chat" },
+      {
+        at: Date.parse(at),
+        conversationId,
+        role: "assistant",
+        text: delivery.text,
+      }
+    );
   };
 
   readonly #startModules = async (): Promise<void> => {
@@ -654,17 +763,10 @@ export class Agent {
   };
 
   readonly #instructions = async (): Promise<string | undefined> => {
-    const snapshot =
-      this.#options.memory === undefined
-        ? undefined
-        : await this.#options.memory.snapshot();
-
     const parts = [
       this.#options.config.instructions,
       this.#extensions.skillCatalogPrompt(),
-      snapshot === undefined || snapshot.text === ""
-        ? undefined
-        : `<memory>\n${snapshot.text}\n</memory>`,
+      await this.#options.memory?.snapshotPrompt(),
     ].filter(
       (part): part is string => part !== undefined && part.trim() !== ""
     );
@@ -946,6 +1048,11 @@ export class Agent {
       const conversationId = await this.#chatConversation(CLI_CHAT);
 
       this.#recordMessage(CLI_CHAT, conversationId, message);
+      await this.#requirePi().addContext(
+        conversationId,
+        deliveredContext(text),
+        `delivered:${message.messageId}`
+      );
       await this.#archive(run.origin, {
         at: Date.parse(at),
         conversationId,
@@ -1203,23 +1310,40 @@ export class Agent {
       });
     }
 
-    const signals =
-      run === undefined ? [signal] : [signal, run.controller.signal];
+    // ADR 0006: every Tool call runs within the Agent's Tool concurrency limit and a per-call time limit. The time
+    // limit starts once the call holds a slot, so the wait for a slot does not count.
+    const cancel = AbortSignal.any([
+      signal,
+      ...(run === undefined ? [] : [run.controller.signal]),
+    ]);
 
-    const result = await this.#extensions.executeTool(
-      call.toolName,
-      call.input,
-      {
-        agentName: this.name,
-        chat: run?.chat ?? null,
-        conversationId: call.conversationId,
-        log: this.#options.log,
-        runId,
-        signal: AbortSignal.any(signals),
-        toolCallId: call.toolCallId,
-        workspaceDir: this.#workspaceDir,
+    let result: ToolResult;
+
+    try {
+      const lease = await this.#toolSlots.acquire(TOOL_SLOT_KEY, cancel);
+
+      const toolSignal = AbortSignal.any([
+        cancel,
+        AbortSignal.timeout(TOOL_TIMEOUT_MS),
+      ]);
+
+      try {
+        result = await this.#extensions.executeTool(call.toolName, call.input, {
+          agentName: this.name,
+          chat: run?.chat ?? null,
+          conversationId: call.conversationId,
+          log: this.#options.log,
+          runId,
+          signal: toolSignal,
+          toolCallId: call.toolCallId,
+          workspaceDir: this.#workspaceDir,
+        });
+      } finally {
+        lease.release();
       }
-    );
+    } catch (error) {
+      result = toolErrorResult(errorMessage(error));
+    }
 
     if (runId !== "") {
       const outputPreview = preview(

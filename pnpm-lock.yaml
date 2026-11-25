@@ -288,12 +288,6 @@ importers:
       '@slack/web-api':
         specifier: 8.5.0
         version: 8.5.0
-      '@wheatley/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@wheatley/sdk':
-        specifier: workspace:*
-        version: link:../sdk
       croner:
         specifier: 11.0.1
         version: 11.0.1
@@ -322,6 +316,15 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+      '@wheatley/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
+      '@wheatley/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@wheatley/sdk':
+        specifier: workspace:*
+        version: link:../sdk
 
 packages:
 

@@ -11,6 +11,6 @@ Each **Agent** stores its **Memory** as plain Markdown files under `~/.wheatley/
 
 ## Consequences
 
-- `src/agent/memory-store.ts` owns Markdown I/O, slug validation, `MEMORY.md` budget enforcement, FTS5 indexing, and **Conversation** archive storage with zero `@earendil-works/pi-durable` imports.
+- `src/memory/` owns Markdown I/O, slug validation, `MEMORY.md` budget enforcement, FTS5 indexing, and **Conversation** archive storage with zero `@earendil-works/pi-durable` imports.
 - Disk edits to `memory/` take effect on **Agent** restart or an explicit `reindex` command, with no filesystem watcher.
 - `memory_write` rejects writes that exceed the `MEMORY.md` budget instead of silent truncation.

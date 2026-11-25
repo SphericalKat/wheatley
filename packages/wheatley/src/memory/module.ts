@@ -11,8 +11,6 @@ import type { MemoryConsolidation } from "./consolidation.js";
 import { memoryMigrations } from "./migrations.js";
 import { MEMORY_DIR_NAME } from "./names.js";
 import { createMemoryRpcHandlers } from "./rpc.js";
-import { createMemorySnapshots } from "./snapshots.js";
-import type { MemorySnapshots } from "./snapshots.js";
 import { createMarkdownMemoryStore } from "./store.js";
 import { createMemoryTools } from "./tools.js";
 
@@ -45,8 +43,6 @@ export interface MemoryApi {
   readonly store: MemoryStore;
   /** The built-in Memory Tools, for the Agent's Tool list. */
   readonly tools: ToolProvider;
-  /** The frozen `MEMORY.md` snapshot of each Conversation, for the system prompt. */
-  readonly snapshots: MemorySnapshots;
   /**
    * Starts consolidation Runs on demand and reads the consolidation log. The module runs the schedule itself, so the
    * core Agent never calls `start` or `stop` of the consolidation job.
@@ -63,9 +59,9 @@ export interface MemoryApi {
  * 1. Run `migrationNamespace(memoryModule)` with the other modules' migrations on `agent.sqlite`.
  * 2. Call `create` with `{ config: agentConfig.memory, maintenance }`, and mount `rpc`.
  * 3. Add `api.tools` to the Agent's Tools. Archive each user and assistant message with `api.store.archive`.
- * 4. Inject `formatSnapshotPrompt(await api.snapshots.get(conversationId))` into the system prompt. Call
- *    `api.snapshots.refresh` at Conversation start and after each compaction. Call `api.snapshots.forget` on `/new`
- *    and when a Conversation ends, also for the Conversation of a maintenance Run.
+ * 4. Put `formatSnapshotPrompt(await api.store.snapshot())` into the Conversation instructions at Conversation start
+ *    and after `/compact`. The instructions keep that text until the next `/compact`, so Memory writes during the
+ *    Conversation do not change the system prompt.
  * 5. Before each compaction, run `api.store.compactionFlushPrompt()` as a silent turn.
  *
  * `start` rebuilds the index from the Markdown files, so disk edits take effect on Agent restart, and starts the
@@ -100,11 +96,6 @@ export const memoryModule: AgentModule<MemoryModuleDeps, MemoryApi> = {
     return {
       api: {
         consolidation: { log: consolidation.log, run: consolidation.run },
-        snapshots: createMemorySnapshots({
-          clock: ctx.clock,
-          db: ctx.db,
-          store,
-        }),
         store,
         tools: createMemoryTools(store),
       },

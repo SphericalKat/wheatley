@@ -320,57 +320,7 @@ describe("index rebuild from disk", () => {
   });
 });
 
-describe("frozen MEMORY.md snapshot", () => {
-  it("keeps the snapshot of a Conversation until refresh, as after /compact", async () => {
-    await memory.api.store.write("MEMORY", "Prefers tea.", "replace");
-
-    await expect(memory.api.snapshots.get("c1")).resolves.toStrictEqual({
-      text: "Prefers tea.",
-      truncated: false,
-    });
-
-    await callTool("memory_write", {
-      content: "Lives in Lyon.",
-      mode: "append",
-      name: "MEMORY",
-    });
-
-    await expect(memory.api.snapshots.get("c1")).resolves.toStrictEqual({
-      text: "Prefers tea.",
-      truncated: false,
-    });
-    await expect(memory.api.snapshots.get("c2")).resolves.toStrictEqual({
-      text: "Prefers tea.\nLives in Lyon.",
-      truncated: false,
-    });
-    await expect(memory.api.snapshots.refresh("c1")).resolves.toStrictEqual({
-      text: "Prefers tea.\nLives in Lyon.",
-      truncated: false,
-    });
-    await expect(memory.api.snapshots.get("c1")).resolves.toStrictEqual({
-      text: "Prefers tea.\nLives in Lyon.",
-      truncated: false,
-    });
-  });
-
-  it("keeps the frozen snapshot across a restart and takes a new one after forget", async () => {
-    await memory.api.store.write("MEMORY", "v1", "replace");
-    await memory.api.snapshots.get("c1");
-    await memory.api.store.write("MEMORY", "v2", "replace");
-
-    const restarted = await fixture.create();
-
-    await expect(restarted.api.snapshots.get("c1")).resolves.toMatchObject({
-      text: "v1",
-    });
-
-    await restarted.api.snapshots.forget("c1");
-
-    await expect(restarted.api.snapshots.get("c1")).resolves.toMatchObject({
-      text: "v2",
-    });
-  });
-
+describe("MEMORY.md snapshot prompt", () => {
   it("cuts an over-long MEMORY.md from disk and says so in the prompt", async () => {
     await mkdir(fixture.memoryDir, { recursive: true });
     await writeFile(
@@ -378,7 +328,7 @@ describe("frozen MEMORY.md snapshot", () => {
       "x".repeat(CAP + 10)
     );
 
-    const snapshot = await memory.api.snapshots.get("c1");
+    const snapshot = await memory.api.store.snapshot();
 
     expect(snapshot.text).toHaveLength(CAP);
     expect(snapshot.truncated).toBe(true);
