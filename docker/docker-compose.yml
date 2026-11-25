@@ -1,0 +1,26 @@
+# Run Wheatley with Docker Compose. Update with: docker compose pull && docker compose up -d
+#
+# The daemon reads /data/config.yaml. For the published port to work, set `daemon.host: 0.0.0.0` and
+# `daemon.port: 7420` in that file. The port binds to 127.0.0.1 on the host only, because the Control Server has no
+# authentication (ADR 0002).
+name: wheatley
+
+services:
+  wheatley:
+    image: ghcr.io/sphericalkat/wheatley:${WHEATLEY_TAG:-1}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    init: true
+    restart: unless-stopped
+    # The daemon drains Runs for 30 seconds after SIGTERM. Docker sends SIGKILL after this grace period.
+    stop_grace_period: 45s
+    environment:
+      TZ: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:${WHEATLEY_PORT:-7420}:7420"
+    volumes:
+      - wheatley-data:/data
+
+volumes:
+  wheatley-data:
