@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { isatty } from "node:tty";
 
 /** The terminal of one CLI command. Tests pass scripted input and collect the output. */
 export interface CliIo {
@@ -31,7 +32,7 @@ export const processIo = (): CliIo => {
 
   return {
     env: process.env,
-    isTTY: process.stdin.isTTY,
+    isTTY: isatty(process.stdin.fd),
     lines: readline[Symbol.asyncIterator](),
     shutdown: shutdown.signal,
     stderr: (text) => {
