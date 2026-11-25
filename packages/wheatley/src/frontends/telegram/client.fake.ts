@@ -45,7 +45,10 @@ type FailingMethod =
  * polling handler, and rejects the next calls of a method with the errors from `failNext`.
  */
 export class FakeTelegramClient implements TelegramClient {
-  readonly bot: BotIdentity = { id: 999, username: "wheatley_bot" };
+  readonly bot = {
+    id: 999,
+    username: "wheatley_bot",
+  } as const satisfies BotIdentity;
   readonly sent: SentMessage[] = [];
   readonly edits: EditedMessage[] = [];
   readonly files: SentFile[] = [];

@@ -47,14 +47,16 @@ const isAddressedToBot = (
   entities: readonly TelegramEntity[],
   me: BotIdentity
 ): boolean => {
-  const mention = `@${me.username}`.toLowerCase();
+  const mention =
+    me.username === undefined ? undefined : `@${me.username}`.toLowerCase();
 
   const mentioned = entities.some((entity) => {
     const value = entityText(text, entity).toLowerCase();
 
     return (
-      (entity.type === "mention" && value === mention) ||
-      (entity.type === "bot_command" && value.endsWith(mention)) ||
+      (mention !== undefined &&
+        ((entity.type === "mention" && value === mention) ||
+          (entity.type === "bot_command" && value.endsWith(mention)))) ||
       (entity.type === "text_mention" && entity.user?.id === me.id)
     );
   });
@@ -73,8 +75,10 @@ const isAddressedToBot = (
 
 /** Removes `@<bot>` mentions from message text. */
 const stripMention = (text: string, me: BotIdentity): string =>
-  text
-    .replaceAll(new RegExp(`@${me.username}\\b`, "giu"), "")
+  (me.username === undefined
+    ? text
+    : text.replaceAll(new RegExp(`@${me.username}\\b`, "giu"), "")
+  )
     .replaceAll(/[ \t]{2,}/gu, " ")
     .trim();
 
@@ -84,7 +88,7 @@ const isCommandForOtherBot = (text: string, me: BotIdentity): boolean => {
 
   return (
     commandBot !== undefined &&
-    commandBot.toLowerCase() !== me.username.toLowerCase()
+    commandBot.toLowerCase() !== me.username?.toLowerCase()
   );
 };
 
