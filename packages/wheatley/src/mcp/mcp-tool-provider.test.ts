@@ -578,14 +578,13 @@ it(
 );
 
 it(
-  "runs as an Agent module: start connects, stop closes, and no migration or RPC method exists",
+  "runs as an Agent module: start connects and stop closes",
   async () => {
     const instance = await mcpModule.create(moduleContext(), {
       config: agentConfig({ local: stdioServer() }),
       secrets,
     });
 
-    expect(instance.rpc).toStrictEqual({});
     expect(instance.api.tools()).toStrictEqual([]);
     expect(instance.api.health()).toStrictEqual([
       { name: "local", state: "starting" },

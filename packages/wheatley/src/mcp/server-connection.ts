@@ -27,7 +27,7 @@ import type { Logger, SecretReader, ToolResult } from "@wheatley/sdk";
 
 import type { ToolDescriptor } from "../contracts/extension-catalog.js";
 import { canonicalToolName } from "../contracts/tool-names.js";
-import { errorResult, isJsonObject, toToolResult } from "./content.js";
+import { errorResult, toToolResult } from "./content.js";
 
 /** Time limits of one MCP Server connection. */
 export interface McpTimeouts {
@@ -74,7 +74,11 @@ const readPackageVersion = (): string => {
     "../../package.json"
   );
 
-  return isPackageManifest(manifest) ? manifest.version : "0.0.0";
+  if (!isPackageManifest(manifest)) {
+    throw new Error("The wheatley package.json has no version");
+  }
+
+  return manifest.version;
 };
 
 const CLIENT_INFO = { name: "wheatley", version: readPackageVersion() };
@@ -88,6 +92,10 @@ type InputSchema = McpTool["inputSchema"];
 const isJsonSchemaDocument = (
   schema: InputSchema
 ): schema is InputSchema & JsonObject & JsonSchemaType => isJsonValue(schema);
+
+/** Returns true if `value` is a JSON object, not an array or `null`. */
+const isJsonObject = (value: JsonValue): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
@@ -124,7 +132,7 @@ const resolveValues = (
 /**
  * One MCP Server of one Agent: its client, its Tools, and its status.
  *
- * A failure of this server changes only its own status and Tools. Every method except `connect` never throws.
+ * A failure of this server changes only its own status and Tools. No method throws or rejects.
  */
 export class McpServerConnection {
   readonly name: string;
@@ -150,6 +158,7 @@ export class McpServerConnection {
   /** True if `name` is a canonical Tool name of this server. Matches also while the server is not `ready`. */
   readonly owns = (name: string): boolean => this.#tools.has(name);
 
+  /** The state of this server, with the error message while it is `failed`. */
   readonly status = (): ExtensionStatus =>
     this.#error === undefined
       ? { name: this.name, state: this.#state }

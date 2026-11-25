@@ -66,9 +66,15 @@ export class McpToolProvider implements ToolProvider {
     await this.#connecting;
   };
 
+  /** The Tools of every `ready` server. A `failed`, `stopped`, or `disabled` server contributes none. */
   readonly tools = (): readonly ToolDescriptor[] =>
     this.#connections.flatMap((connection) => connection.tools());
 
+  /**
+   * Runs a Tool on the server that owns `name`, with the semantics of `ToolProvider.execute`.
+   *
+   * Resolves `{ isError: true }` with `Unknown Tool` if no server owns `name`. Never rejects.
+   */
   readonly execute = async (
     name: string,
     input: JsonValue,
@@ -85,6 +91,7 @@ export class McpToolProvider implements ToolProvider {
     return await connection.execute(name, input, ctx.signal);
   };
 
+  /** One status per configured MCP Server, in config order, disabled servers included. */
   readonly health = (): readonly ExtensionStatus[] =>
     this.#connections.map((connection) => connection.status());
 

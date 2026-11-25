@@ -2,16 +2,7 @@ import type {
   CallToolResult,
   ContentBlock,
 } from "@modelcontextprotocol/client";
-import { isJsonValue } from "@wheatley/protocol";
-import type { JsonObject } from "@wheatley/protocol";
 import type { ToolContent, ToolResult } from "@wheatley/sdk";
-
-/** Returns true if `value` is a JSON object, not an array or `null`. */
-export const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  isJsonValue(value);
 
 /** A Tool result that reports `text` to the model as an error. */
 export const errorResult = (text: string): ToolResult => ({

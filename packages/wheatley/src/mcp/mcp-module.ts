@@ -4,7 +4,7 @@ import type { SecretReader } from "@wheatley/sdk";
 import type { ToolProvider } from "../contracts/extension-catalog.js";
 import type { AgentModule, RpcHandlerMap } from "../contracts/module.js";
 import type { Migration } from "../db/migrations.js";
-import { DEFAULT_MCP_TIMEOUTS, McpToolProvider } from "./mcp-tool-provider.js";
+import { McpToolProvider } from "./mcp-tool-provider.js";
 import type { McpTimeouts } from "./server-connection.js";
 
 /** The dependencies of the MCP module of one Agent. */
@@ -13,6 +13,7 @@ export interface McpModuleDeps {
   readonly config: AgentConfig;
   /** Resolves the `{ secret }` references in `env` and `headers`. */
   readonly secrets: SecretReader;
+  /** The MCP time limits. The default is `DEFAULT_MCP_TIMEOUTS`. */
   readonly timeouts?: McpTimeouts;
 }
 
@@ -38,7 +39,7 @@ export const mcpModule: AgentModule<McpModuleDeps, ToolProvider> = {
         log: ctx.log,
         secrets: deps.secrets,
       },
-      deps.timeouts ?? DEFAULT_MCP_TIMEOUTS
+      deps.timeouts
     );
 
     return {
