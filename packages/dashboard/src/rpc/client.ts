@@ -361,6 +361,8 @@ export const createRpcClient = (options: RpcClientOptions): RpcClient => {
         );
       }
 
+      // The protocol schema does not say what omitted `agents` and `topics` mean. The dashboard needs every topic of
+      // every Agent, so the daemon must read an omitted filter as "all", not "none".
       await send("events.subscribe", {});
       markOpen(hello.wheatleyVersion);
     } catch (error) {

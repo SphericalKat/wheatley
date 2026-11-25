@@ -17,6 +17,8 @@ import type {
 } from "@wheatley/protocol";
 import { stringify } from "yaml";
 
+import { DEFAULT_MEMORY_MAX_CHARS } from "../src/models/config-editor.js";
+
 /** The Supervisor view of one Agent in the fixture. */
 export interface FixtureAgentRuntime {
   state: AgentState;
@@ -64,7 +66,6 @@ export interface FixtureState {
 }
 
 const MINUTE_MS = 60_000;
-const DEFAULT_MEMORY_MAX_CHARS = 4000;
 
 /** Returns the `config.yaml` text of a config, with the header comment that a hand-written file has. */
 export const configToYaml = (config: DeploymentConfig): string =>

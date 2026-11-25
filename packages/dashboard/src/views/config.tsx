@@ -16,7 +16,11 @@ import type {
 import { useEffect, useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";
-import { isDraftDirty, pendingRestartsOf } from "../models/config-editor.js";
+import {
+  DEFAULT_MEMORY_MAX_CHARS,
+  isDraftDirty,
+  pendingRestartsOf,
+} from "../models/config-editor.js";
 import type { RestartMode } from "../models/config-editor.js";
 import { DeleteAgentButton, RenameAgentButton } from "./agent-admin.js";
 import {
@@ -447,7 +451,10 @@ const AgentSettings = ({
             value={current.maxConcurrentRuns ?? ""}
           />
         </Field>
-        <Field hint="Empty uses 4,000." label="MEMORY.md character cap">
+        <Field
+          hint={`Empty uses ${DEFAULT_MEMORY_MAX_CHARS.toLocaleString("en-US")}.`}
+          label="MEMORY.md character cap"
+        >
           <input
             className={inputClass}
             min={1}

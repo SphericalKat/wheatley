@@ -7,8 +7,9 @@ import type {
 } from "@wheatley/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
-import { createStore, errorMessage } from "../store.js";
+import { createStore, errorMessage, withEntry, withMember } from "../store.js";
 import type { Store } from "../store.js";
+import { disposeAll, loadOnReady } from "./lifecycle.js";
 
 /** The Inbox: pending Approvals and failed deliveries of every Agent. */
 export interface InboxState {
@@ -48,7 +49,6 @@ export interface Inbox {
    */
   readonly retry: (delivery: FailedDelivery) => Promise<void>;
   /** Removes a failed delivery without sending it. Failures behave as in `retry`. Never rejects. */
-
   readonly dismiss: (delivery: FailedDelivery) => Promise<void>;
   /** Removes the event listeners. */
   readonly dispose: () => void;
@@ -76,38 +76,6 @@ const byFailedAtDescending = (
   left: FailedDelivery,
   right: FailedDelivery
 ): number => right.failedAt.localeCompare(left.failedAt);
-
-const withEntry = <Value>(
-  map: ReadonlyMap<string, Value>,
-  key: string,
-  value: Value | undefined
-): ReadonlyMap<string, Value> => {
-  const next = new Map(map);
-
-  if (value === undefined) {
-    next.delete(key);
-  } else {
-    next.set(key, value);
-  }
-
-  return next;
-};
-
-const withMember = (
-  set: ReadonlySet<string>,
-  key: string,
-  present: boolean
-): ReadonlySet<string> => {
-  const next = new Set(set);
-
-  if (present) {
-    next.add(key);
-  } else {
-    next.delete(key);
-  }
-
-  return next;
-};
 
 const isNotFound = (cause: unknown): boolean =>
   cause instanceof RpcError && cause.code === RpcErrorCode.NotFound;
@@ -196,8 +164,8 @@ export const createInbox = (client: RpcClient): Inbox => {
     }
   };
 
-  const offs = [
-    client.onReady(() => {
+  const dispose = disposeAll([
+    loadOnReady(client, () => {
       void refresh();
     }),
     client.on("approval.requested", ({ approval }) => {
@@ -228,11 +196,7 @@ export const createInbox = (client: RpcClient): Inbox => {
     client.on("delivery.cleared", ({ agent, deliveryId }) => {
       removeDelivery(agent, deliveryId);
     }),
-  ];
-
-  if (client.state.get().status === "open") {
-    void refresh();
-  }
+  ]);
 
   return {
     decide: async (approval, decision, reason) => {
@@ -271,11 +235,7 @@ export const createInbox = (client: RpcClient): Inbox => {
         return dismissed ? null : "The delivery had already left the outbox.";
       });
     },
-    dispose: () => {
-      for (const off of offs) {
-        off();
-      }
-    },
+    dispose,
     refresh,
     retry: async (delivery) => {
       await runItem(deliveryKey(delivery), async () => {

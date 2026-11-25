@@ -3,6 +3,7 @@ import type { LogLevel, LogRecord } from "@wheatley/protocol";
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";
 import type { Store } from "../store.js";
+import { disposeAll, loadOnReady } from "./lifecycle.js";
 
 /** Which log records the Logs view shows. */
 export interface LogFilter {
@@ -25,6 +26,7 @@ export interface LogTail {
   readonly state: Store<LogTailState>;
   /** Replaces the filter and loads the tail again. */
   readonly setFilter: (filter: LogFilter) => Promise<void>;
+  /** Removes the `log.record` and reconnect listeners. */
   readonly dispose: () => void;
 }
 
@@ -94,8 +96,8 @@ export const createLogTail = (client: RpcClient): LogTail => {
     }
   };
 
-  const offs = [
-    client.onReady(() => {
+  const dispose = disposeAll([
+    loadOnReady(client, () => {
       void load();
     }),
     client.on("log.record", ({ record }) => {
@@ -112,18 +114,10 @@ export const createLogTail = (client: RpcClient): LogTail => {
         };
       });
     }),
-  ];
-
-  if (client.state.get().status === "open") {
-    void load();
-  }
+  ]);
 
   return {
-    dispose: () => {
-      for (const off of offs) {
-        off();
-      }
-    },
+    dispose,
     setFilter: async (filter) => {
       state.update((current) => ({ ...current, filter }));
       await load();

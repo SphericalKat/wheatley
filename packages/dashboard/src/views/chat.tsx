@@ -219,7 +219,7 @@ const MessageBubble = ({ message }: { readonly message: ChatMessage }) => {
       >
         <div className="flex flex-wrap items-center gap-2 text-xs opacity-75">
           <span>
-            {message.senderDisplayName ?? (fromUser ? "User" : "Agent")}
+            {message.senderDisplayName ?? (fromUser ? "Sender" : "Agent")}
           </span>
           <span>{formatTime(message.at)}</span>
           {message.source === undefined || message.source === "reply" ? null : (

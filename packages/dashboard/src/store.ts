@@ -46,3 +46,37 @@ export const createStore = <State>(initial: State): Store<State> => {
 /** Returns the message of an error for display. */
 export const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
+
+/** Returns a copy of `map` with `key` set to `value`, or without `key` if `value` is `undefined`. */
+export const withEntry = <Value>(
+  map: ReadonlyMap<string, Value>,
+  key: string,
+  value: Value | undefined
+): ReadonlyMap<string, Value> => {
+  const next = new Map(map);
+
+  if (value === undefined) {
+    next.delete(key);
+  } else {
+    next.set(key, value);
+  }
+
+  return next;
+};
+
+/** Returns a copy of `set` that holds `key` if `present` is true, and does not hold it otherwise. */
+export const withMember = (
+  set: ReadonlySet<string>,
+  key: string,
+  present: boolean
+): ReadonlySet<string> => {
+  const next = new Set(set);
+
+  if (present) {
+    next.add(key);
+  } else {
+    next.delete(key);
+  }
+
+  return next;
+};

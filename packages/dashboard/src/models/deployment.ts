@@ -3,6 +3,7 @@ import type { DaemonStatus } from "@wheatley/protocol";
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";
 import type { Store } from "../store.js";
+import { disposeAll, loadOnReady } from "./lifecycle.js";
 
 /** The Overview: daemon status and the health of every Agent. */
 export interface DeploymentState {
@@ -16,14 +17,23 @@ export interface DeploymentState {
 /** The Deployment model. It reloads on Agent, config, and Run events and after each reconnect. */
 export interface Deployment {
   readonly state: Store<DeploymentState>;
+  /** Loads `system.status` again. Never rejects. On failure, `error` holds the reason. */
   readonly refresh: () => Promise<void>;
   /** Starts, stops, or restarts one Agent. Never rejects. On failure, `actionError` holds the reason. */
   readonly control: (
     agent: string,
     action: "start" | "stop" | "restart"
   ) => Promise<void>;
+  /** Removes the event and reconnect listeners. */
   readonly dispose: () => void;
 }
+
+/** The `agents.*` method for each Agent action. */
+const CONTROL_METHODS = {
+  restart: "agents.restart",
+  start: "agents.start",
+  stop: "agents.stop",
+} as const;
 
 /** Returns the Agent names of the Deployment, in config order. */
 export const agentNames = (state: DeploymentState): readonly string[] =>
@@ -61,30 +71,20 @@ export const createDeployment = (client: RpcClient): Deployment => {
     void refresh();
   };
 
-  const offs = [
-    client.onReady(reload),
+  const dispose = disposeAll([
+    loadOnReady(client, reload),
     client.on("agent.status", reload),
     client.on("config.changed", reload),
     client.on("run.started", reload),
     client.on("run.finished", reload),
-  ];
-
-  if (client.state.get().status === "open") {
-    reload();
-  }
+  ]);
 
   return {
     control: async (agent, action) => {
       state.update((current) => ({ ...current, actionError: null }));
 
       try {
-        if (action === "start") {
-          await client.call("agents.start", { agent });
-        } else if (action === "stop") {
-          await client.call("agents.stop", { agent });
-        } else {
-          await client.call("agents.restart", { agent });
-        }
+        await client.call(CONTROL_METHODS[action], { agent });
 
         await refresh();
       } catch (error) {
@@ -94,11 +94,7 @@ export const createDeployment = (client: RpcClient): Deployment => {
         }));
       }
     },
-    dispose: () => {
-      for (const off of offs) {
-        off();
-      }
-    },
+    dispose,
     refresh,
     state,
   };

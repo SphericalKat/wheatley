@@ -17,6 +17,7 @@ import type {
 import type { RpcClient } from "../rpc/client.js";
 import { createStore, errorMessage } from "../store.js";
 import type { Store } from "../store.js";
+import { disposeAll, loadOnReady } from "./lifecycle.js";
 
 /** `none` saves only. `affected` also restarts every changed Agent and Frontend Binding (ADR 0004). */
 export type RestartMode = "none" | "affected";
@@ -112,8 +113,12 @@ export interface ConfigEditor {
   ) => Promise<boolean>;
   /** Restarts one Agent, so its pending config takes effect. Never rejects. On failure, `saveError` holds the reason. */
   readonly restartAgent: (agent: string) => Promise<void>;
+  /** Removes the `config.changed` and reconnect listeners. */
   readonly dispose: () => void;
 }
+
+/** The `MEMORY.md` character cap that the daemon uses if `memory.maxChars` is absent. The protocol config schema documents it. */
+export const DEFAULT_MEMORY_MAX_CHARS = 4000;
 
 /** Returns true if the raw draft has unsaved edits. */
 export const isDraftDirty = (state: ConfigEditorState): boolean =>
@@ -311,8 +316,9 @@ export const createConfigEditor = (client: RpcClient): ConfigEditor => {
     }
   };
 
-  const offs = [
-    client.onReady(() => {
+  // A reconnect keeps unsaved edits. On the first load, the draft equals `raw`, so `keepDraft` has no effect.
+  const dispose = disposeAll([
+    loadOnReady(client, () => {
       void load(true);
     }),
     client.on("config.changed", ({ pendingRestart, revision }) => {
@@ -332,18 +338,10 @@ export const createConfigEditor = (client: RpcClient): ConfigEditor => {
 
       void load();
     }),
-  ];
-
-  if (client.state.get().status === "open") {
-    void load();
-  }
+  ]);
 
   return {
-    dispose: () => {
-      for (const off of offs) {
-        off();
-      }
-    },
+    dispose,
     load,
     resolveConflict: async (choice) => {
       const { conflict } = state.get();

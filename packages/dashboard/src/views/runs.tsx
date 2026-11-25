@@ -106,7 +106,7 @@ const TimelineItem = ({ item }: { readonly item: RunTimelineItem }) => {
     return (
       <li>
         <span className="text-xs text-zinc-500">
-          {formatTime(item.at)} · {item.senderDisplayName ?? "User"}
+          {formatTime(item.at)} · {item.senderDisplayName ?? "Sender"}
         </span>
         <p className="whitespace-pre-wrap">{item.text}</p>
       </li>

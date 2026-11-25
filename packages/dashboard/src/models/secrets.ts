@@ -1,8 +1,9 @@
 import type { SecretInfo } from "@wheatley/protocol";
 
 import type { RpcClient } from "../rpc/client.js";
-import { createStore, errorMessage } from "../store.js";
+import { createStore, errorMessage, withEntry, withMember } from "../store.js";
 import type { Store } from "../store.js";
+import { loadOnReady } from "./lifecycle.js";
 
 /** The Secrets view: secret names with their sources and references, and the values the Operator revealed. */
 export interface SecretsState {
@@ -21,6 +22,7 @@ export interface SecretsState {
 /** The Secrets model. */
 export interface Secrets {
   readonly state: Store<SecretsState>;
+  /** Loads the secret list again. Never rejects. On failure, `error` holds the reason. Keeps revealed values. */
   readonly refresh: () => Promise<void>;
   /**
    * Fetches one plaintext value with `secrets.reveal` and keeps it in `revealed` until `hide`, `set`, or `remove`.
@@ -37,44 +39,12 @@ export interface Secrets {
   readonly set: (name: string, value: string) => Promise<void>;
   /** Deletes a secret from `secrets.yaml` and reloads the list. Never rejects. */
   readonly remove: (name: string) => Promise<void>;
+  /** Removes the reconnect listener. Revealed values stay in `state` until the page drops the model. */
   readonly dispose: () => void;
 }
 
 /** The text that the Secrets view shows in place of a value that is not revealed. */
 export const MASKED_VALUE = "••••••••";
-
-const without = <Value>(
-  map: ReadonlyMap<string, Value>,
-  key: string
-): ReadonlyMap<string, Value> => {
-  const next = new Map(map);
-
-  next.delete(key);
-
-  return next;
-};
-
-const withEntry = <Value>(
-  map: ReadonlyMap<string, Value>,
-  key: string,
-  value: Value
-): ReadonlyMap<string, Value> => new Map(map).set(key, value);
-
-const withBusy = (
-  set: ReadonlySet<string>,
-  key: string,
-  busy: boolean
-): ReadonlySet<string> => {
-  const next = new Set(set);
-
-  if (busy) {
-    next.add(key);
-  } else {
-    next.delete(key);
-  }
-
-  return next;
-};
 
 /** Creates the Secrets model and loads it once the client is ready. */
 export const createSecrets = (client: RpcClient): Secrets => {
@@ -90,24 +60,21 @@ export const createSecrets = (client: RpcClient): Secrets => {
   const setBusy = (name: string, busy: boolean): void => {
     state.update((current) => ({
       ...current,
-      busy: withBusy(current.busy, name, busy),
+      busy: withMember(current.busy, name, busy),
     }));
   };
 
-  const setItemError = (name: string, error: string | null): void => {
+  const setItemError = (name: string, error?: string): void => {
     state.update((current) => ({
       ...current,
-      itemErrors:
-        error === null
-          ? without(current.itemErrors, name)
-          : withEntry(current.itemErrors, name, error),
+      itemErrors: withEntry(current.itemErrors, name, error),
     }));
   };
 
   const forget = (name: string): void => {
     state.update((current) => ({
       ...current,
-      revealed: without(current.revealed, name),
+      revealed: withEntry(current.revealed, name, undefined),
     }));
   };
 
@@ -134,21 +101,17 @@ export const createSecrets = (client: RpcClient): Secrets => {
     }
   };
 
-  const off = client.onReady(() => {
+  const dispose = loadOnReady(client, () => {
     void refresh();
   });
 
-  if (client.state.get().status === "open") {
-    void refresh();
-  }
-
   return {
-    dispose: off,
+    dispose,
     hide: forget,
     refresh,
     remove: async (name) => {
       setBusy(name, true);
-      setItemError(name, null);
+      setItemError(name);
 
       try {
         await client.call("secrets.delete", { name });
@@ -162,7 +125,7 @@ export const createSecrets = (client: RpcClient): Secrets => {
     },
     reveal: async (name) => {
       setBusy(name, true);
-      setItemError(name, null);
+      setItemError(name);
 
       try {
         const { value } = await client.call("secrets.reveal", { name });
@@ -183,7 +146,7 @@ export const createSecrets = (client: RpcClient): Secrets => {
       try {
         await client.call("secrets.set", { name, value });
         forget(name);
-        setItemError(name, null);
+        setItemError(name);
         await refresh();
       } finally {
         setBusy(name, false);
