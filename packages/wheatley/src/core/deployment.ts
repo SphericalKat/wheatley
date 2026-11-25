@@ -38,7 +38,7 @@ import type { AppliedAgent } from "./config/pending-restart.js";
 import { EventBus } from "./events.js";
 import { LogStore } from "./logger.js";
 import { createProviderModels } from "./models.js";
-import { Supervisor } from "./supervisor.js";
+import { defaultSetTimer, Supervisor } from "./supervisor.js";
 import type { SetTimer } from "./supervisor.js";
 
 /** The folder of the Agents inside the Deployment home. */
@@ -87,6 +87,9 @@ export interface DeploymentOptions {
   readonly writeLog?: (record: LogRecord) => void;
   readonly setTimer?: SetTimer;
 }
+
+/** The longest time that `waitForAgent` waits for the start, stop, or restart of an Agent to finish. */
+const AGENT_START_WAIT_MS = 30_000;
 
 /** The health fields of an Agent that is not running. */
 const IDLE_STATUS: AgentStatus = {
@@ -230,6 +233,42 @@ export class Deployment {
     }
 
     return state.instance;
+  };
+
+  /**
+   * The Agent `name` for a request that can wait for it, for example `chat.send` while `/restart` runs.
+   *
+   * Ordering: it returns a running Agent at once. Otherwise it waits until every queued start, stop, and restart of the
+   * Agent finishes, at most `AGENT_START_WAIT_MS`, and then behaves as `agent`.
+   *
+   * Errors: throws `agent_not_found` at once for an unknown Agent. Throws `agent_unavailable` if the Agent is not running
+   * after the wait, for example `degraded` or `stopped`, or if the wait times out while it is still `starting`.
+   */
+  readonly waitForAgent = async (name: string): Promise<Agent> => {
+    const state = this.#supervisor.get(name);
+
+    if (state?.instance !== undefined) {
+      return state.instance;
+    }
+
+    if (state === undefined && this.#current.agents[name] === undefined) {
+      throw new SeamError("agent_not_found", `Unknown Agent: ${name}`);
+    }
+
+    const timedOut = Promise.withResolvers<undefined>();
+    const setTimer = this.#options.setTimer ?? defaultSetTimer;
+
+    const cancel = setTimer(() => {
+      timedOut.resolve(undefined);
+    }, AGENT_START_WAIT_MS);
+
+    try {
+      await Promise.race([this.#supervisor.settled(name), timedOut.promise]);
+    } finally {
+      cancel();
+    }
+
+    return this.agent(name);
   };
 
   /** Health of one Agent. Throws `SeamError("agent_not_found")`. */

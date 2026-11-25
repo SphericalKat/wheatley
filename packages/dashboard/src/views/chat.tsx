@@ -2,8 +2,10 @@ import { CommandNameSchema, decode } from "@wheatley/protocol";
 import type { AttachmentUpload, ChatMessage } from "@wheatley/protocol";
 import { useCallback, useEffect, useState } from "react";
 
-import { useEvent, useServices } from "../hooks.js";
+import { useEvent, useServices, useStore } from "../hooks.js";
+import { approvalKey, chatApprovals } from "../models/inbox.js";
 import { errorMessage } from "../store.js";
+import { ApprovalCard } from "./approval-card.js";
 import {
   ActionButton,
   Badge,
@@ -17,6 +19,7 @@ import {
 /** The Chat that the CLI and the dashboard share (ADR 0005). */
 const CLI_BINDING = "cli";
 const CLI_CHAT = "default";
+const CLI_CHAT_KEY = { bindingId: CLI_BINDING, chatId: CLI_CHAT } as const;
 const PAGE_SIZE = 50;
 const SENDER = "Operator";
 const COMMAND = /^\/(?<name>[a-z]+)(?:\s+(?<args>.*))?$/su;
@@ -239,8 +242,9 @@ const MessageBubble = ({ message }: { readonly message: ChatMessage }) => {
 
 /** The Chat view: the Agent's CLI Chat (`cli` binding, Chat `default`), which the CLI shares. */
 export const ChatView = ({ agent }: { readonly agent: string }) => {
-  const { client } = useServices();
+  const { client, inbox } = useServices();
   const { loadOlder, state } = useChat(agent);
+  const approvals = chatApprovals(useStore(inbox.state), agent, CLI_CHAT_KEY);
   const [text, setText] = useState("");
   const [files, setFiles] = useState<readonly File[]>([]);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -315,6 +319,18 @@ export const ChatView = ({ agent }: { readonly agent: string }) => {
           </ul>
         )}
       </div>
+      {approvals.length === 0 ? null : (
+        <section aria-label="Pending Approvals" className="space-y-2">
+          <h2 className="text-sm font-semibold">
+            The Agent waits for your decision
+          </h2>
+          <ul className="space-y-2">
+            {approvals.map((approval) => (
+              <ApprovalCard approval={approval} key={approvalKey(approval)} />
+            ))}
+          </ul>
+        </section>
+      )}
       <form
         className="space-y-2"
         onSubmit={(event) => {

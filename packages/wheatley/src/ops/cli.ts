@@ -80,7 +80,7 @@ const SERVICE_USAGE =
   "Usage: wheatley service <install|start|stop|restart|status>";
 
 const UPDATE_USAGE = "Usage: wheatley update [--check] [--manager npm|pnpm]";
-const RESTORE_USAGE = "Usage: wheatley restore <agent> <backup>";
+const RESTORE_USAGE = "Usage: wheatley restore <agent> [backup]";
 
 class UsageError extends Error {
   override readonly name = "UsageError";
@@ -277,25 +277,24 @@ const restoreCommand =
     const [agent, backup, ...extra] = positionals;
 
     if (agent === undefined || extra.length > 0) {
-      throw new UsageError("Pass an Agent name and a backup.");
+      throw new UsageError("Pass an Agent name and at most one backup.");
     }
 
     const agentDir = agentDirFor(deps.homeDir, agent);
 
     if (backup === undefined) {
       const backups = await listBackups(agentDir);
-      io.err(RESTORE_USAGE);
-      io.err(
+      io.out(
         backups.length === 0
           ? `Agent ${agent} has no backups.`
           : `Backups of Agent ${agent}, newest first:`
       );
 
       for (const info of backups) {
-        io.err(`  ${info.file}  (${info.reason}, ${info.createdAt})`);
+        io.out(`  ${info.file}  (${info.reason}, ${info.createdAt})`);
       }
 
-      return EXIT_USAGE;
+      return EXIT_OK;
     }
 
     if (await deps.isDaemonRunning()) {
@@ -329,7 +328,14 @@ export interface OpsCommands {
   readonly service: CliCommand;
   /** `wheatley update [--check] [--manager npm|pnpm]` */
   readonly update: CliCommand;
-  /** `wheatley restore <agent> <backup>`. Without `<backup>`, it lists the Agent's backups. */
+  /**
+   * `wheatley restore <agent> [backup]`
+   *
+   * - Without `backup`, it lists the Agent's backups on stdout and exits 0.
+   * - With `backup`, it restores that backup and exits 0.
+   * - A missing Agent name, an extra argument, or an unknown option prints the usage on stderr and exits 2.
+   * - A running daemon, an invalid Agent name, or a failed restore prints the error on stderr and exits 1.
+   */
   readonly restore: CliCommand;
 }
 

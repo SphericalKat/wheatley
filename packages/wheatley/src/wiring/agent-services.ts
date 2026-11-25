@@ -10,6 +10,7 @@ import { migrationNamespace } from "../contracts/module.js";
 import type { TriggerRuntime } from "../contracts/trigger-runtime.js";
 import type { HostedModule } from "../core/agent/agent.js";
 import type { ApprovalGateFactory } from "../core/agent/policy-gate.js";
+import { CLI_BINDING_ID } from "../core/config/validate.js";
 import type { AgentServices } from "../core/deployment.js";
 import type { EventBus } from "../core/events.js";
 import { formatSnapshotPrompt, memoryModule } from "../memory/module.js";
@@ -126,6 +127,12 @@ export const createAgentServices =
       migrations: migrationNamespace(triggersModule),
       mount: async (ctx, host) => {
         const instance = await triggersModule.create(ctx, {
+          bindingIds: [
+            CLI_BINDING_ID,
+            ...(config.frontends ?? [])
+              .filter((binding) => binding.enabled !== false)
+              .map((binding) => binding.id),
+          ],
           runner: host.triggers,
         });
 

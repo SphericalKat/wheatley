@@ -1,3 +1,4 @@
+import { webhookTriggerPath } from "@wheatley/protocol";
 import type { AgentState } from "@wheatley/protocol";
 import type { WebhookRequest } from "@wheatley/sdk";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -87,11 +88,15 @@ afterEach(async () => {
 });
 
 it("persists an authorized webhook event and answers 202 Accepted", async () => {
-  const response = await post(`/webhooks/home/${triggerId}`, '{"ok":true}', {
-    ...bearer,
-    "content-type": "application/json",
-    "x-github-event": "push",
-  });
+  const response = await post(
+    webhookTriggerPath("home", triggerId),
+    '{"ok":true}',
+    {
+      ...bearer,
+      "content-type": "application/json",
+      "x-github-event": "push",
+    }
+  );
 
   expect(response.status).toBe(202);
   expect(runtime.webhookEvents).toHaveLength(1);
@@ -111,7 +116,11 @@ it.each([
   ["a wrong token", { authorization: "Bearer wrong-token" }],
   ["another scheme", { authorization: `Basic ${TOKEN}` }],
 ])("answers 401 for %s and stores nothing", async (_label, headers) => {
-  const response = await post(`/webhooks/home/${triggerId}`, "{}", headers);
+  const response = await post(
+    webhookTriggerPath("home", triggerId),
+    "{}",
+    headers
+  );
 
   expect(response.status).toBe(401);
   expect(runtime.webhookEvents).toHaveLength(0);
@@ -119,7 +128,7 @@ it.each([
 
 it("answers 413 for a declared body over 256 KiB", async () => {
   const response = await post(
-    `/webhooks/home/${triggerId}`,
+    webhookTriggerPath("home", triggerId),
     Buffer.alloc(MAX_WEBHOOK_BODY_BYTES + 1),
     bearer
   );
@@ -154,7 +163,10 @@ it("answers 413 for a streamed body that passes 256 KiB without a declared lengt
     method: "POST",
   };
 
-  const response = await fetch(`${baseUrl}/webhooks/home/${triggerId}`, init);
+  const response = await fetch(
+    `${baseUrl}${webhookTriggerPath("home", triggerId)}`,
+    init
+  );
 
   const { status } = response;
 
@@ -164,7 +176,7 @@ it("answers 413 for a streamed body that passes 256 KiB without a declared lengt
 
 it("accepts a body of exactly 256 KiB", async () => {
   const response = await post(
-    `/webhooks/home/${triggerId}`,
+    webhookTriggerPath("home", triggerId),
     Buffer.alloc(MAX_WEBHOOK_BODY_BYTES),
     bearer
   );
@@ -177,7 +189,11 @@ it.each(["stopped", "degraded", "starting"] as const)(
   async (agentState) => {
     state = agentState;
 
-    const response = await post(`/webhooks/home/${triggerId}`, "{}", bearer);
+    const response = await post(
+      webhookTriggerPath("home", triggerId),
+      "{}",
+      bearer
+    );
 
     expect(response.status).toBe(503);
     expect(runtime.webhookEvents).toHaveLength(0);
@@ -186,13 +202,13 @@ it.each(["stopped", "degraded", "starting"] as const)(
 
 it("answers 404 for an unknown Agent or Trigger and 405 for another method", async () => {
   const unknownAgent = await post(
-    `/webhooks/office/${triggerId}`,
+    webhookTriggerPath("office", triggerId),
     "{}",
     bearer
   );
 
   const unknownTrigger = await post("/webhooks/home/trigger-404", "{}", bearer);
-  const get = await fetch(`${baseUrl}/webhooks/home/${triggerId}`);
+  const get = await fetch(`${baseUrl}${webhookTriggerPath("home", triggerId)}`);
 
   expect(unknownAgent.status).toBe(404);
   expect(unknownTrigger.status).toBe(404);
