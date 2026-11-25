@@ -4,6 +4,7 @@ import path from "node:path";
 import type { DiscoveredSkill, SkillFileRead } from "./discovery.js";
 import { readSkillFile } from "./discovery.js";
 import { isNotFound } from "./fs-errors.js";
+import { READ_SKILL_TOOL } from "./read-skill-tool.js";
 import { SKILL_FILE_NAME } from "./skill-file.js";
 
 /** The maximum size of a bundled file that Tier 3 returns. */
@@ -120,7 +121,7 @@ export const discloseSkill = async (
       : "";
 
     sections.push(
-      `Bundled files. To read one, call read_skill with name "${name}" and its path:\n${files.map((file) => `- ${file}`).join("\n")}${more}`
+      `Bundled files. To read one, call ${READ_SKILL_TOOL} with name "${name}" and its path:\n${files.map((file) => `- ${file}`).join("\n")}${more}`
     );
   }
 

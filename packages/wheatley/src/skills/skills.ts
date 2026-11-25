@@ -12,19 +12,15 @@ import type {
   ToolDescriptor,
 } from "../contracts/extension-catalog.js";
 import type { AgentModule, RpcHandlerMap } from "../contracts/module.js";
-import { canonicalToolName } from "../contracts/tool-names.js";
 import type { Migration } from "../db/migrations.js";
 import { discloseBundledFile, discloseSkill } from "./disclosure.js";
 import type { Disclosure } from "./disclosure.js";
 import { discoverSkills } from "./discovery.js";
 import type { DiscoveredSkill, SkillRoot } from "./discovery.js";
 import { messageOf } from "./fs-errors.js";
+import { READ_SKILL_TOOL } from "./read-skill-tool.js";
 
-/** The canonical name of the Tool that loads Skill instructions (Tiers 2 and 3). */
-export const READ_SKILL_TOOL = canonicalToolName(
-  { kind: "builtin" },
-  "read_skill"
-);
+export { READ_SKILL_TOOL } from "./read-skill-tool.js";
 
 const NAME_DESCRIPTION = "The Skill name from the catalog.";
 
@@ -155,7 +151,7 @@ export const createSkillProvider = async (
   return {
     catalogPrompt: () => catalog,
     close: async () => {
-      await Promise.resolve();
+      // The provider holds no open resources.
     },
     execute: async (name, toolInput, ctx) => {
       if (name !== READ_SKILL_TOOL || byName.size === 0) {
@@ -218,6 +214,7 @@ export const skillsModule: AgentModule<SkillsModuleDeps, SkillProvider> = {
       config: deps.config,
       homeDir: deps.homeDir,
       log: ctx.log,
+      // AgentModuleContext has no abort signal, so discovery from this path cannot be cancelled.
       signal: new AbortController().signal,
     });
 

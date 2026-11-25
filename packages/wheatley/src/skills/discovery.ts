@@ -191,7 +191,7 @@ export const discoverSkills = async (
 
   const skills = [...byName.values()]
     .filter((skill) => !disabled.has(skill.info.name))
-    .toSorted((a, b) => a.info.name.localeCompare(b.info.name));
+    .toSorted((a, b) => (a.info.name < b.info.name ? -1 : 1));
 
   return { skills, warnings };
 };

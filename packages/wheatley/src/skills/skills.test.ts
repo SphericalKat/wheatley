@@ -377,76 +377,79 @@ describe("Progressive disclosure", () => {
   });
 });
 
-describe("Permission Policy over allowed-tools", () => {
-  const policy: PermissionRule[] = [
-    { action: "deny", tool: "shell" },
-    { action: "deny", tool: "read_skill" },
-  ];
-
+const gateFor = (
+  provider: SkillProvider,
+  policy: PermissionRule[]
+): InMemoryApprovalGate => {
   const deploymentConfig: DeploymentConfig = {
     agents: { home: { ...baseConfig, permissionPolicy: policy } },
     version: 1,
   };
 
-  const gateFor = (provider: SkillProvider): InMemoryApprovalGate => {
-    const store = new InMemoryConfigStore(
-      deploymentConfig,
-      new InMemorySecretStore({})
-    );
+  const store = new InMemoryConfigStore(
+    deploymentConfig,
+    new InMemorySecretStore({})
+  );
 
-    return new InMemoryApprovalGate("home", {
-      config: store,
-      defaultAction: (toolName) =>
-        provider.tools().find((tool) => tool.name === toolName)?.defaultAction,
-      outbox: new InMemoryDeliveryOutbox("home", {
-        deliver: async () => {},
-        onDelivered: async () => {},
-      }),
-      policy,
-      secrets: store.secrets,
-      timeoutMs: null,
-      wake: async () => {},
-    });
-  };
+  return new InMemoryApprovalGate("home", {
+    config: store,
+    defaultAction: (toolName) =>
+      provider.tools().find((tool) => tool.name === toolName)?.defaultAction,
+    outbox: new InMemoryDeliveryOutbox("home", {
+      deliver: async () => {},
+      onDelivered: async () => {},
+    }),
+    policy,
+    secrets: store.secrets,
+    timeoutMs: null,
+    wake: async () => {},
+  });
+};
 
-  it("grants no Tool that a loaded Skill lists in allowed-tools", async () => {
-    await writeText(
-      sharedSkill("deploy", "SKILL.md"),
-      skillMd(
-        "deploy",
-        "Deploy the app",
-        "Run the deploy.",
-        "allowed-tools: shell notes:add\n"
-      )
-    );
-    const provider = await load({ ...baseConfig, permissionPolicy: policy });
-    const toolsBefore = provider.tools();
+const writeDeploySkill = async (): Promise<void> => {
+  await writeText(
+    sharedSkill("deploy", "SKILL.md"),
+    skillMd(
+      "deploy",
+      "Deploy the app",
+      "Run the deploy.",
+      "allowed-tools: shell notes:add\n"
+    )
+  );
+};
+
+describe("Permission Policy over allowed-tools", () => {
+  it("offers, runs, and allows no Tool that a loaded Skill lists in allowed-tools", async () => {
+    await writeDeploySkill();
+    const provider = await load();
     const disclosure = textOf(await readSkill(provider, { name: "deploy" }));
-    const gate = gateFor(provider);
+    const shellResult = await provider.execute("shell", {}, toolContext());
+    const gate = gateFor(provider, []);
 
     expect(disclosure).toContain(
       "The Permission Policy decides every Tool call."
     );
-    expect(provider.tools()).toStrictEqual(toolsBefore);
     expect(provider.tools().map((tool) => tool.name)).toStrictEqual([
       "read_skill",
     ]);
-    await expect(gate.check(gatedCall("c1", "shell"))).resolves.toMatchObject({
-      kind: "deny",
-      reason: "policy",
-    });
+    expect(shellResult.isError).toBe(true);
+    expect(textOf(shellResult)).toBe("Unknown Tool: shell");
+    await expect(
+      gate.check(gatedCall("c1", "read_skill"))
+    ).resolves.toMatchObject({ kind: "allow" });
     await expect(
       gate.check(gatedCall("c2", "notes:add"))
-    ).resolves.toMatchObject({
-      kind: "deny",
-      reason: "non_interactive",
-    });
+    ).resolves.toMatchObject({ kind: "deny", reason: "non_interactive" });
+  });
+
+  it("lets the Permission Policy deny read_skill despite its default allow", async () => {
+    await writeDeploySkill();
+    const provider = await load();
+    const gate = gateFor(provider, [{ action: "deny", tool: "read_skill" }]);
+
     await expect(
-      gate.check(gatedCall("c3", "read_skill"))
-    ).resolves.toMatchObject({
-      kind: "deny",
-      reason: "policy",
-    });
+      gate.check(gatedCall("c1", "read_skill"))
+    ).resolves.toMatchObject({ kind: "deny", reason: "policy" });
   });
 });
 

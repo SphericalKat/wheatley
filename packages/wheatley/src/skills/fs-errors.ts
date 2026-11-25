@@ -1,7 +1,6 @@
 /** Returns true if `cause` is a Node.js file system error, which carries an errno `code` such as `ENOENT`. */
-export const isErrnoException = (
-  cause: unknown
-): cause is NodeJS.ErrnoException => cause instanceof Error && "code" in cause;
+const isErrnoException = (cause: unknown): cause is NodeJS.ErrnoException =>
+  cause instanceof Error && "code" in cause;
 
 /** Returns true if `cause` reports a missing file or folder. */
 export const isNotFound = (cause: unknown): boolean =>
