@@ -359,10 +359,11 @@ The default host is `127.0.0.1`, and the default port is `8788`.
 
 In a terminal, `wheatley chat` has these features:
 
-- `Tab` completes a slash command. Press `Tab` twice to list all commands.
+- The Chat starts with a `WHEATLEY` banner. A terminal narrower than 52 columns gets a one-line banner.
+- Type `/` to open the command menu under the prompt. Up and Down select a command, `Tab` completes it, and `Enter` runs it.
 - `/help` lists the commands with their descriptions.
-- The Up and Down arrows recall earlier input. Wheatley saves the input history in `<home>/chat_history`.
-- A spinner shows while a Run works, with the current Tool and the elapsed time. You can type the next message during the Run.
+- The Up and Down arrows recall earlier input when the menu is closed. Wheatley saves the input history in `<home>/chat_history`.
+- A spinner shows while a Run works, with the elapsed time. During a Tool call, it shows the Tool name. Between Tool calls, it rotates through short lines in Wheatley's voice. You can type the next message during the Run.
 - `Ctrl+C` stops the active Run. On an empty prompt with no active Run, `Ctrl+C` ends the Chat.
 
 If standard input or output is not a terminal, for example a pipe, `wheatley chat` reads and writes plain lines.

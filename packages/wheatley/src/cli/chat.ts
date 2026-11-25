@@ -11,6 +11,7 @@ import { CLI_BINDING_ID } from "../core/config/validate.js";
 import { errorMessage } from "../core/error-message.js";
 import type { DaemonClient } from "./client.js";
 import type { CliIo } from "./io.js";
+import { banner, shuffledThinkingLines } from "./personality.js";
 import {
   approvalQuestion,
   chooseAgent,
@@ -19,7 +20,7 @@ import {
 } from "./session.js";
 import type { ClientFlags } from "./session.js";
 import { openTerminal } from "./terminal.js";
-import type { TerminalUi } from "./terminal.js";
+import type { Completion, TerminalUi } from "./terminal.js";
 
 /** Lines that end the chat. */
 const EXIT_LINES = new Set(["/exit", "/quit"]);
@@ -171,6 +172,9 @@ const renderPlain = (io: CliIo, agent: string, event: RpcEvent): void => {
 /** Indents every line after the first, so that a reply lines up after its logo. */
 const indent = (text: string): string => text.replaceAll("\n", "\n  ");
 
+/** The spinner label while the model works between Tool calls. */
+const THINKING = "thinking";
+
 /** Writes one event to the interactive terminal. Returns the new spinner label, if the event changes it. */
 const renderTerminal = (
   ui: TerminalUi,
@@ -201,7 +205,7 @@ const renderTerminal = (
       );
     }
 
-    return "thinking";
+    return THINKING;
   } else if (event.name === "approval.requested") {
     const { approval } = event.payload;
 
@@ -254,24 +258,38 @@ const handleLine = async (
   });
 };
 
-const COMMAND_WORDS = [
-  ...BUILTIN_COMMANDS.map((command) => `/${command.name}`),
-  HELP_LINE,
-  "/exit",
+const COMPLETIONS: readonly Completion[] = [
+  ...BUILTIN_COMMANDS.map((command: CommandSpec) => ({
+    argument: command.argument,
+    description: command.description,
+    word: `/${command.name}`,
+  })),
+  { description: "List the commands", word: HELP_LINE },
+  { description: "End the chat", word: "/exit" },
 ];
 
-const helpText = (): string =>
-  [
-    ...BUILTIN_COMMANDS.map(
-      (command: CommandSpec) =>
-        `  ${styleText("cyan", `/${command.name}`)}${command.argument === undefined ? "" : ` ${command.argument}`}  ${styleText("dim", command.description)}`
+const commandLabel = (completion: Completion): string =>
+  completion.argument === undefined
+    ? completion.word
+    : `${completion.word} ${completion.argument}`;
+
+const helpText = (): string => {
+  const width = Math.max(
+    ...COMPLETIONS.map((completion) => commandLabel(completion).length)
+  );
+
+  return [
+    ...COMPLETIONS.map(
+      (completion) =>
+        `  ${styleText("cyan", commandLabel(completion).padEnd(width))}  ${styleText("dim", completion.description)}`
     ),
-    `  ${styleText("cyan", "/exit")}  ${styleText("dim", "End the chat")}`,
+    "",
     styleText(
       "dim",
-      "  Tab completes a command. Ctrl+C stops the active Run. Ctrl+D ends the chat."
+      "  Type / to open the command menu. Up and Down select, Tab completes, and Enter runs.\n  Ctrl+C stops the active Run. Ctrl+D ends the chat."
     ),
   ].join("\n");
+};
 
 const readHistory = async (file: string): Promise<string[]> => {
   try {
@@ -310,7 +328,7 @@ const openChatTerminal = async (
   const history = await readHistory(file);
 
   return openTerminal(streams.input, streams.output, {
-    completions: COMMAND_WORDS,
+    completions: COMPLETIONS,
     history,
     onHistory: (next) => {
       void writeHistory(file, next);
@@ -319,7 +337,11 @@ const openChatTerminal = async (
 };
 
 /** Keeps the prompt and the spinner in step with the chat state. */
-const syncStatus = (ui: TerminalUi, state: ChatState, label: string): void => {
+const syncStatus = (
+  ui: TerminalUi,
+  state: ChatState,
+  labels: readonly string[]
+): void => {
   if (state.approvals.length > 0) {
     ui.stopSpin();
     ui.setPrompt(APPROVAL_PROMPT);
@@ -330,7 +352,7 @@ const syncStatus = (ui: TerminalUi, state: ChatState, label: string): void => {
   ui.setPrompt(PROMPT);
 
   if (state.busy) {
-    ui.spin(label);
+    ui.spin(labels);
   } else {
     ui.stopSpin();
   }
@@ -383,11 +405,16 @@ export const runChat = async (
 
     const out = chatOutput(io, ui);
     const terminal = ui;
-    let label = "thinking";
+    let label = THINKING;
+    let thinkingLines = shuffledThinkingLines();
 
     const sync = (): void => {
       if (terminal !== undefined) {
-        syncStatus(terminal, state, label);
+        syncStatus(
+          terminal,
+          state,
+          label === THINKING ? thinkingLines : [label]
+        );
       }
     };
 
@@ -401,7 +428,8 @@ export const runChat = async (
       }
 
       if (event.name === "run.started") {
-        label = "thinking";
+        label = THINKING;
+        thinkingLines = shuffledThinkingLines();
       }
 
       label = renderTerminal(terminal, event) ?? label;
@@ -433,9 +461,7 @@ export const runChat = async (
         `Chat with ${agent}. Commands: ${BUILTIN_COMMANDS.map((command) => `/${command.name}`).join(" ")} /exit\n`
       );
     } else {
-      terminal.print(
-        `${styleText(["cyan", "bold"], `${LOGO} wheatley`)} ${styleText("dim", version)}\n${styleText("dim", `  Chat with ${agent}. Type /help for commands.`)}\n`
-      );
+      terminal.print(banner(terminal.columns, version, agent));
       sync();
     }
 
@@ -453,7 +479,7 @@ export const runChat = async (
       if (terminal !== undefined && line === HELP_LINE) {
         terminal.print(helpText());
       } else if (line !== "") {
-        label = "thinking";
+        label = THINKING;
 
         try {
           // oxlint-disable-next-line no-await-in-loop -- Each line is handled before the next one is read.
