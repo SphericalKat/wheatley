@@ -16,6 +16,8 @@
     "@earendil-works/pi-durable": "1.6.1",
     "@earendil-works/pi-schema": "1.6.1",
     "@modelcontextprotocol/client": "2.4.0",
+    "@slack/socket-mode": "3.2.0",
+    "@slack/web-api": "8.5.0",
     "@wheatley/protocol": "workspace:*",
     "@wheatley/sdk": "workspace:*",
     "croner": "11.0.1",
