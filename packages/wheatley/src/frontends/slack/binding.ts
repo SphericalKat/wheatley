@@ -15,6 +15,8 @@ import { DeliveryError, parseCommandText } from "@wheatley/sdk";
 
 import { stageInboundFile } from "./attachments.js";
 import type { FetchFunction } from "./attachments.js";
+import { BackgroundTasks } from "./background-tasks.js";
+import { dropOldest } from "./bounded.js";
 import { isChatAllowed, toChatId } from "./chat-id.js";
 import type { SlackBindingConfig } from "./config.js";
 import { toDeliveryError } from "./delivery-errors.js";
@@ -49,7 +51,7 @@ import { SlackStateStore } from "./state-store.js";
 /** The number of Events API event IDs that the binding remembers to drop retried events. */
 const MAX_SEEN_EVENTS = 1000;
 
-/** The number of Chats whose latest user message the binding remembers for the typing reaction. */
+/** The number of Chats whose latest Sender message the binding remembers for the typing reaction. */
 const MAX_TRACKED_CHATS = 1000;
 
 /** The number of Slack user display names that the binding caches. */
@@ -59,7 +61,7 @@ const HTTP_OK = 200;
 const HTTP_BAD_REQUEST = 400;
 const HTTP_UNAUTHORIZED = 401;
 
-/** Third-party boundaries of the binding. Tests replace them with fakes. */
+/** The third-party boundaries of the binding. */
 export interface SlackBindingDeps {
   readonly loadSdk: () => Promise<SlackSdk>;
   readonly fetch: FetchFunction;
@@ -86,14 +88,7 @@ const remember = <K, V>(
 ): void => {
   map.delete(key);
   map.set(key, value);
-
-  for (const oldest of map.keys()) {
-    if (map.size <= max) {
-      break;
-    }
-
-    map.delete(oldest);
-  }
+  dropOldest(map, max);
 };
 
 const plainResponse = (status: number, body?: string): WebhookResponse =>
@@ -141,7 +136,7 @@ export class SlackBinding implements FrontendBinding {
   readonly #seenEvents = new Map<string, true>();
   readonly #lastInbound = new Map<string, PostedMessage>();
   readonly #displayNames = new Map<string, string>();
-  readonly #tasks = new Set<Promise<void>>();
+  readonly #inboundTasks = new BackgroundTasks();
   #connection: Connection | undefined;
   #socket: SlackSocketClient | undefined;
   #route: WebhookRoute | undefined;
@@ -249,7 +244,7 @@ export class SlackBinding implements FrontendBinding {
       });
     }
 
-    await Promise.all(this.#tasks);
+    await this.#inboundTasks.settled();
     await this.#connection?.live.stop();
     await this.#connection?.store.flush();
   };
@@ -265,20 +260,17 @@ export class SlackBinding implements FrontendBinding {
 
     this.#socket = socket;
     socket.on("slack_event", (envelope) => {
-      this.#track(this.#handleEnvelope(envelope));
+      this.#runInBackground(this.#handleEnvelope(envelope));
     });
     await socket.start();
   };
 
   /** Runs inbound work in the background and logs its failure. `stop` waits for it. */
-  readonly #track = (task: Promise<void>): void => {
-    const settled = this.#settle(task);
-
-    this.#tasks.add(settled);
-    void this.#forget(settled);
+  readonly #runInBackground = (task: Promise<void>): void => {
+    this.#inboundTasks.add(this.#logInboundFailure(task));
   };
 
-  readonly #settle = async (task: Promise<void>): Promise<void> => {
+  readonly #logInboundFailure = async (task: Promise<void>): Promise<void> => {
     try {
       await task;
     } catch (error) {
@@ -286,11 +278,6 @@ export class SlackBinding implements FrontendBinding {
         error: String(error),
       });
     }
-  };
-
-  readonly #forget = async (settled: Promise<void>): Promise<void> => {
-    await settled;
-    this.#tasks.delete(settled);
   };
 
   readonly #handleEnvelope = async (
@@ -348,11 +335,11 @@ export class SlackBinding implements FrontendBinding {
     const interaction = form.get("payload");
 
     if (interaction === null) {
-      this.#track(
+      this.#runInBackground(
         this.#handleCommand(parseSlashCommand(Object.fromEntries(form)))
       );
     } else {
-      this.#track(
+      this.#runInBackground(
         this.#handleAction(parseInteraction(parseJsonText(interaction)))
       );
     }
@@ -373,7 +360,7 @@ export class SlackBinding implements FrontendBinding {
       return plainResponse(HTTP_BAD_REQUEST);
     }
 
-    this.#track(this.#handleMessage(parseEventCallback(payload)));
+    this.#runInBackground(this.#handleMessage(parseEventCallback(payload)));
 
     return plainResponse(HTTP_OK);
   };
@@ -429,12 +416,13 @@ export class SlackBinding implements FrontendBinding {
   ): Promise<void> => {
     const connection = this.#connection;
 
-    if (
-      connection === undefined ||
-      message === undefined ||
-      message.user === connection.botUserId ||
-      !this.#firstSeen(message)
-    ) {
+    if (connection === undefined || message === undefined) {
+      return;
+    }
+
+    const isOwnMessage = message.user === connection.botUserId;
+
+    if (isOwnMessage || !this.#firstSeen(message)) {
       return;
     }
 
@@ -464,8 +452,11 @@ export class SlackBinding implements FrontendBinding {
 
     const senderDisplayName = await this.#displayName(connection, message.user);
 
-    const command =
-      message.files.length === 0 ? parseCommandText(text) : undefined;
+    // Slash Command payloads carry no thread, so a thread Chat takes a command as a mention: `@bot /stop`.
+    const isThreadCommand =
+      message.threadTs !== undefined && mentioned && message.files.length === 0;
+
+    const command = isThreadCommand ? parseCommandText(text) : undefined;
 
     if (command !== undefined) {
       await connection.sink.command({

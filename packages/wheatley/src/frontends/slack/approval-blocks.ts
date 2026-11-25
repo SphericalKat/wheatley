@@ -98,6 +98,18 @@ export const approvalRequestBlocks = (
   ];
 };
 
+/** The ` by <Sender>` part of an Approval outcome, escaped for `mrkdwn`. Empty if the outcome names nobody. */
+const resolvedBySuffix = (delivery: ApprovalResolvedDelivery): string =>
+  delivery.resolvedBy === undefined
+    ? ""
+    : ` by ${escapeMrkdwn(delivery.resolvedBy)}`;
+
+/** The reason of an Approval outcome, escaped for `mrkdwn`. */
+const escapedReason = (
+  delivery: ApprovalResolvedDelivery
+): string | undefined =>
+  delivery.reason === undefined ? undefined : escapeMrkdwn(delivery.reason);
+
 /** The fallback text of a resolved Approval prompt. */
 export const approvalResolvedText = (
   prompt: ApprovalPrompt,
@@ -109,20 +121,13 @@ export const approvalResolvedBlocks = (
   prompt: ApprovalPrompt,
   delivery: ApprovalResolvedDelivery
 ): SlackBlocks => {
-  const by =
-    delivery.resolvedBy === undefined
-      ? ""
-      : ` by ${escapeMrkdwn(delivery.resolvedBy)}`;
-
-  const reason =
-    delivery.reason === undefined
-      ? ""
-      : `\n*Reason:* ${escapeMrkdwn(delivery.reason)}`;
+  const reason = escapedReason(delivery);
+  const reasonLine = reason === undefined ? "" : `\n*Reason:* ${reason}`;
 
   return [
     {
       text: {
-        text: `${OUTCOME_ICONS[delivery.decision]} *${OUTCOME_LABELS[delivery.decision]}*${by}\n${describeTool(prompt)}${reason}`,
+        text: `${OUTCOME_ICONS[delivery.decision]} *${OUTCOME_LABELS[delivery.decision]}*${resolvedBySuffix(delivery)}\n${describeTool(prompt)}${reasonLine}`,
         type: "mrkdwn",
       },
       type: "section",
@@ -130,17 +135,17 @@ export const approvalResolvedBlocks = (
   ];
 };
 
-/** The text of an Approval outcome when the binding has no record of the prompt. */
+/**
+ * The text of an Approval outcome when the binding has no record of the prompt. Slack shows `text` as `mrkdwn`, so the
+ * Sender name and the reason are escaped.
+ */
 export const approvalOutcomeText = (
   delivery: ApprovalResolvedDelivery
 ): string => {
-  const by =
-    delivery.resolvedBy === undefined ? "" : ` by ${delivery.resolvedBy}`;
+  const reason = escapedReason(delivery);
+  const reasonSentence = reason === undefined ? "" : ` Reason: ${reason}`;
 
-  const reason =
-    delivery.reason === undefined ? "" : ` Reason: ${delivery.reason}`;
-
-  return `${OUTCOME_ICONS[delivery.decision]} Approval ${delivery.approvalId}: ${OUTCOME_LABELS[delivery.decision]}${by}.${reason}`;
+  return `${OUTCOME_ICONS[delivery.decision]} Approval ${escapeMrkdwn(delivery.approvalId)}: ${OUTCOME_LABELS[delivery.decision]}${resolvedBySuffix(delivery)}.${reasonSentence}`;
 };
 
 /** Returns the decision of an Approval button `action_id`, or `undefined` for another action. */

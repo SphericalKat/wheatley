@@ -530,22 +530,42 @@ describe("Slack inbound messages", () => {
     expect(socket.acks).toBe(5);
   });
 
-  it("turns command text into a typed command", async () => {
+  it("turns a mention with command text in a thread into a typed command for the thread Chat", async () => {
     const { sink, socket } = await setup();
 
-    socket.emit("events_api", dm("/model  claude-x "));
+    socket.emit(
+      "events_api",
+      messageEvent({
+        channel: "C1",
+        text: `<@${BOT}> /model  claude-x `,
+        thread_ts: "1699.000004",
+      })
+    );
 
     await vi.waitFor(() => {
       expect(sink.commandCalls).toEqual([
         {
           args: "claude-x",
-          chatId: "D1",
+          chatId: "C1:1699.000004",
           name: "model",
           senderDisplayName: "Alice",
         },
       ]);
     });
     expect(sink.messages).toEqual([]);
+  });
+
+  it("sends command text outside a thread as a normal message", async () => {
+    const { sink, socket } = await setup();
+
+    socket.emit("events_api", dm("/model claude-x"));
+
+    await vi.waitFor(() => {
+      expect(sink.messages.map((entry) => entry.text)).toEqual([
+        "/model claude-x",
+      ]);
+    });
+    expect(sink.commandCalls).toEqual([]);
   });
 });
 
@@ -595,7 +615,7 @@ describe("Slack Slash Commands", () => {
 });
 
 describe("Slack live progress", () => {
-  it("shows a typing reaction on the user message for the length of the Run", async () => {
+  it("shows a typing reaction on the Sender message for the length of the Run", async () => {
     const harness = await startRun();
     const [received] = harness.web.reactionsAdded();
 
@@ -950,10 +970,15 @@ describe("Slack Approvals", () => {
       ...resolved,
       approvalId: "ap-unknown",
       decision: "timeout",
+      reason: "no answer <!channel>",
     });
 
+    const [post] = web.posts();
+
     expect(web.updates()).toEqual([]);
-    expect(JSON.stringify(web.posts())).toContain("Timed out");
+    expect(post !== undefined && "text" in post ? post.text : "").toBe(
+      ":hourglass: Approval ap-unknown: Timed out by Alice. Reason: no answer &lt;!channel&gt;"
+    );
   });
 });
 

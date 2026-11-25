@@ -21,7 +21,13 @@ import type { Logger } from "@wheatley/sdk";
 import type { SlackBlocks } from "./approval-blocks.js";
 import type { SlackChatTarget } from "./chat-id.js";
 
-/** The part of the `@slack/web-api` `WebClient` that the binding uses. Tests pass a fake. */
+/**
+ * The part of the `@slack/web-api` `WebClient` that the binding uses.
+ *
+ * Each method makes one Slack call with no automatic retry. A method rejects with a `@slack/web-api` error: a
+ * platform error, a rate-limit error, an HTTP error, or a request error. `toDeliveryError` classifies these errors by
+ * their `code`.
+ */
 export interface SlackWebClient {
   readonly auth: {
     readonly test: () => Promise<Pick<AuthTestResponse, "user_id">>;
@@ -61,19 +67,30 @@ export interface SlackSocketEnvelope {
   readonly ack: () => Promise<void>;
 }
 
-/** The part of the `@slack/socket-mode` `SocketModeClient` that the binding uses. Tests pass a fake. */
+/** The part of the `@slack/socket-mode` `SocketModeClient` that the binding uses. */
 export interface SlackSocketClient {
+  /**
+   * Adds a listener for envelopes. Call it before `start`, because the client emits envelopes as soon as it
+   * connects. The listener must not throw: the client calls it synchronously from its event emitter.
+   */
   readonly on: (
     event: "slack_event",
     listener: (envelope: SlackSocketEnvelope) => void
   ) => void;
+  /**
+   * Opens the first connection. After that, the client reconnects by itself until `disconnect`. Rejects with a
+   * `@slack/web-api` error if Slack refuses the app token or the first connection fails.
+   */
   readonly start: () => Promise<Pick<AppsConnectionsOpenResponse, "ok">>;
+  /** Closes the connection and stops reconnects. Can reject. The binding logs the rejection and continues to stop. */
   readonly disconnect: () => Promise<void>;
 }
 
 /** Creates Slack clients. The default implementation loads the Slack packages on first use (ADR 0012). */
 export interface SlackSdk {
+  /** Creates a Web API client that logs to `log` and makes no automatic retries. Makes no Slack call. Never throws. */
   readonly createWebClient: (botToken: string, log: Logger) => SlackWebClient;
+  /** Creates a Socket Mode client that logs to `log`. It does not connect until `start`. Never throws. */
   readonly createSocketClient: (
     appToken: string,
     log: Logger

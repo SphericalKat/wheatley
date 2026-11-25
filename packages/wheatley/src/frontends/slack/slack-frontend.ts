@@ -12,7 +12,7 @@ import type { SlackSdk } from "./slack-client.js";
 /** The `type` of Slack entries in `frontends` of `config.yaml`. */
 export const SLACK_FRONTEND_TYPE = "slack";
 
-/** Replacements for the third-party boundaries of the Slack Frontend. Production code passes none. */
+/** The third-party boundaries of the Slack Frontend. Each option defaults to the real boundary. */
 export interface SlackFrontendOptions {
   /** Loads the Slack clients. The default imports `@slack/web-api` and `@slack/socket-mode` on first use. */
   readonly loadSdk?: () => Promise<SlackSdk>;
@@ -55,8 +55,8 @@ export const slackMigrations: readonly Migration[] = [];
 export const slackRpcHandlers: RpcHandlerMap = {};
 
 /**
- * The Agent module of the Slack Frontend, for Wave 2 wiring. Its `api` is the `Frontend` that the Agent adds to
- * `AgentExtensions.frontends` under the `slack` type.
+ * The Agent module of the Slack Frontend. Its `api` is the `Frontend` of the `slack` type, for
+ * `AgentExtensions.frontends`.
  */
 export const slackFrontendModule: AgentModule<undefined, Frontend> = {
   create: () => ({ api: createSlackFrontend(), rpc: slackRpcHandlers }),

@@ -14,6 +14,7 @@ import {
   approvalResolvedText,
 } from "./approval-blocks.js";
 import { assertAttachmentSizes, uploadAttachment } from "./attachments.js";
+import { dropOldest } from "./bounded.js";
 import { parseChatId } from "./chat-id.js";
 import type { SlackChatTarget } from "./chat-id.js";
 import type { LiveProgress } from "./live-progress.js";
@@ -224,14 +225,7 @@ export class SlackOutbound {
 
     this.#progress.delete(delivery.messageId);
     this.#delivered.add(delivery.messageId);
-
-    for (const oldest of this.#delivered) {
-      if (this.#delivered.size <= MAX_DELIVERED_MESSAGES) {
-        break;
-      }
-
-      this.#delivered.delete(oldest);
-    }
+    dropOldest(this.#delivered, MAX_DELIVERED_MESSAGES);
   };
 
   readonly #messageProgress = async (

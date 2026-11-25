@@ -19,7 +19,7 @@ export interface SlackFile {
   readonly url: string | undefined;
 }
 
-/** A user message from the Events API. */
+/** A Sender message from the Events API. */
 export interface SlackMessage {
   /** The Events API `event_id`, for duplicate detection of retried events. */
   readonly eventId: string | undefined;
@@ -54,7 +54,7 @@ export interface SlackApprovalAction {
   readonly userName: string | undefined;
 }
 
-/** Message subtypes that carry a user message. Other subtypes are edits, joins, bot posts, and similar. */
+/** Message subtypes that carry a Sender message. Other subtypes are edits, joins, bot posts, and similar. */
 const USER_SUBTYPES: ReadonlySet<string | undefined> = new Set([
   undefined,
   "file_share",
@@ -64,7 +64,7 @@ const USER_SUBTYPES: ReadonlySet<string | undefined> = new Set([
 const DEFAULT_MIME_TYPE = "application/octet-stream";
 
 /**
- * Parses an Events API `event_callback` payload. Returns `undefined` for anything other than a user message: other
+ * Parses an Events API `event_callback` payload. Returns `undefined` for anything other than a Sender message: other
  * event types, bot messages, edits, and malformed payloads.
  */
 export const parseEventCallback = (
@@ -125,22 +125,23 @@ export const parseInteraction = (
   const decoded = decodeOptional(BlockActionsSchema, payload);
   const [action] = decoded?.actions ?? [];
 
-  const decision =
-    action === undefined ? undefined : decisionOfAction(action.action_id);
+  if (decoded === undefined || action === undefined) {
+    return undefined;
+  }
 
-  const channel = decoded?.channel?.id ?? decoded?.container?.channel_id;
+  const decision = decisionOfAction(action.action_id);
+  const approvalId = action.value;
+  const channel = decoded.channel?.id ?? decoded.container?.channel_id;
 
-  if (
-    decoded === undefined ||
-    decision === undefined ||
-    action?.value === undefined ||
-    channel === undefined
-  ) {
+  const isApprovalClick =
+    decision !== undefined && approvalId !== undefined && channel !== undefined;
+
+  if (!isApprovalClick) {
     return undefined;
   }
 
   return {
-    approvalId: action.value,
+    approvalId,
     channel,
     decision,
     threadTs: decoded.message?.thread_ts,

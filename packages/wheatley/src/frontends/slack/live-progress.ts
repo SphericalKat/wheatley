@@ -1,5 +1,6 @@
 import type { Logger, RunEvent } from "@wheatley/sdk";
 
+import { BackgroundTasks } from "./background-tasks.js";
 import { parseChatId } from "./chat-id.js";
 import type { SlackChatTarget } from "./chat-id.js";
 import type { StreamingMode } from "./config.js";
@@ -45,7 +46,7 @@ export interface LiveProgressDeps {
   readonly streaming: StreamingMode;
   readonly editIntervalMs: number;
   readonly typingReaction: string;
-  /** The latest user message of a Chat that the binding forwarded, for the typing reaction. */
+  /** The latest Sender message of a Chat that the binding forwarded, for the typing reaction. */
   readonly lastInbound: (chatId: string) => PostedMessage | undefined;
 }
 
@@ -55,7 +56,7 @@ const truncate = (text: string): string =>
     : `${text.slice(0, MAX_MARKDOWN_LENGTH - ELLIPSIS.length)}${ELLIPSIS}`;
 
 /**
- * Shows live Run progress in Slack (ADR 0012): a reaction on the user message as the typing indicator, and, in `edit`
+ * Shows live Run progress in Slack (ADR 0012): a reaction on the Sender message as the typing indicator, and, in `edit`
  * streaming mode, a draft reply that the binding edits at most once per `editIntervalMs`.
  *
  * Every Slack call is best effort. Failures log at `debug` level and never reach the caller.
@@ -64,7 +65,7 @@ export class LiveProgress {
   readonly #deps: LiveProgressDeps;
   readonly #drafts = new Map<string, Draft>();
   readonly #typing = new Map<string, PostedMessage>();
-  readonly #reactionCalls = new Set<Promise<void>>();
+  readonly #reactionCalls = new BackgroundTasks();
 
   constructor(deps: LiveProgressDeps) {
     this.#deps = deps;
@@ -139,7 +140,7 @@ export class LiveProgress {
       ...drafts.map(async (draft) => {
         await draft.writes;
       }),
-      ...this.#reactionCalls,
+      this.#reactionCalls.settled(),
     ]);
   };
 
@@ -148,7 +149,7 @@ export class LiveProgress {
 
     if (message !== undefined) {
       this.#typing.set(runId, message);
-      this.#trackReaction(this.#react("add", message));
+      this.#reactionCalls.add(this.#react("add", message));
     }
   };
 
@@ -157,20 +158,11 @@ export class LiveProgress {
 
     if (message !== undefined) {
       this.#typing.delete(runId);
-      this.#trackReaction(this.#react("remove", message));
+      this.#reactionCalls.add(this.#react("remove", message));
     }
   };
 
-  readonly #trackReaction = (call: Promise<void>): void => {
-    this.#reactionCalls.add(call);
-    void this.#forgetReaction(call);
-  };
-
-  readonly #forgetReaction = async (call: Promise<void>): Promise<void> => {
-    await call;
-    this.#reactionCalls.delete(call);
-  };
-
+  /** Adds or removes the typing reaction. Never rejects. */
   readonly #react = async (
     action: "add" | "remove",
     message: PostedMessage

@@ -9,7 +9,12 @@ import type { SlackChatTarget } from "./chat-id.js";
 import type { SlackFile } from "./inbound.js";
 import type { SlackWebClient } from "./slack-client.js";
 
-/** The `fetch` function that downloads Slack files. Tests pass a fake. */
+/**
+ * Downloads one Slack file with the given headers.
+ *
+ * Resolves with the response for any HTTP status. `stageInboundFile` treats a non-2xx status as a failed download.
+ * A rejection means a network failure, which `stageInboundFile` also reports as `download_failed`.
+ */
 export type FetchFunction = (
   url: string,
   init: { readonly headers: Readonly<Record<string, string>> }

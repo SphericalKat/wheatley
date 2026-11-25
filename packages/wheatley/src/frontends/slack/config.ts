@@ -96,7 +96,8 @@ const resolveSecret = (
     : value;
 };
 
-const resolve = (
+/** Applies the transport rules and defaults to a schema-valid config, and resolves its secrets. */
+const toBindingConfig = (
   config: RawSlackConfig,
   secrets: SecretReader
 ): SlackBindingConfig => {
@@ -150,5 +151,5 @@ export const parseSlackConfig = (
     );
   }
 
-  return resolve(decoded.value, secrets);
+  return toBindingConfig(decoded.value, secrets);
 };

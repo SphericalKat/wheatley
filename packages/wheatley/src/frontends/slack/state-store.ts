@@ -3,10 +3,9 @@ import path from "node:path";
 
 import type { Logger } from "@wheatley/sdk";
 
+import { dropOldest } from "./bounded.js";
 import type { ApprovalRecord } from "./schemas.js";
 import { decodeOptional, parseJsonText, StateFileSchema } from "./schemas.js";
-
-export type { ApprovalRecord } from "./schemas.js";
 
 /** The file in `FrontendContext.dataDir` that keeps the binding state across daemon restarts. */
 export const STATE_FILE = "slack-state.json";
@@ -102,14 +101,7 @@ export class SlackStateStore {
     }
 
     this.#threads.add(chatId);
-
-    for (const oldest of this.#threads) {
-      if (this.#threads.size <= MAX_THREADS) {
-        break;
-      }
-
-      this.#threads.delete(oldest);
-    }
+    dropOldest(this.#threads, MAX_THREADS);
 
     await this.#persist();
   };
