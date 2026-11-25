@@ -22,7 +22,13 @@ import type {
   RunTimelineItem,
   ToolInfo,
 } from "@wheatley/protocol";
-import type { Logger, SecretReader, ToolResult } from "@wheatley/sdk";
+import { BUILTIN_COMMANDS } from "@wheatley/sdk";
+import type {
+  CommandSpec,
+  Logger,
+  SecretReader,
+  ToolResult,
+} from "@wheatley/sdk";
 
 import type { ApprovalGate } from "../../contracts/approval-gate.js";
 import type {
@@ -494,8 +500,11 @@ export class Agent {
 
   /**
    * Runs a built-in command for `chat` (ADR 0007). Resolves `false` if the command cannot run, for example `/model`
-   * without an argument or `/stop` without an active Run. A command reply arrives like a Run reply, with source
-   * `command`.
+   * without an argument or `/stop` without an active Run.
+   *
+   * Every call sends exactly one command reply to the Chat before it resolves, also when the command cannot run, so a
+   * Frontend shows only the reply and adds no message of its own. A command reply arrives like a Run reply, with source
+   * `command`. `/goal` replies through the Run that it starts.
    */
   readonly command = async (
     chat: ChatKey,
@@ -1398,12 +1407,26 @@ export class Agent {
     return true;
   };
 
+  /** Replies with the usage of a command that needs an argument. Resolves `false`, because the command did not run. */
+  readonly #replyUsage = async (
+    chat: ChatKey,
+    name: "model" | "goal"
+  ): Promise<false> => {
+    const spec: CommandSpec | undefined = BUILTIN_COMMANDS.find(
+      (command) => command.name === name
+    );
+
+    await this.#reply(chat, `Usage: /${name} ${spec?.argument ?? ""}`.trim());
+
+    return false;
+  };
+
   readonly #changeModel = async (
     chat: ChatKey,
     args: string | undefined
   ): Promise<boolean> => {
     if (args === undefined) {
-      return false;
+      return await this.#replyUsage(chat, "model");
     }
 
     const model = parseModelArgument(args, this.#options.config.model);
@@ -1450,8 +1473,14 @@ export class Agent {
 
   readonly #stopChat = async (chat: ChatKey): Promise<boolean> => {
     const run = this.#activeRunOf(chat);
+    const stopped = run !== undefined && (await this.stopRun(run.runId));
 
-    return run === undefined ? false : await this.stopRun(run.runId);
+    await this.#reply(
+      chat,
+      stopped ? "Stopped the active Run." : "No Run is active."
+    );
+
+    return stopped;
   };
 
   readonly #goal = async (
@@ -1459,7 +1488,7 @@ export class Agent {
     args: string | undefined
   ): Promise<boolean> => {
     if (args === undefined) {
-      return false;
+      return await this.#replyUsage(chat, "goal");
     }
 
     const conversationId = await this.#chatConversation(chat);

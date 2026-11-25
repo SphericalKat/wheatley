@@ -172,15 +172,12 @@ const handleLine = async (
     return;
   }
 
-  const { accepted } = await client.request("chat.command", {
+  // The Agent replies to every command in the Chat, also when the command cannot run, so `accepted` adds nothing here.
+  await client.request("chat.command", {
     agent,
     args: command.args,
     name: command.name,
   });
-
-  if (!accepted) {
-    io.stdout(`/${command.name} did not run.\n`);
-  }
 };
 
 /**

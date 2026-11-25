@@ -208,10 +208,35 @@ describe("wheatley chat", () => {
     expect(output).toContain(
       `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`
     );
-    expect(output).toContain("/model did not run.");
     await expect(
       stat(path.join(workspace(), "out", "result.txt"))
     ).resolves.toMatchObject({});
+  });
+
+  it("prints one Agent reply for each command that cannot run", async () => {
+    const terminal = scriptedIo([
+      "/model unknown-model",
+      "/model",
+      "/goal",
+      "/stop",
+    ]);
+
+    const code = await runCli(
+      ["chat", "--home", home.dir, "--agent", "home"],
+      terminal.io
+    );
+
+    expect(code).toBe(0);
+    expect(terminal.stdout()).toBe(
+      [
+        "Chat with home. Commands: /new /model /compact /stop /goal /status /restart /exit",
+        `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`,
+        "home> Usage: /model <model-id>",
+        "home> Usage: /goal <objective>",
+        "home> No Run is active.",
+        "",
+      ].join("\n")
+    );
   });
 
   it("starts a new Conversation for /new, so the history starts empty", async () => {
