@@ -4,18 +4,23 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord/context";
 import type { Message, Models } from "@earendil-works/pi-ai";
 import {
+  CompactionTask,
   createRegistry,
   defineExtension,
   defineSignal,
   defineTool,
   Harness,
   hook,
+  LiveDoc,
   ToolTask,
 } from "@earendil-works/pi-durable";
 import type {
   AgentChange,
   ConversationId,
+  EntryId,
   EntryRecord,
+  HookApi,
+  LiveState,
   SettledSubmissionRecord,
   SubmissionId,
   TaskId,
@@ -28,11 +33,15 @@ import type { JsonValue, ModelChoice, RunUsage } from "@wheatley/protocol";
 import type { JsonSchema, Logger, ToolResult } from "@wheatley/sdk";
 
 import type { ParkedCall } from "../../contracts/approval-gate.js";
+import { errorMessage } from "../error-message.js";
 
 const context: Context = BACKGROUND_CONTEXT;
 
 /** The longest run of entries that `wait` reads to sum a Run's usage. */
 const RUN_ENTRY_PAGE = 500;
+
+/** The memo of a compaction task that holds the ID of its flush fork, so a rerun after a crash reuses the fork. */
+const FLUSH_FORK_MEMO = "wheatley.flush.fork";
 
 /** Wakes a Tool call that waits for an Approval. The value carries nothing: the gate reads the decision itself. */
 const ApprovalWake = defineSignal({
@@ -40,6 +49,11 @@ const ApprovalWake = defineSignal({
   schema: obj({ decided: bool() }),
   version: 1,
 });
+
+/** Holds the Harness once `Harness.open` resolves. */
+interface HarnessHolder {
+  harness: Awaited<ReturnType<typeof Harness.open>> | undefined;
+}
 
 /** One Tool that the Agent offers to the model, by its canonical Wheatley name. */
 export interface PiToolSpec {
@@ -81,6 +95,11 @@ export interface PiAdapterHooks {
   ) => Promise<ToolResult>;
   /** The Harness closed itself after a storage error (`SessionFailed`). The adapter is unusable afterward. */
   readonly onFailed: (error: Error) => void;
+  /**
+   * The prompt of the silent Memory flush turn before an automatic compaction, or `undefined` to skip it (ADR 0009).
+   * A manual compaction (`compact`) never asks: its caller runs the flush turn first.
+   */
+  readonly flushPrompt: () => string | undefined;
 }
 
 /** Options of `openPiAdapter`. */
@@ -145,6 +164,15 @@ export interface PiAdapter {
   readonly stop: (conversationId: string) => Promise<void>;
   /** Compacts a Conversation now and resolves when the summary is stored or the compaction ends without one. */
   readonly compact: (conversationId: string) => Promise<void>;
+  /**
+   * Calls `onText` with each new piece of the assistant text that the Conversation streams, until the returned function
+   * runs. pi-durable commits partial text at most every 100 ms, so one piece can hold many tokens. A new model response
+   * starts again from its first character. `onText` runs outside the Harness's commit and must not throw.
+   */
+  readonly watchText: (
+    conversationId: string,
+    onText: (text: string) => void
+  ) => Promise<() => void>;
   /** Wakes parked Tool calls so that they ask the gate again. Calls that ended meanwhile are skipped. */
   readonly wake: (calls: readonly ParkedCall[]) => Promise<void>;
   /** Closes the Harness and its storage. */
@@ -239,6 +267,19 @@ const sumUsage = (entries: readonly EntryRecord[]): RunUsage => {
   return { costUsd, inputTokens, outputTokens };
 };
 
+/** The text of the partial response in `pi.live`, or `undefined` while no response streams. */
+const partialText = (live: Readonly<LiveState>): string | undefined => {
+  const message = live.generation?.message;
+
+  if (message === undefined) {
+    return undefined;
+  }
+
+  return message.content
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("");
+};
+
 const agentChange = (options: PiConversationOptions): AgentChange => ({
   cwd: options.cwd,
   instructions: options.instructions ?? null,
@@ -298,8 +339,88 @@ export const openPiAdapter = async (
     }
   );
 
+  // The compaction hook runs after `Harness.open`, so it reaches the Harness through this holder.
+  const opened: HarnessHolder = { harness: undefined };
+
+  /**
+   * Runs the flush prompt as one turn in a fork of the compacting Conversation at `at`, the newest entry that the
+   * summary replaces. The fork sees what the summary replaces, and has the same Tools, so the model can save facts to
+   * Memory. The fork never compacts by itself, and its answer goes nowhere.
+   */
+  const flush = async (
+    api: HookApi,
+    at: EntryId,
+    prompt: string,
+    hookContext: Context
+  ): Promise<void> => {
+    const { harness } = opened;
+
+    if (harness === undefined) {
+      return;
+    }
+
+    let forkId = await api.memo<number>(FLUSH_FORK_MEMO, hookContext);
+
+    if (forkId === undefined) {
+      const parent = await harness.conversation(
+        api.conversationId,
+        hookContext
+      );
+
+      if (parent === undefined) {
+        return;
+      }
+
+      const fork = await parent.fork(
+        at,
+        {
+          agent: { compaction: { enabled: false } },
+          ownership: { kind: "ownerless" },
+        },
+        hookContext
+      );
+
+      forkId = await api.memo<number>(FLUSH_FORK_MEMO, fork.id, hookContext);
+    }
+
+    const handle = isConversationId(forkId)
+      ? await harness.conversation(forkId, hookContext)
+      : undefined;
+
+    if (handle === undefined) {
+      return;
+    }
+
+    const submission = await handle.submit(
+      { content: prompt, requestId: `flush:${api.taskId}`, type: "input" },
+      hookContext
+    );
+
+    await submission.wait(hookContext);
+  };
+
   const extension = defineExtension({
     hooks: [
+      hook(CompactionTask, {
+        beforeCompact: async (compaction, api, hookContext) => {
+          const last = compaction.entries.at(-1);
+
+          const prompt =
+            compaction.reason === "manual" ? undefined : hooks.flushPrompt();
+
+          if (prompt !== undefined && last !== undefined) {
+            try {
+              await flush(api, last.id, prompt, hookContext);
+            } catch (error) {
+              // A failed flush must not block the compaction: without it, the next model request can overflow.
+              log.warn("The Memory flush before a compaction failed", {
+                conversationId: String(api.conversationId),
+                error: errorMessage(error),
+              });
+            }
+          }
+        },
+      }),
       hook(ToolTask, {
         beforeTool: async (call, api) => {
           const verdict = await hooks.checkTool({
@@ -345,10 +466,7 @@ export const openPiAdapter = async (
       onReport: (report) => {
         log.warn("pi-durable report", {
           kind: report.kind,
-          message:
-            report.error instanceof Error
-              ? report.error.message
-              : String(report.error),
+          message: errorMessage(report.error),
         });
       },
       registry,
@@ -366,6 +484,7 @@ export const openPiAdapter = async (
     }
   };
 
+  opened.harness = harness;
   void watchClosed();
   harness.resume();
 
@@ -508,6 +627,60 @@ export const openPiAdapter = async (
       }
 
       return await outcomeOf(await submission.wait(context));
+    },
+    watchText: async (conversationId, onText) => {
+      let sent = "";
+
+      const forward = (live: Readonly<LiveState>): void => {
+        const text = partialText(live);
+
+        if (text === undefined) {
+          sent = "";
+
+          return;
+        }
+
+        // A shorter or different text belongs to a new response.
+        const start = text.startsWith(sent) ? sent.length : 0;
+        const piece = text.slice(start);
+
+        sent = text;
+
+        if (piece !== "") {
+          // The observer must not call back into the Harness or throw, so the listener runs after it returns.
+          queueMicrotask(() => {
+            onText(piece);
+          });
+        }
+      };
+
+      const observation = await harness.observeDoc(
+        LiveDoc,
+        conversationIdOf(conversationId),
+        {
+          advance: (call) => {
+            if (call.kind === "value") {
+              forward(call.value);
+            }
+          },
+          end: () => {
+            // The Harness closed; the Run ends with it.
+          },
+        },
+        context
+      );
+
+      if (observation === undefined) {
+        return () => {
+          // The Conversation has no live document to watch.
+        };
+      }
+
+      forward(observation.value);
+
+      return () => {
+        observation.detach();
+      };
     },
     wake: async (calls) => {
       await Promise.all(

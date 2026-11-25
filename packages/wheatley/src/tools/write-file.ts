@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { Tool, ToolResult } from "@wheatley/sdk";
 
+import { errorMessage } from "../core/error-message.js";
 import { checkInput, stringField } from "./input.js";
 import { resolveToolPath } from "./paths.js";
 
@@ -49,10 +50,7 @@ export const writeFileTool: Tool = {
             signal: ctx.signal,
           }));
     } catch (error) {
-      return text(
-        `Cannot write ${target}: ${error instanceof Error ? error.message : String(error)}`,
-        true
-      );
+      return text(`Cannot write ${target}: ${errorMessage(error)}`, true);
     }
 
     const verb = mode === "append" ? "Appended" : "Wrote";

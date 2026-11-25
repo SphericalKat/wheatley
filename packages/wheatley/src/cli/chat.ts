@@ -3,6 +3,7 @@ import { BUILTIN_COMMANDS, parseCommandText } from "@wheatley/sdk";
 
 import { CLI_CHAT_ID } from "../core/agent/agent.js";
 import { CLI_BINDING_ID } from "../core/config/validate.js";
+import { errorMessage } from "../core/error-message.js";
 import type { DaemonClient } from "./client.js";
 import type { CliIo } from "./io.js";
 import { nextLine } from "./io.js";
@@ -228,7 +229,7 @@ export const runChat = async (
 
     return 0;
   } catch (error) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    io.stderr(`${errorMessage(error)}\n`);
 
     return 1;
   } finally {

@@ -3,6 +3,9 @@ import type { JsonObject, JsonValue } from "@wheatley/protocol";
 import { isMap, isNode, isScalar, isSeq } from "yaml";
 import type { Document, Node, Scalar } from "yaml";
 
+/** The most alias expansions that `config.yaml` may hold, so a crafted file cannot expand into a huge value. */
+const MAX_ALIAS_COUNT = 100;
+
 const isJsonObject = (value: JsonValue): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -11,7 +14,7 @@ const isJsonArray = (value: JsonValue): value is readonly JsonValue[] =>
 
 /** Returns the plain JSON value of a YAML document, or `undefined` if it holds values that JSON cannot represent. */
 export const documentJson = (doc: Document): JsonValue | undefined => {
-  const value: unknown = doc.toJS({ maxAliasCount: 100 });
+  const value: unknown = doc.toJS({ maxAliasCount: MAX_ALIAS_COUNT });
 
   return isJsonValue(value) ? value : undefined;
 };

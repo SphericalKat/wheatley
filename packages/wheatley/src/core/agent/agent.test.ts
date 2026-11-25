@@ -3,11 +3,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import type { FauxResponseFactory, Message } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InMemoryApprovalGate } from "../../contracts/approval-gate.fake.js";
 import { InMemoryConfigStore } from "../../contracts/config-store.fake.js";
 import { InMemoryDeliveryOutbox } from "../../contracts/delivery-outbox.fake.js";
+import { InMemoryMemoryStore } from "../../contracts/memory-store.fake.js";
 import { systemClock } from "../../contracts/module.js";
 import { InMemorySecretStore } from "../../contracts/secret-store.fake.js";
 import {
@@ -48,6 +50,47 @@ const openAgent = async (
     secrets: new InMemorySecretStore(),
     ...overrides,
   });
+
+const messageText = (message: Message): string => {
+  const { content } = message;
+
+  if (!Array.isArray(content)) {
+    return content;
+  }
+
+  const texts: string[] = [];
+
+  for (const block of content) {
+    if (block.type === "text") {
+      texts.push(block.text);
+    }
+  }
+
+  return texts.join("");
+};
+
+/** Sends a CLI Chat message and waits until `finished` Runs ended. */
+const sendAndFinish = async (
+  agent: Agent,
+  text: string,
+  finished: number
+): Promise<void> => {
+  await agent.send(CLI_CHAT, { interactive: true, text });
+  await vi.waitFor(() => {
+    expect(events.of("run.finished")).toHaveLength(finished);
+  });
+};
+
+/** The marker of the summary request that pi-durable sends to the model. */
+const SUMMARY_REQUEST = "<conversation>";
+
+const FLUSH_PROMPT = "Save durable facts to Memory now.";
+
+/** Characters of one large Chat message: about 8,000 tokens for the fake LLM. */
+const LARGE_MESSAGE_CHARS = 32_000;
+
+/** A context window that makes pi-durable compact after three large messages. */
+const SMALL_CONTEXT_WINDOW = 40_000;
 
 beforeEach(async () => {
   home = await temporaryDir();
@@ -381,6 +424,169 @@ describe("Agent", () => {
         kind: "trigger",
         triggerId: "t1",
       });
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("runs the Memory flush turn before an automatic compaction and keeps it out of the Chat", async () => {
+    llm = createFakeLlm({ contextWindow: SMALL_CONTEXT_WINDOW });
+
+    const memory = new InMemoryMemoryStore(undefined, undefined, FLUSH_PROMPT);
+    const requests: string[][] = [];
+
+    const respond: FauxResponseFactory = (context) => {
+      const texts = context.messages.map(messageText);
+      const last = context.messages.at(-1);
+
+      requests.push(texts);
+
+      if (last?.role === "user" && messageText(last) === FLUSH_PROMPT) {
+        return fauxAssistantMessage(
+          fauxToolCall("write_file", { content: "fact", path: "saved.md" }),
+          { stopReason: "toolUse" }
+        );
+      }
+
+      return fauxAssistantMessage(
+        last?.role === "toolResult" ? "flushed" : "ok"
+      );
+    };
+
+    llm.faux.setResponses(Array.from({ length: 40 }, () => respond));
+
+    const agent = await openAgent({ memory, models: llm.models });
+
+    try {
+      for (const [index, word] of [
+        "first",
+        "second",
+        "third",
+        "fourth",
+      ].entries()) {
+        // oxlint-disable-next-line no-await-in-loop -- Each message waits for the previous Run, like a person in a Chat.
+        await sendAndFinish(
+          agent,
+          `${word} ${"x".repeat(LARGE_MESSAGE_CHARS)}`,
+          index + 1
+        );
+      }
+
+      const flushAt = requests.findIndex(
+        (texts) => texts.at(-1) === FLUSH_PROMPT
+      );
+
+      const summaryAt = requests.findIndex((texts) =>
+        texts.some((text) => text.includes(SUMMARY_REQUEST))
+      );
+
+      expect(flushAt).toBeGreaterThanOrEqual(0);
+      expect(summaryAt).toBeGreaterThan(flushAt);
+      // The flush turn sees the messages that the summary replaces, and none that it keeps.
+      expect(requests[flushAt]?.some((text) => text.startsWith("first "))).toBe(
+        true
+      );
+      expect(
+        requests[flushAt]?.some((text) => text.startsWith("fourth "))
+      ).toBe(false);
+      await expect(
+        readFile(
+          path.join(home.dir, "agents", "home", WORKSPACE_DIR, "saved.md"),
+          "utf-8"
+        )
+      ).resolves.toBe("fact");
+
+      const history = await agent.history(CLI_CHAT, undefined, 50);
+
+      expect(history.messages.map((message) => message.text)).not.toContain(
+        FLUSH_PROMPT
+      );
+      expect(history.messages.map((message) => message.text)).not.toContain(
+        "flushed"
+      );
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("streams run.delta events whose text leads to the reply", async () => {
+    llm = createFakeLlm({ tokensPerSecond: 200 });
+
+    const reply = Array.from({ length: 40 }, (_, index) => `word${index}`).join(
+      " "
+    );
+
+    llm.faux.setResponses([fauxAssistantMessage(reply)]);
+
+    const agent = await openAgent({ models: llm.models });
+
+    try {
+      const sent = await agent.send(CLI_CHAT, {
+        interactive: true,
+        text: "Say many words",
+      });
+
+      await vi.waitFor(() => {
+        expect(events.of("run.finished")).toHaveLength(1);
+      });
+
+      const deltas = events.of("run.delta");
+      const streamed = deltas.map(({ delta }) => delta).join("");
+
+      expect(deltas.length).toBeGreaterThan(0);
+      expect(deltas.every(({ runId }) => runId === sent.runId)).toBe(true);
+      expect(reply.startsWith(streamed)).toBe(true);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("archives Chat messages and replies in Memory, but not maintenance Runs", async () => {
+    const memory = new InMemoryMemoryStore();
+    const agent = await openAgent({ memory });
+
+    try {
+      llm.faux.setResponses([
+        fauxAssistantMessage("The answer is blue"),
+        fauxAssistantMessage("Consolidated notes"),
+      ]);
+
+      const sent = await agent.send(CLI_CHAT, {
+        interactive: true,
+        text: "Which color?",
+      });
+
+      await vi.waitFor(() => {
+        expect(events.of("run.finished")).toHaveLength(1);
+      });
+
+      const { runId } = await agent.maintenance.start({
+        job: "memory.consolidate",
+        prompt: "Consolidate",
+      });
+
+      await agent.maintenance.wait(runId);
+
+      const archived = async (query: string) => {
+        const hits = await memory.search(query, {
+          limit: 10,
+          scope: "conversations",
+        });
+
+        return hits.map((hit) =>
+          hit.kind === "conversation"
+            ? [hit.conversationId, hit.role, hit.snippet]
+            : []
+        );
+      };
+
+      await expect(archived("Which color")).resolves.toStrictEqual([
+        [sent.conversationId, "user", "Which color?"],
+      ]);
+      await expect(archived("answer is blue")).resolves.toStrictEqual([
+        [sent.conversationId, "assistant", "The answer is blue"],
+      ]);
+      await expect(archived("Consolidat")).resolves.toStrictEqual([]);
     } finally {
       await agent.close();
     }

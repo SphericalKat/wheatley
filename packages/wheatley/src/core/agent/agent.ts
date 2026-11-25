@@ -35,7 +35,10 @@ import type {
   MaintenanceRunner,
   MaintenanceRunResult,
 } from "../../contracts/maintenance-runner.js";
-import type { MemoryStore } from "../../contracts/memory-store.js";
+import type {
+  ArchivedMessage,
+  MemoryStore,
+} from "../../contracts/memory-store.js";
 import type {
   AgentModuleContext,
   Clock,
@@ -49,6 +52,7 @@ import type { MigrationNamespace } from "../../db/migrations.js";
 import { ConcurrencyGate } from "../concurrency-gate.js";
 import { SerialQueue } from "../config/atomic-file.js";
 import { CLI_BINDING_ID } from "../config/validate.js";
+import { errorMessage } from "../error-message.js";
 import { AgentStore, CORE_NAMESPACE, coreMigrations } from "./agent-store.js";
 import type { RunDelivery } from "./agent-store.js";
 import { openPiAdapter } from "./pi-adapter.js";
@@ -150,8 +154,11 @@ export interface AgentOptions {
   readonly approvals?: ApprovalGateFactory;
   /** The outbox for replies to Chats other than the CLI Chat. Without it, the Agent logs and drops such replies. */
   readonly outbox?: Pick<DeliveryOutbox, "enqueue">;
-  /** The Memory snapshot and pre-compaction flush (ADR 0009). */
-  readonly memory?: Pick<MemoryStore, "snapshot" | "compactionFlushPrompt">;
+  /** The Memory snapshot, the pre-compaction flush, and the Conversation archive (ADR 0009). */
+  readonly memory?: Pick<
+    MemoryStore,
+    "snapshot" | "compactionFlushPrompt" | "archive"
+  >;
   /** True if a Trigger Run called `suppress_delivery`. */
   readonly isDeliverySuppressed?: (runId: string) => Promise<boolean>;
   readonly modules?: readonly HostedModule[];
@@ -560,7 +567,7 @@ export class Agent {
         await stop();
       } catch (error) {
         this.#options.log.error("A module failed to stop", {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -617,6 +624,7 @@ export class Agent {
           });
           this.#options.onFailed(error);
         },
+        flushPrompt: () => this.#options.memory?.compactionFlushPrompt(),
       },
       log: this.#options.log,
       models: this.#options.models,
@@ -716,6 +724,12 @@ export class Agent {
         senderDisplayName: spec.userMessage.senderDisplayName,
         text: spec.userMessage.text,
       });
+      await this.#archive(spec.origin, {
+        at: Date.parse(startedAt),
+        conversationId: spec.conversationId,
+        role: "user",
+        text: spec.userMessage.text,
+      });
     }
 
     const run = this.#track(runId, spec);
@@ -794,10 +808,25 @@ export class Agent {
         );
 
         try {
-          this.#runByConversation.set(run.conversationId, run.runId);
-          const submissionId = await submit();
+          const pi = this.#requirePi();
 
-          return await this.#requirePi().wait(submissionId);
+          const stopText = await pi.watchText(run.conversationId, (delta) => {
+            this.#options.events.emit("run.delta", {
+              agent: this.name,
+              delta,
+              runId: run.runId,
+            });
+          });
+
+          try {
+            // A stop that came while the watch started finds no driving Run, so the Run must not submit after it.
+            run.controller.signal.throwIfAborted();
+            this.#runByConversation.set(run.conversationId, run.runId);
+
+            return await pi.wait(await submit());
+          } finally {
+            stopText();
+          }
         } finally {
           this.#runByConversation.delete(run.conversationId);
           lease.release();
@@ -807,7 +836,7 @@ export class Agent {
       outcome = run.controller.signal.aborted
         ? { status: "stopped", text: "" }
         : {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
             status: "failed",
             text: "",
           };
@@ -823,7 +852,29 @@ export class Agent {
     await this.#finish(run, outcome);
   };
 
+  /** Stores the end of a Run and resolves `run.done`. Never rejects: it logs a storage failure instead. */
   readonly #finish = async (
+    run: ActiveRun,
+    outcome: PiRunOutcome
+  ): Promise<void> => {
+    try {
+      await this.#storeOutcome(run, outcome);
+    } catch (error) {
+      this.#options.log.error("The end of a Run could not be stored", {
+        error: errorMessage(error),
+        runId: run.runId,
+      });
+    } finally {
+      this.#active.delete(run.runId);
+      run.done.resolve({
+        status: outcome.status,
+        text: outcome.text,
+        error: outcome.error,
+      });
+    }
+  };
+
+  readonly #storeOutcome = async (
     run: ActiveRun,
     outcome: PiRunOutcome
   ): Promise<void> => {
@@ -842,7 +893,7 @@ export class Agent {
       }
     } catch (error) {
       this.#options.log.error("A Run reply could not be delivered", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         runId: run.runId,
       });
     }
@@ -864,12 +915,6 @@ export class Agent {
         run: summary,
       });
     }
-
-    run.done.resolve({
-      status: outcome.status,
-      text: outcome.text,
-      error: outcome.error,
-    });
   };
 
   /**
@@ -898,11 +943,15 @@ export class Agent {
       triggerToCli &&
       (await this.#options.isDeliverySuppressed?.(run.runId)) !== true
     ) {
-      this.#recordMessage(
-        CLI_CHAT,
-        await this.#chatConversation(CLI_CHAT),
-        message
-      );
+      const conversationId = await this.#chatConversation(CLI_CHAT);
+
+      this.#recordMessage(CLI_CHAT, conversationId, message);
+      await this.#archive(run.origin, {
+        at: Date.parse(at),
+        conversationId,
+        role: "assistant",
+        text,
+      });
 
       return;
     }
@@ -912,6 +961,34 @@ export class Agent {
       run.conversationId,
       message
     );
+    await this.#archive(run.origin, {
+      at: Date.parse(at),
+      conversationId: run.conversationId,
+      role: "assistant",
+      text,
+    });
+  };
+
+  /**
+   * Adds a user or assistant message to the Memory archive. Maintenance Runs stay out of it, so that consolidation
+   * output does not feed the next consolidation. A failure only logs: the message is stored in `agent.sqlite` already.
+   */
+  readonly #archive = async (
+    origin: RunOrigin,
+    message: ArchivedMessage
+  ): Promise<void> => {
+    if (this.#options.memory === undefined || origin.kind === "maintenance") {
+      return;
+    }
+
+    try {
+      await this.#options.memory.archive(message);
+    } catch (error) {
+      this.#options.log.warn("A message could not be archived", {
+        conversationId: message.conversationId,
+        error: errorMessage(error),
+      });
+    }
   };
 
   readonly #deliverReply = async (

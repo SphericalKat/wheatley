@@ -6,6 +6,7 @@ import type {
   ToolProvider,
 } from "../contracts/extension-catalog.js";
 import { canonicalToolName } from "../contracts/tool-names.js";
+import { errorMessage } from "../core/error-message.js";
 import { readFileTool } from "./read-file.js";
 import { shellTool } from "./shell.js";
 import { writeFileTool } from "./write-file.js";
@@ -70,9 +71,7 @@ export const createBuiltinToolProvider = (): ToolProvider => {
       try {
         return await entry.tool.execute(input, ctx);
       } catch (error) {
-        return errorResult(
-          error instanceof Error ? error.message : String(error)
-        );
+        return errorResult(errorMessage(error));
       }
     },
     health: () => [],

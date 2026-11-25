@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
 
 import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
+import { errorMessage } from "../core/error-message.js";
 import { DaemonClient } from "./client.js";
 import type { DaemonTarget } from "./client.js";
 import type { CliIo } from "./io.js";
@@ -119,9 +120,7 @@ export const decideApproval = async (
 
     io.stdout(accepted ? "" : "The Approval already ended.\n");
   } catch (error) {
-    io.stderr(
-      `Cannot decide the Approval: ${error instanceof Error ? error.message : String(error)}\n`
-    );
+    io.stderr(`Cannot decide the Approval: ${errorMessage(error)}\n`);
   }
 
   return true;
@@ -137,7 +136,7 @@ export const connect = async (
     return await DaemonClient.connect(targetOf(flags), version);
   } catch (error) {
     io.stderr(
-      `Cannot reach the Wheatley daemon (${error instanceof Error ? error.message : String(error)}). Start it with "wheatley daemon".\n`
+      `Cannot reach the Wheatley daemon (${errorMessage(error)}). Start it with "wheatley daemon".\n`
     );
 
     return undefined;

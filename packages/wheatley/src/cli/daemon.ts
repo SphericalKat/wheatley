@@ -2,6 +2,7 @@ import { once } from "node:events";
 
 import { startDaemon } from "../core/daemon.js";
 import type { DaemonOptions } from "../core/daemon.js";
+import { errorMessage } from "../core/error-message.js";
 import type { CliIo } from "./io.js";
 
 /** Options of `wheatley daemon`. */
@@ -37,9 +38,7 @@ export const runDaemon = async (
       ...options.overrides,
     });
   } catch (error) {
-    io.stderr(
-      `Cannot start the daemon: ${error instanceof Error ? error.message : String(error)}\n`
-    );
+    io.stderr(`Cannot start the daemon: ${errorMessage(error)}\n`);
 
     return 1;
   }

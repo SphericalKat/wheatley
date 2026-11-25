@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-ai";
 
 import type { ConcurrencyGate, GateLease } from "../concurrency-gate.js";
+import { errorMessage } from "../error-message.js";
 
 /** An error response for a request whose provider stream could not start. */
 const failedResponse = (
@@ -57,10 +58,7 @@ const pipeWithSlot = async (
 
     target.end(await source.result());
   } catch (error) {
-    const response = failedResponse(
-      model,
-      error instanceof Error ? error.message : String(error)
-    );
+    const response = failedResponse(model, errorMessage(error));
 
     target.push({ error: response, reason: "error", type: "error" });
     target.end(response);

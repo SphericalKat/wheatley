@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import type { Tool, ToolResult } from "@wheatley/sdk";
 
+import { errorMessage } from "../core/error-message.js";
 import { checkInput, integerField, stringField } from "./input.js";
 import { resolveToolPath } from "./paths.js";
 
@@ -41,10 +42,7 @@ export const readFileTool: Tool = {
         signal: ctx.signal,
       });
     } catch (error) {
-      return text(
-        `Cannot read ${target}: ${error instanceof Error ? error.message : String(error)}`,
-        true
-      );
+      return text(`Cannot read ${target}: ${errorMessage(error)}`, true);
     }
 
     const offset = integerField(checked.value, "offset");

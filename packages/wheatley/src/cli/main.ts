@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 
+import { errorMessage } from "../core/error-message.js";
 import { runAsk } from "./ask.js";
 import { runChat } from "./chat.js";
 import { runDaemon } from "./daemon.js";
@@ -71,9 +72,7 @@ export const runCli = async (
   try {
     parsed = parseCliArgs(argv);
   } catch (error) {
-    io.stderr(
-      `${error instanceof Error ? error.message : String(error)}\n${USAGE}`
-    );
+    io.stderr(`${errorMessage(error)}\n${USAGE}`);
 
     return 2;
   }

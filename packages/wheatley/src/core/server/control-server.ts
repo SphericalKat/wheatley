@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { chmod, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
+import { isIPv4 } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
@@ -22,9 +23,24 @@ export const SOCKET_FILE_MODE = 0o600;
 /** Hosts whose origins count as the listener's own. */
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"] as const;
 
+/** True for a host name or address that only the local machine can reach: `localhost`, `127.0.0.0/8`, or `::1`. */
+export const isLoopbackHost = (host: string): boolean => {
+  const bare =
+    host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+
+  return (
+    bare.toLowerCase() === "localhost" ||
+    bare === "::1" ||
+    (isIPv4(bare) && bare.startsWith("127."))
+  );
+};
+
 /** Options of `ControlServer.listen`. */
 export interface ControlServerOptions {
-  /** The TCP host. Keep it on a loopback address: the protocol has no login (ADR 0002). */
+  /**
+   * The TCP host. Keep it on a loopback address: the protocol has no login (ADR 0002). Another host logs a warning but
+   * still listens, because a Docker container must listen on all interfaces for a loopback port mapping on the host.
+   */
   readonly host: string;
   /** The TCP port, or 0 for any free port. */
   readonly port: number;
@@ -65,6 +81,13 @@ export class ControlServer {
     tcp.listen(options.port, options.host);
     await onceListening(tcp);
     server.#port = portOf(tcp);
+
+    if (!isLoopbackHost(options.host)) {
+      options.log.warn(
+        "The Control Server listens on a host that is not loopback. The protocol has no login: limit access with a firewall, a proxy, or a loopback port mapping.",
+        { host: options.host }
+      );
+    }
 
     if (options.socketPath !== undefined) {
       await rm(options.socketPath, { force: true });

@@ -1,5 +1,6 @@
 import type { DaemonStatus } from "@wheatley/protocol";
 
+import { errorMessage } from "../core/error-message.js";
 import type { CliIo } from "./io.js";
 import { connect } from "./session.js";
 import type { ClientFlags } from "./session.js";
@@ -59,7 +60,7 @@ export const runStatus = async (
 
     return 0;
   } catch (error) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    io.stderr(`${errorMessage(error)}\n`);
 
     return 1;
   } finally {

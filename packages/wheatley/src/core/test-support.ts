@@ -21,9 +21,25 @@ export interface FakeLlm {
   readonly modelId: string;
 }
 
+/** Options of `createFakeLlm`. */
+export interface FakeLlmOptions {
+  /** The context window of the fake model. pi-durable compacts automatically near it. */
+  readonly contextWindow?: number;
+  /** Streams responses at this rate instead of at once. */
+  readonly tokensPerSecond?: number;
+}
+
+/** The model ID of the fake LLM. */
+const FAKE_MODEL_ID = "faux-1";
+
 /** Creates a fake LLM provider whose responses the test scripts with `faux.setResponses`. */
-export const createFakeLlm = (): FakeLlm => {
-  const faux = fauxProvider({ provider: FAKE_PROVIDER });
+export const createFakeLlm = (options: FakeLlmOptions = {}): FakeLlm => {
+  const faux = fauxProvider({
+    models: [{ contextWindow: options.contextWindow, id: FAKE_MODEL_ID }],
+    provider: FAKE_PROVIDER,
+    tokensPerSecond: options.tokensPerSecond,
+  });
+
   const models = createModels();
 
   models.setProvider(faux.provider);

@@ -1,5 +1,6 @@
 import type { PendingApproval, RpcEvent, RunSummary } from "@wheatley/protocol";
 
+import { errorMessage } from "../core/error-message.js";
 import type { CliIo } from "./io.js";
 import { nextLine } from "./io.js";
 import {
@@ -132,7 +133,7 @@ export const runAsk = async (
       }
     }
   } catch (error) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    io.stderr(`${errorMessage(error)}\n`);
 
     return 1;
   } finally {

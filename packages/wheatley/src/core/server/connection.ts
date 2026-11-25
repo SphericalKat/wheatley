@@ -24,6 +24,7 @@ import type { RawData, WebSocket } from "ws";
 
 import { SeamError, toRpcError } from "../../contracts/errors.js";
 import type { RpcContext } from "../../contracts/module.js";
+import { errorMessage } from "../error-message.js";
 import type { EventBus } from "../events.js";
 import type { RoutedRequest, Router } from "../rpc/router.js";
 
@@ -273,7 +274,7 @@ export class Connection {
       return encodeResult(id, request.method, result);
     } catch (error) {
       this.#options.log.error("A JSON-RPC result does not match its schema", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         method: request.method,
       });
 

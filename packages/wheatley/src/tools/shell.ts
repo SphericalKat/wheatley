@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 
 import type { Tool, ToolResult } from "@wheatley/sdk";
 
+import { errorMessage } from "../core/error-message.js";
 import { checkInput, integerField, stringField } from "./input.js";
 import { resolveToolPath } from "./paths.js";
 
@@ -195,10 +196,7 @@ export const shellTool: Tool = {
 
       return describeOutcome(outcome, timeoutMs);
     } catch (error) {
-      return text(
-        `Cannot run the command: ${error instanceof Error ? error.message : String(error)}`,
-        true
-      );
+      return text(`Cannot run the command: ${errorMessage(error)}`, true);
     }
   },
   inputSchema: {

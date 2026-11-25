@@ -3,6 +3,7 @@ import type { Logger } from "@wheatley/sdk";
 
 import type { Clock, EventSink } from "../contracts/module.js";
 import { SerialQueue } from "./config/atomic-file.js";
+import { errorMessage } from "./error-message.js";
 
 /** The first wait before the Supervisor restarts a degraded Agent. */
 export const RESTART_BACKOFF_INITIAL_MS = 1000;
@@ -251,7 +252,7 @@ export class Supervisor<A extends SupervisedAgent> {
     entry.instance = undefined;
 
     if (instance !== undefined) {
-      await instance.close();
+      await this.#close(name, instance);
     }
 
     if (entry.state !== "stopped") {
@@ -278,9 +279,28 @@ export class Supervisor<A extends SupervisedAgent> {
 
       entry.instance = undefined;
       entry.generation += 1;
-      await instance?.close();
+
+      if (instance !== undefined) {
+        await this.#close(name, instance);
+      }
+
       this.#degrade(name, entry, error);
     });
+  };
+
+  /**
+   * Closes an instance and logs a rejection instead of passing it on. Failure callbacks and restart timers start
+   * lifecycle work without a caller that awaits it, so a rejection here would go unhandled and leave the state stale.
+   */
+  readonly #close = async (name: string, instance: A): Promise<void> => {
+    try {
+      await instance.close();
+    } catch (error) {
+      this.#options.log.error("The Agent failed to close", {
+        agent: name,
+        error: errorMessage(error),
+      });
+    }
   };
 
   readonly #degrade = (name: string, entry: Entry<A>, error: Error): void => {

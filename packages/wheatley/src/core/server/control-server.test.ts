@@ -19,6 +19,7 @@ import {
   temporaryDir,
 } from "../test-support.js";
 import type { FakeLlm } from "../test-support.js";
+import { isLoopbackHost } from "./control-server.js";
 
 let home: Awaited<ReturnType<typeof temporaryDir>>;
 let llm: FakeLlm;
@@ -137,6 +138,19 @@ afterEach(async () => {
 });
 
 describe("ControlServer", () => {
+  it("counts only loopback hosts as local", () => {
+    expect(
+      ["localhost", "127.0.0.1", "127.1.2.3", "::1", "[::1]"].map(
+        isLoopbackHost
+      )
+    ).toStrictEqual([true, true, true, true, true]);
+    expect(
+      ["0.0.0.0", "::", "192.168.1.10", "example.com", "127.example.com"].map(
+        isLoopbackHost
+      )
+    ).toStrictEqual([false, false, false, false, false]);
+  });
+
   it("accepts its own origin and listed origins and refuses foreign browser origins", async () => {
     const own = new URL(daemon.server.url);
 
