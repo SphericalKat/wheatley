@@ -564,10 +564,16 @@ The `Release` workflow in `.github/workflows/release.yml` uses [release-please](
 
 Before version `1.0.0`, a `feat` commit raises the minor version, and a `fix` commit raises the patch version.
 
-The workflow needs these repository settings:
+The workflow publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers). It uses no npm token. Each npm package must have a trusted publisher with these values:
 
-- The `NPM_TOKEN` secret: an npm automation token that can publish to the `@wheatley-ai` scope.
-- **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**: on.
+| Field                | Value          |
+| -------------------- | -------------- |
+| Organization or user | `SphericalKat` |
+| Repository           | `wheatley`     |
+| Workflow filename    | `release.yml`  |
+| Environment          | (empty)        |
+
+The repository must have **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** turned on.
 
 ## Known limitations
 

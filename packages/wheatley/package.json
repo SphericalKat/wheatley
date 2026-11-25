@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "Wheatley daemon and CLI",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SphericalKat/wheatley.git",
+    "directory": "packages/wheatley"
+  },
   "bin": {
     "wheatley": "bin/wheatley.js"
   },

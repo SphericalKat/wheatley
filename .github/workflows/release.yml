@@ -36,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # npm trusted publishing exchanges the GitHub OIDC token for a short-lived publish token.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,8 +61,6 @@ jobs:
       # npm runs outside the repository root, because the root devEngines field accepts only pnpm.
       - name: Publish the tarballs
         working-directory: ${{ runner.temp }}/packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for tarball in wheatley-ai-sdk-*.tgz wheatley-ai-cli-*.tgz; do
             npm publish "$tarball"
