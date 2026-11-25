@@ -249,8 +249,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       croner:
-        specifier: 11.0.0
-        version: 11.0.0
+        specifier: 11.0.1
+        version: 11.0.1
       import-meta-resolve:
         specifier: 4.2.0
         version: 4.2.0
@@ -1221,8 +1221,8 @@ packages:
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
 
-  croner@11.0.0:
-    resolution: {integrity: sha512-T17ADjdttrVToyzLpLq9Xb9xzcMwpQ/M3Qs9szhh0MVNTbv6NWQ9OFYa2qlzPYXFMn+uoDlnW1IpIv6cAvFtyA==}
+  croner@11.0.1:
+    resolution: {integrity: sha512-/fmHcoczPy5cMcmJ6ex7J7LAwb545V1dNmRrdDGP3hwStg/06IYP56YgBySCSdWGDz2PJYQyDukaR8b8R5o2HA==}
     engines: {node: '>=18.0'}
 
   cross-spawn@7.0.6:
@@ -2775,7 +2775,7 @@ snapshots:
 
   confbox@0.1.8: {}
 
-  croner@11.0.0: {}
+  croner@11.0.1: {}
 
   cross-spawn@7.0.6:
     dependencies:
