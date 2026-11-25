@@ -267,6 +267,25 @@ const fullAgentConfig = (
   model: config.model ?? { id: llm.modelId, provider: FAKE_PROVIDER },
 });
 
+/** The standard streams of one CLI command. */
+const ioFor = (
+  input: ReturnType<typeof lineQueue>,
+  isTTY: boolean,
+  out: string[],
+  err: string[]
+): CliIo => ({
+  env: {},
+  isTTY,
+  lines: input.iterator,
+  shutdown: new AbortController().signal,
+  stderr: (text) => {
+    err.push(text);
+  },
+  stdout: (text) => {
+    out.push(text);
+  },
+});
+
 /**
  * Starts a Deployment in a new temporary home folder and waits until every Agent left `starting`.
  *
@@ -399,24 +418,6 @@ export const startHarness = async (
     return session;
   };
 
-  const ioFor = (
-    input: ReturnType<typeof lineQueue>,
-    isTTY: boolean,
-    out: string[],
-    err: string[]
-  ): CliIo => ({
-    env: { WHEATLEY_HOME: homeDir },
-    isTTY,
-    lines: input.iterator,
-    shutdown: new AbortController().signal,
-    stderr: (text) => {
-      err.push(text);
-    },
-    stdout: (text) => {
-      out.push(text);
-    },
-  });
-
   const cliSession: Harness["cliSession"] = (argv, sessionOptions = {}) => {
     const input = lineQueue([], false);
     const out: string[] = [];
@@ -426,7 +427,7 @@ export const startHarness = async (
       const code = await runCli(
         ["--home", homeDir, ...argv],
         ioFor(input, sessionOptions.isTTY ?? false, out, err),
-        { ops: { homeDir, ...options.ops } }
+        { ops: options.ops }
       );
 
       return { code, stderr: err.join(""), stdout: out.join("") };
@@ -452,16 +453,11 @@ export const startHarness = async (
     const input = lineQueue(cliOptions.input ?? [], true);
     const out: string[] = [];
     const err: string[] = [];
-    const [command] = argv;
-
-    // The ops commands read the home folder from `WHEATLEY_HOME`. The other commands take `--home`.
-    const isOps =
-      command === "service" || command === "update" || command === "restore";
 
     const code = await runCli(
-      isOps ? argv : ["--home", homeDir, ...argv],
+      ["--home", homeDir, ...argv],
       ioFor(input, cliOptions.isTTY ?? false, out, err),
-      { ops: { homeDir, ...options.ops } }
+      { ops: options.ops }
     );
 
     return { code, stderr: err.join(""), stdout: out.join("") };

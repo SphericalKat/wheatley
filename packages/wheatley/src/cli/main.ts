@@ -30,6 +30,7 @@ Commands:
   restore   List the backups of an Agent, or restore agent.sqlite: restore <agent> [backup]
 
 Options:
+  -h, --help         Show this help
   --home <dir>       The Deployment home (default: $WHEATLEY_HOME or ~/.wheatley)
   --url <ws-url>     Connect over TCP instead of the Unix socket in the home folder
   --agent <name>     The Agent of chat and ask
@@ -93,6 +94,43 @@ const runOpsCommand = async (
   });
 };
 
+/** The ops arguments without `--home`, and the `--home` value if one was given. */
+interface OpsArguments {
+  readonly home: string | undefined;
+  readonly rest: readonly string[];
+}
+
+const HOME_FLAG = "--home";
+
+/**
+ * Takes `--home <dir>` and `--home=<dir>` out of ops arguments, which the ops commands do not parse themselves.
+ *
+ * Errors: throws if `--home` has no value.
+ */
+const takeHomeOption = (argv: readonly string[]): OpsArguments => {
+  const rest: string[] = [];
+  let home: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? "";
+
+    if (arg.startsWith(`${HOME_FLAG}=`)) {
+      home = arg.slice(HOME_FLAG.length + 1);
+    } else if (arg === HOME_FLAG) {
+      home = argv[index + 1];
+      index += 1;
+
+      if (home === undefined || home.startsWith("-")) {
+        throw new Error(`Option '${HOME_FLAG} <dir>' argument missing`);
+      }
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  return { home, rest };
+};
+
 const readPrompt = async (
   io: CliIo,
   positionals: readonly string[]
@@ -124,7 +162,17 @@ export const runCli = async (
   io: CliIo,
   overrides: CliOverrides = {}
 ): Promise<number> => {
-  const [first, ...opsArgs] = argv;
+  let ops: OpsArguments;
+
+  try {
+    ops = takeHomeOption(argv);
+  } catch (error) {
+    io.stderr(`${errorMessage(error)}\n${USAGE}`);
+
+    return 2;
+  }
+
+  const [first, ...opsArgs] = ops.rest;
 
   // The ops commands parse their own flags, so they skip the root parser.
   if (isOpsCommand(first)) {
@@ -132,7 +180,7 @@ export const runCli = async (
       first,
       opsArgs,
       io,
-      resolveHome(undefined, io.env),
+      resolveHome(ops.home, io.env),
       overrides.ops
     );
   }
@@ -148,6 +196,13 @@ export const runCli = async (
   }
 
   const { values, positionals } = parsed;
+
+  if (values.help === true) {
+    io.stdout(USAGE);
+
+    return 0;
+  }
+
   const [command, ...rest] = positionals;
   const home = resolveHome(values.home, io.env);
   const version = await packageVersion();
@@ -221,6 +276,7 @@ const parseCliArgs = (argv: readonly string[]) =>
     args: [...argv],
     options: {
       agent: { type: "string" },
+      help: { short: "h", type: "boolean" },
       home: { type: "string" },
       host: { type: "string" },
       model: { type: "string" },

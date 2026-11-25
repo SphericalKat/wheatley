@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -281,5 +281,32 @@ describe("wheatley status and init", () => {
       1
     );
     expect(second.stderr()).toContain("already exists");
+  });
+
+  it("prints the usage on stdout and exits 0 for --help", async () => {
+    const terminal = scriptedIo([]);
+
+    await expect(runCli(["--help"], terminal.io)).resolves.toBe(0);
+    expect(terminal.stdout()).toContain("Usage: wheatley <command> [options]");
+    expect(terminal.stderr()).toBe("");
+  });
+
+  it("reads the backups of restore from the --home folder", async () => {
+    const backup = "agent-20260101T000000000Z-pre-migration.sqlite";
+    const backupsDir = path.join(home.dir, "agents", "home", "backups");
+
+    await mkdir(backupsDir, { recursive: true });
+    await writeFile(path.join(backupsDir, backup), "");
+
+    for (const argv of [
+      ["--home", home.dir, "restore", "home"],
+      ["restore", "home", `--home=${home.dir}`],
+    ]) {
+      const terminal = scriptedIo([]);
+
+      // oxlint-disable-next-line no-await-in-loop -- Each spelling of --home runs on its own.
+      await expect(runCli(argv, terminal.io)).resolves.toBe(2);
+      expect(terminal.stderr()).toContain(backup);
+    }
   });
 });
