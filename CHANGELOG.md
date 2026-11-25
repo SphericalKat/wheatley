@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/SphericalKat/wheatley/compare/v0.1.0...v0.1.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **ci:** keep oxfmt off the release-please CHANGELOG.md ([4dcf961](https://github.com/SphericalKat/wheatley/commit/4dcf961c99ee628f9c88775ab5657275eea9806a))
+
 ## 0.1.0 (2026-11-25)
 
 
