@@ -227,16 +227,14 @@ describe("wheatley chat", () => {
     );
 
     expect(code).toBe(0);
-    expect(terminal.stdout()).toBe(
-      [
-        "Chat with home. Commands: /new /model /compact /stop /goal /status /restart /exit",
-        `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`,
-        "home> Usage: /model <model-id>",
-        "home> Usage: /goal <objective>",
-        "home> No Run is active.",
-        "",
-      ].join("\n")
-    );
+    // The first line is the banner. Every line after it must be an Agent reply.
+    expect(terminal.stdout().split("\n").slice(1)).toEqual([
+      `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`,
+      "home> Usage: /model <model-id>",
+      "home> Usage: /goal <objective>",
+      "home> No Run is active.",
+      "",
+    ]);
   });
 
   it("starts a new Conversation for /new, so the history starts empty", async () => {

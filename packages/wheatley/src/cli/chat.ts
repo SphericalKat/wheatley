@@ -172,7 +172,7 @@ const handleLine = async (
     return;
   }
 
-  // The Agent replies to every command in the Chat, also when the command cannot run, so `accepted` adds nothing here.
+  // `Agent.command` sends the reply for a command that cannot run, so the CLI ignores `accepted`.
   await client.request("chat.command", {
     agent,
     args: command.args,

@@ -502,9 +502,10 @@ export class Agent {
    * Runs a built-in command for `chat` (ADR 0007). Resolves `false` if the command cannot run, for example `/model`
    * without an argument or `/stop` without an active Run.
    *
-   * Every call sends exactly one command reply to the Chat before it resolves, also when the command cannot run, so a
-   * Frontend shows only the reply and adds no message of its own. A command reply arrives like a Run reply, with source
-   * `command`. `/goal` replies through the Run that it starts.
+   * Each call sends exactly one command reply to the Chat before it resolves, also when the command cannot run, so a
+   * Frontend shows only the reply and adds no message of its own. The exception is `/goal` with an objective, which
+   * sends no command reply and replies later through the Run that it starts. A command reply arrives like a Run reply,
+   * with source `command`.
    */
   readonly command = async (
     chat: ChatKey,
