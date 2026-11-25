@@ -245,6 +245,12 @@ importers:
       '@wheatley/sdk':
         specifier: workspace:*
         version: link:../sdk
+      croner:
+        specifier: 11.0.1
+        version: 11.0.1
+      typebox:
+        specifier: 1.4.7
+        version: 1.4.7
 
 packages:
 
@@ -1189,6 +1195,10 @@ packages:
 
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
+
+  croner@11.0.1:
+    resolution: {integrity: sha512-/fmHcoczPy5cMcmJ6ex7J7LAwb545V1dNmRrdDGP3hwStg/06IYP56YgBySCSdWGDz2PJYQyDukaR8b8R5o2HA==}
+    engines: {node: '>=18.0'}
 
   data-uri-to-buffer@4.0.1:
     resolution: {integrity: sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A==}
@@ -2678,6 +2688,8 @@ snapshots:
   commander@15.1.0: {}
 
   confbox@0.1.8: {}
+
+  croner@11.0.1: {}
 
   data-uri-to-buffer@4.0.1: {}
 
