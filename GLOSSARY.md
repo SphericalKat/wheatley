@@ -24,7 +24,7 @@ Wheatley is a self-hosted, always-on personal assistant that hosts one or more i
 
 **Conversation**: One transcript and context inside an **Agent**. A **Conversation** belongs to one **Chat**, where every **Sender** shares it, or to one **Trigger**. _Avoid_: Session, thread
 
-**Run**: One unit of **Agent** work inside one **Conversation**, from a message or a **Trigger** firing until the **Agent** is idle again. _Avoid_: Job, turn, execution
+**Run**: One unit of **Agent** work inside one **Conversation** or internal maintenance job, from a message, a **Trigger** firing, or a scheduled maintenance run until the **Agent** is idle again. _Avoid_: Job, turn, execution
 
 **Trigger**: A rule that starts a **Run** without an incoming message, for example a schedule or a webhook. Each **Trigger** belongs to one **Agent**, names one target **Chat**, and either keeps one **Conversation** across firings or starts a new one for each firing. _Avoid_: Cron, job, automation
 
@@ -35,3 +35,5 @@ Wheatley is a self-hosted, always-on personal assistant that hosts one or more i
 **MCP Server**: An external tool provider connected to one **Agent** over the Model Context Protocol. _Avoid_: Integration, connector, tool host
 
 **Skill**: A folder of Markdown instructions and optional files that an **Agent** loads on demand during a **Run**. _Avoid_: Prompt template, playbook, workflow
+
+**Memory**: Durable facts, preferences, and summaries that belong to one **Agent** and persist across all of its **Conversations**. _Avoid_: Knowledge base, context store, long-term state
