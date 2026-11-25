@@ -143,6 +143,18 @@ describe("wheatley restore", () => {
     await expect(
       createOpsCommands(deps()).restore(["home", "a.sqlite", "b"], io)
     ).resolves.toBe(2);
+    expect(io.stdout).toEqual([]);
+    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
+  });
+
+  it("prints the usage and exits 2 for an unknown option", async () => {
+    await seedBackup();
+    const io = captureIo();
+
+    await expect(
+      createOpsCommands(deps()).restore(["home", "--bogus"], io)
+    ).resolves.toBe(2);
+    expect(io.stdout).toEqual([]);
     expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
   });
 

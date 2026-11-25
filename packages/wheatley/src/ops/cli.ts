@@ -328,7 +328,14 @@ export interface OpsCommands {
   readonly service: CliCommand;
   /** `wheatley update [--check] [--manager npm|pnpm]` */
   readonly update: CliCommand;
-  /** `wheatley restore <agent> [backup]`. Without `backup`, it lists the Agent's backups and exits 0. */
+  /**
+   * `wheatley restore <agent> [backup]`
+   *
+   * - Without `backup`, it lists the Agent's backups on stdout and exits 0.
+   * - With `backup`, it restores that backup and exits 0.
+   * - A missing Agent name, an extra argument, or an unknown option prints the usage on stderr and exits 2.
+   * - A running daemon, an invalid Agent name, or a failed restore prints the error on stderr and exits 1.
+   */
   readonly restore: CliCommand;
 }
 
