@@ -1,0 +1,88 @@
+import type {
+  ChatKey,
+  Trigger,
+  TriggerInput,
+  TriggerPatch,
+} from "@wheatley/protocol";
+
+/** Who changes a Trigger. Only the Operator may create, change, or delete `webhook` Triggers (ADR 0010). */
+export type TriggerActor = "agent" | "operator";
+
+/** One accepted webhook request, stored before the Ingress answers `202 Accepted`. */
+export interface WebhookEvent {
+  /** Epoch milliseconds. */
+  readonly receivedAt: number;
+  /** Lowercase header names, without `authorization`. */
+  readonly headers: Readonly<Record<string, string>>;
+  /** At most 256 KiB. */
+  readonly body: Uint8Array;
+}
+
+/** One firing of a Trigger, handed to the Agent as a non-interactive Run. */
+export interface TriggerFiring {
+  readonly firingId: string;
+  readonly trigger: Trigger;
+  /** The Trigger prompt, with the webhook body appended for `webhook` firings. */
+  readonly prompt: string;
+  /** The Chat that receives the result through the outbox unless the Run calls `suppress_delivery`. */
+  readonly target: ChatKey;
+}
+
+/** What the Trigger runtime needs from the Agent. */
+export interface TriggerRunner {
+  /**
+   * Starts a non-interactive Run for a firing, in a new Conversation (`per_firing`) or the Trigger's shared
+   * Conversation (`shared`). Resolves with the Run ID once the Run is stored. The Agent enqueues the final reply.
+   */
+  readonly start: (
+    firing: TriggerFiring
+  ) => Promise<{ readonly runId: string }>;
+  /** True while a Run of this Trigger is active, including during an Approval pause. Used to skip overlapping ticks. */
+  readonly isActive: (triggerId: string) => boolean;
+}
+
+/**
+ * Stores and schedules the Triggers of one Agent in `agent.sqlite` (ADR 0010). Changes apply at once, without an
+ * Agent restart.
+ *
+ * Scheduling rules: an overdue `once` fires once at start; missed `cron` ticks are skipped and `nextFireAt` moves to
+ * the next future tick; a `cron` tick is skipped while the Trigger's previous Run is active; webhook events run in
+ * arrival order.
+ */
+export interface TriggerRuntime {
+  readonly list: () => Promise<readonly Trigger[]>;
+  readonly get: (triggerId: string) => Promise<Trigger | undefined>;
+  /**
+   * Creates a Trigger and emits `trigger.changed`. Throws `SeamError("forbidden")` if an Agent creates a `webhook`
+   * Trigger, and `SeamError("invalid_name")` for an invalid cron expression or time zone.
+   */
+  readonly create: (
+    input: TriggerInput,
+    actor: TriggerActor
+  ) => Promise<Trigger>;
+  /** Changes a Trigger. Throws `SeamError("not_found")` and the errors of `create`. */
+  readonly update: (
+    triggerId: string,
+    patch: TriggerPatch,
+    actor: TriggerActor
+  ) => Promise<Trigger>;
+  /** Deletes a Trigger. Resolves `false` if it did not exist. Throws `SeamError("forbidden")` as `create` does. */
+  readonly delete: (triggerId: string, actor: TriggerActor) => Promise<boolean>;
+  /** Fires a Trigger now, outside its schedule. Throws `SeamError("not_found")`. */
+  readonly fire: (triggerId: string) => Promise<{ readonly runId: string }>;
+  /**
+   * The secret name of a `webhook` Trigger's Bearer token, or `undefined` if the Trigger does not exist, is paused,
+   * or is not a `webhook` Trigger.
+   */
+  readonly webhookTokenSecret: (
+    triggerId: string
+  ) => Promise<string | undefined>;
+  /**
+   * Stores a webhook event and queues its firing. Resolves once the event is durable. Throws `SeamError("not_found")`
+   * if the Trigger is not an active `webhook` Trigger.
+   */
+  readonly acceptWebhookEvent: (
+    triggerId: string,
+    event: WebhookEvent
+  ) => Promise<{ readonly eventId: string }>;
+}
