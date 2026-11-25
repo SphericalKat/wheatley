@@ -1,0 +1,13 @@
+packages:
+  - packages/*
+allowBuilds:
+  # The protobufjs postinstall script only prints a version notice.
+  protobufjs: false
+minimumReleaseAgeExclude:
+  # The v1 build plan pins @earendil-works/pi-durable to 1.6.1 and its sibling packages.
+  - "@earendil-works/chord@1.6.1"
+  - "@earendil-works/pi-ai@1.6.1"
+  - "@earendil-works/pi-codemode@1.6.1"
+  - "@earendil-works/pi-durable@1.6.1"
+  - "@earendil-works/pi-schema@1.6.1"
+  - "@earendil-works/pi-telemetry@1.6.1"
