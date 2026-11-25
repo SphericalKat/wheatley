@@ -28,7 +28,7 @@
     "@slack/web-api": "8.5.0",
     "croner": "11.0.1",
     "discord.js": "14.28.1",
-    "grammy": "1.46.0",
+    "grammy": "1.48.0",
     "import-meta-resolve": "4.2.0",
     "typebox": "1.4.7",
     "ws": "8.23.0",

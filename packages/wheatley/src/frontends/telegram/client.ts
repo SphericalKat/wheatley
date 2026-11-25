@@ -128,7 +128,7 @@ export type UploadKind = "photo" | "document";
 /** The bot account, from `getMe`. */
 export interface BotIdentity {
   readonly id: number;
-  readonly username: string;
+  readonly username: string | undefined;
 }
 
 /** A failed Bot API call. */
