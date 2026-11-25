@@ -86,7 +86,7 @@ const ScheduleTriggerInputSchema = Type.Object(
       Type.Object(ChatTargetSchema.properties, {
         additionalProperties: false,
         description:
-          "The Chat that receives the result. The default is the current Chat.",
+          "The Chat that receives the result. Omit it to use the current Chat. Set it only for another known Chat.",
       })
     ),
   },
@@ -106,6 +106,8 @@ export interface TriggerToolDeps {
   /** Marks a Trigger Run so that its final reply is not delivered. Resolves `false` if no Trigger started the Run. */
   readonly suppressDelivery: (runId: string) => Promise<boolean>;
   readonly clock: Clock;
+  /** The Frontend Binding IDs of this Agent, including `cli`. `schedule_trigger` rejects a `target` outside them. */
+  readonly bindingIds: readonly string[];
 }
 
 interface TriggerTool<Schema extends TSchema> {
@@ -177,12 +179,18 @@ const scheduleTrigger = defineTriggerTool({
   description:
     "Schedule a reminder or recurring task. A `cron` schedule repeats in a time zone. A `once` schedule fires one " +
     "time at `at` or after `delay`. The result goes to the current Chat unless you set `target`.",
-  execute: async (input, ctx, { clock, runtime }) => {
+  execute: async (input, ctx, { bindingIds, clock, runtime }) => {
     const target = input.target ?? ctx.chat;
 
     if (target === null) {
       return errorResult(
         "This Run has no Chat. Set `target` to the Chat that receives the result."
+      );
+    }
+
+    if (!bindingIds.includes(target.bindingId)) {
+      return errorResult(
+        `Unknown Frontend Binding: ${target.bindingId}. Use one of ${bindingIds.join(", ")}, or omit \`target\` to use the current Chat.`
       );
     }
 

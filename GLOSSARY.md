@@ -28,6 +28,8 @@ Wheatley is a self-hosted, always-on personal assistant that hosts one or more i
 
 **Trigger**: A rule that starts a **Run** without an incoming message, for example a schedule or a webhook. Each **Trigger** belongs to one **Agent**, names one target **Chat**, and either keeps one **Conversation** across firings or starts a new one for each firing. _Avoid_: Cron, job, automation
 
+**Webhook Ingress**: The HTTP listener of a **Deployment** that takes `POST` requests for webhook **Triggers** and for **Frontends** that receive webhooks. It is off unless the **Operator** enables it in `config.yaml`. _Avoid_: Webhook server, webhook gateway
+
 **Plugin**: An extension configured on an **Agent** that provides **Tools** or **Frontends**. _Avoid_: Addon, mod, module
 
 **Tool**: One callable action that an **Agent** runs during a **Run**, provided by Wheatley, a **Plugin**, or an **MCP Server**, and governed by the **Permission Policy**. _Avoid_: Action, function, command

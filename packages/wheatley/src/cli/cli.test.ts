@@ -87,11 +87,9 @@ const toolTurns = (): (AssistantMessage | FauxResponseFactory)[] => [
   },
 ];
 
-beforeEach(async () => {
-  home = await temporaryDir();
-  llm = createFakeLlm();
+const writeConfig = async (dir: string): Promise<void> => {
   await writeFile(
-    path.join(home.dir, "config.yaml"),
+    path.join(dir, "config.yaml"),
     [
       "version: 1",
       "agents:",
@@ -105,10 +103,13 @@ beforeEach(async () => {
       "",
     ].join("\n")
   );
-  daemon = await startDaemon({
+};
+
+const startTestDaemon = async (homeDir: string): Promise<Daemon> =>
+  await startDaemon({
     env: {},
     extensions: builtinCatalog(),
-    homeDir: home.dir,
+    homeDir,
     models: async () => {
       await Promise.resolve();
 
@@ -117,6 +118,12 @@ beforeEach(async () => {
     port: 0,
     version: "test",
   });
+
+beforeEach(async () => {
+  home = await temporaryDir();
+  llm = createFakeLlm();
+  await writeConfig(home.dir);
+  daemon = await startTestDaemon(home.dir);
   await writeFile(path.join(workspace(), "notes.txt"), "remember the milk");
 });
 
@@ -208,10 +215,33 @@ describe("wheatley chat", () => {
     expect(output).toContain(
       `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`
     );
-    expect(output).toContain("/model did not run.");
     await expect(
       stat(path.join(workspace(), "out", "result.txt"))
     ).resolves.toMatchObject({});
+  });
+
+  it("prints one Agent reply for each command that cannot run", async () => {
+    const terminal = scriptedIo([
+      "/model unknown-model",
+      "/model",
+      "/goal",
+      "/stop",
+    ]);
+
+    const code = await runCli(
+      ["chat", "--home", home.dir, "--agent", "home"],
+      terminal.io
+    );
+
+    expect(code).toBe(0);
+    // The first line is the banner. Every line after it must be an Agent reply.
+    expect(terminal.stdout().split("\n").slice(1)).toEqual([
+      `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`,
+      "home> Usage: /model <model-id>",
+      "home> Usage: /goal <objective>",
+      "home> No Run is active.",
+      "",
+    ]);
   });
 
   it("starts a new Conversation for /new, so the history starts empty", async () => {
@@ -261,6 +291,31 @@ describe("wheatley status and init", () => {
     expect(terminal.stderr()).toContain('Start it with "wheatley daemon"');
   });
 
+  it("reaches a daemon over the Unix socket of a home whose path is too long for a socket, also after a restart", async () => {
+    const deepHome = path.join(home.dir, "n".repeat(60), "m".repeat(60));
+
+    await mkdir(deepHome, { recursive: true });
+    await writeConfig(deepHome);
+
+    for (let start = 0; start < 2; start += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- The second start must reuse the socket path of the first.
+      const deepDaemon = await startTestDaemon(deepHome);
+      const terminal = scriptedIo([]);
+
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- Each start runs on its own.
+        await expect(
+          runCli(["status", "--home", deepHome], terminal.io)
+        ).resolves.toBe(0);
+      } finally {
+        // oxlint-disable-next-line no-await-in-loop -- Each start runs on its own.
+        await deepDaemon.close();
+      }
+
+      expect(terminal.stdout()).toContain("  home: running (0 active Runs)");
+    }
+  });
+
   it("creates a valid config.yaml and an owner-only secrets.yaml, and refuses to overwrite them", async () => {
     const target = path.join(home.dir, "fresh");
     const first = scriptedIo([]);
@@ -305,8 +360,8 @@ describe("wheatley status and init", () => {
       const terminal = scriptedIo([]);
 
       // oxlint-disable-next-line no-await-in-loop -- Each spelling of --home runs on its own.
-      await expect(runCli(argv, terminal.io)).resolves.toBe(2);
-      expect(terminal.stderr()).toContain(backup);
+      await expect(runCli(argv, terminal.io)).resolves.toBe(0);
+      expect(terminal.stdout()).toContain(backup);
     }
   });
 });

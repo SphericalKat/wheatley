@@ -331,6 +331,9 @@ describe("Agent", () => {
       await expect(agent.command(CLI_CHAT, "stop", undefined)).resolves.toBe(
         true
       );
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "Stopped the active Run."
+      );
       release.resolve(undefined);
       await vi.waitFor(() => {
         expect(events.of("run.finished")).toHaveLength(1);
@@ -340,6 +343,37 @@ describe("Agent", () => {
       await expect(agent.command(CLI_CHAT, "stop", undefined)).resolves.toBe(
         false
       );
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "No Run is active."
+      );
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("replies with the usage for /model and /goal without an argument, and once for an unknown model", async () => {
+    const agent = await openAgent();
+
+    try {
+      const replies = (): string[] =>
+        events.of("chat.message").map((event) => event.message.text);
+
+      await expect(agent.command(CLI_CHAT, "model", undefined)).resolves.toBe(
+        false
+      );
+      await expect(agent.command(CLI_CHAT, "goal", undefined)).resolves.toBe(
+        false
+      );
+      await expect(
+        agent.command(CLI_CHAT, "model", "unknown-model")
+      ).resolves.toBe(false);
+
+      expect(replies()).toStrictEqual([
+        "Usage: /model <model-id>",
+        "Usage: /goal <objective>",
+        `Unknown model: ${FAKE_PROVIDER}/unknown-model`,
+      ]);
+      expect(events.of("run.started")).toHaveLength(0);
     } finally {
       await agent.close();
     }

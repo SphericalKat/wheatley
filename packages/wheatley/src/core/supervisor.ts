@@ -28,7 +28,8 @@ export interface AgentControls {
 /** Arms a timer and returns the function that cancels it. Tests pass fake timers. */
 export type SetTimer = (callback: () => void, delayMs: number) => () => void;
 
-const defaultSetTimer: SetTimer = (callback, delayMs) => {
+/** The `SetTimer` of production: a `setTimeout` that does not keep the process alive. */
+export const defaultSetTimer: SetTimer = (callback, delayMs) => {
   const timer = setTimeout(callback, delayMs);
 
   timer.unref();
@@ -115,6 +116,15 @@ export class Supervisor<A extends SupervisedAgent> {
           : Math.max(0, entry.restartAt - this.#options.clock.now()),
       state: entry.state,
     };
+  };
+
+  /**
+   * Resolves once no lifecycle call (`start`, `stop`, `restart`, `remove`, a failure, or a retry that fired) for `name`
+   * is queued or running. A pending retry timer does not count until it fires. It resolves at once for an unknown name
+   * and never rejects.
+   */
+  readonly settled = async (name: string): Promise<void> => {
+    await this.#entries.get(name)?.queue.idle();
   };
 
   /**

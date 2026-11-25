@@ -26,6 +26,12 @@ let llm: FakeLlm;
 let daemon: Daemon;
 const clients: DaemonClient[] = [];
 
+/** Each Agent start waits for this promise before it builds its models. */
+let modelsReady: Promise<unknown>;
+
+/** If set, each Agent start fails with this error. */
+let modelsFailure: Error | undefined;
+
 const connect = async (): Promise<DaemonClient> => {
   const client = await DaemonClient.connect({ url: daemon.server.url }, "test");
 
@@ -58,6 +64,30 @@ const wireMessage = (data: RawData): WireMessage => {
   }
 
   return value;
+};
+
+/** Restarts `alpha` over JSON-RPC and resolves once the new start waits for `release`. */
+const restartHeldAlpha = async (client: DaemonClient) => {
+  const hold = Promise.withResolvers<undefined>();
+
+  modelsReady = hold.promise;
+
+  const restarted = client.request("agents.restart", { agent: "alpha" });
+
+  await vi.waitFor(async () => {
+    const status = await client.request("system.status", {});
+
+    expect(status.agents.find((agent) => agent.name === "alpha")?.state).toBe(
+      "starting"
+    );
+  });
+
+  return {
+    release: () => {
+      hold.resolve(undefined);
+    },
+    restarted,
+  };
 };
 
 const rpcCode = async (
@@ -94,6 +124,8 @@ const upgradeStatus = async (
 };
 
 beforeEach(async () => {
+  modelsReady = Promise.resolve();
+  modelsFailure = undefined;
   home = await temporaryDir();
   llm = createFakeLlm();
   await writeFile(
@@ -117,7 +149,11 @@ beforeEach(async () => {
     extensions: builtinCatalog(),
     homeDir: home.dir,
     models: async () => {
-      await Promise.resolve();
+      await modelsReady;
+
+      if (modelsFailure !== undefined) {
+        throw modelsFailure;
+      }
 
       return llm.models;
     },
@@ -306,5 +342,51 @@ describe("ControlServer", () => {
       ["gamma", "running"],
     ]);
     expect(created.revision).not.toBe(config.revision);
+  });
+
+  it("holds chat.send to a restarting Agent and handles it once the Agent runs", async () => {
+    const client = await connect();
+    const { release, restarted } = await restartHeldAlpha(client);
+
+    llm.faux.setResponses([fauxAssistantMessage("back again")]);
+
+    const sent = client.request("chat.send", {
+      agent: "alpha",
+      text: "are you back?",
+    });
+
+    // The daemon starts the requests of one connection in arrival order, so chat.send waits by the time this answers.
+    await client.request("system.status", {});
+    release();
+
+    await expect(restarted).resolves.toStrictEqual({ state: "running" });
+    const { messageId } = await sent;
+
+    expect(messageId).not.toBe("");
+    await vi.waitFor(async () => {
+      const history = await client.request("chat.history", { agent: "alpha" });
+
+      expect(history.messages.map((message) => message.text)).toContain(
+        "back again"
+      );
+    });
+  });
+
+  it("fails chat.send with agent_unavailable when the restart degrades the Agent, before the wait ends", async () => {
+    const client = await connect();
+
+    modelsFailure = new Error("The provider is down");
+    const { release, restarted } = await restartHeldAlpha(client);
+
+    const sent = rpcCode(
+      client.request("chat.send", { agent: "alpha", text: "hello?" })
+    );
+
+    await client.request("system.status", {});
+    release();
+
+    await expect(restarted).resolves.toStrictEqual({ state: "degraded" });
+    // The test timeout is shorter than AGENT_START_WAIT_MS, so the error does not come from the timeout.
+    await expect(sent).resolves.toBe(RpcErrorCode.AgentUnavailable);
   });
 });

@@ -1,3 +1,7 @@
+import {
+  DEFAULT_WEBHOOK_HOST,
+  DEFAULT_WEBHOOK_PORT,
+} from "@wheatley-ai/protocol";
 import type { WebhooksConfig } from "@wheatley-ai/protocol";
 
 import type {
@@ -24,11 +28,7 @@ import {
 import { createOutboxRpc, createTriggerRpc } from "./rpc.js";
 import { SqliteTriggerRuntime } from "./trigger-runtime.js";
 import { createTriggerToolProvider } from "./trigger-tools.js";
-import {
-  DEFAULT_WEBHOOK_HOST,
-  DEFAULT_WEBHOOK_PORT,
-  HttpWebhookIngress,
-} from "./webhook-ingress.js";
+import { HttpWebhookIngress } from "./webhook-ingress.js";
 
 export {
   OUTBOX_NAMESPACE,
@@ -42,6 +42,8 @@ export { createOutboxRpc, createTriggerRpc } from "./rpc.js";
 /** What the Triggers module needs from its Agent. */
 export interface TriggersModuleDeps {
   readonly runner: TriggerRunner;
+  /** The Frontend Binding IDs of the Agent, including `cli`. Trigger Tools accept only these as a target. */
+  readonly bindingIds: readonly string[];
 }
 
 /** The API of the Triggers module for the Agent. */
@@ -73,6 +75,7 @@ export const triggersModule: AgentModule<
       api: {
         runtime,
         tools: createTriggerToolProvider({
+          bindingIds: deps.bindingIds,
           clock: ctx.clock,
           runtime,
           suppressDelivery: runtime.suppressDelivery,

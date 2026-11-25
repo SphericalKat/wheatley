@@ -2,6 +2,7 @@ import { RpcError, RpcErrorCode } from "@wheatley-ai/protocol";
 import type {
   ApprovalDecision,
   ApprovalResolution,
+  ChatKey,
   FailedDelivery,
   PendingApproval,
 } from "@wheatley-ai/protocol";
@@ -68,6 +69,19 @@ export const deliveryKey = (delivery: {
   readonly agent: string;
   readonly deliveryId: string;
 }): string => `delivery:${delivery.agent}:${delivery.deliveryId}`;
+
+/** Returns the pending Approvals of the Runs in `chat` of `agent`, oldest first. */
+export const chatApprovals = (
+  state: InboxState,
+  agent: string,
+  chat: ChatKey
+): readonly PendingApproval[] =>
+  state.approvals.filter(
+    (approval) =>
+      approval.agent === agent &&
+      approval.chat?.bindingId === chat.bindingId &&
+      approval.chat.chatId === chat.chatId
+  );
 
 const byCreatedAt = (left: PendingApproval, right: PendingApproval): number =>
   left.createdAt.localeCompare(right.createdAt);

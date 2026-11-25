@@ -1,8 +1,6 @@
-import path from "node:path";
-
 import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
 
-import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
+import { daemonSocket } from "../core/daemon-socket.js";
 import { errorMessage } from "../core/error-message.js";
 import { DaemonClient } from "./client.js";
 import type { DaemonTarget } from "./client.js";
@@ -19,7 +17,7 @@ export interface ClientFlags {
 /** The daemon address of the flags. */
 export const targetOf = (flags: ClientFlags): DaemonTarget =>
   flags.url === undefined
-    ? { socketPath: path.join(flags.home, DAEMON_SOCKET_FILE) }
+    ? { socketPath: daemonSocket(flags.home).path }
     : { url: flags.url };
 
 /**

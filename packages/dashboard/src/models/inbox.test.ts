@@ -6,6 +6,7 @@ import { startHarness } from "../../mock/harness.js";
 import type { Harness } from "../../mock/harness.js";
 import {
   approvalKey,
+  chatApprovals,
   createInbox,
   deliveryKey,
   OPERATOR_DISPLAY_NAME,
@@ -205,6 +206,44 @@ test("dismisses a failed delivery", async () => {
 
   expect(inbox.state.get().deliveries).toEqual([]);
   expect(harness.daemon.state.deliveries).toEqual([]);
+});
+
+test("selects the pending Approvals of one Chat of one Agent and drops them after a decision", async () => {
+  const inbox = await loadedInbox();
+  const cliChat = { bindingId: "cli", chatId: "default" };
+
+  const cliApproval = {
+    ...firstApproval(inbox),
+    approvalId: "approval-cli",
+    chat: cliChat,
+  };
+
+  harness.daemon.state.approvals.push(cliApproval);
+  harness.daemon.emit("approval.requested", {
+    agent: "home",
+    approval: cliApproval,
+  });
+  harness.daemon.emit("approval.requested", {
+    agent: "work",
+    approval: { ...cliApproval, agent: "work", approvalId: "approval-work" },
+  });
+
+  await vi.waitFor(() => {
+    expect(inbox.state.get().approvals).toHaveLength(3);
+  });
+  expect(
+    chatApprovals(inbox.state.get(), "home", cliChat).map(
+      (entry) => entry.approvalId
+    )
+  ).toEqual(["approval-cli"]);
+
+  await inbox.decide(cliApproval, "allow_conversation");
+
+  expect(chatApprovals(inbox.state.get(), "home", cliChat)).toEqual([]);
+  expect(inbox.state.get().approvals.map((entry) => entry.approvalId)).toEqual([
+    "approval-1",
+    "approval-work",
+  ]);
 });
 
 test("reloads the Inbox after a reconnect", async () => {
