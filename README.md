@@ -357,6 +357,16 @@ The default host is `127.0.0.1`, and the default port is `8788`.
 
 `wheatley chat` opens the CLI Chat of an Agent. The dashboard shows the same Chat. If the Deployment has more than one Agent and none has the name `default`, pass `--agent <name>`. Type `/exit` or press `Ctrl+D` to end the Chat.
 
+In a terminal, `wheatley chat` has these features:
+
+- `Tab` completes a slash command. Press `Tab` twice to list all commands.
+- `/help` lists the commands with their descriptions.
+- The Up and Down arrows recall earlier input. Wheatley saves the input history in `<home>/chat_history`.
+- A spinner shows while a Run works, with the current Tool and the elapsed time. You can type the next message during the Run.
+- `Ctrl+C` stops the active Run. On an empty prompt with no active Run, `Ctrl+C` ends the Chat.
+
+If standard input or output is not a terminal, for example a pipe, `wheatley chat` reads and writes plain lines.
+
 These commands work in a Chat:
 
 | Command             | Action                                               |

@@ -1,12 +1,16 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { styleText } from "node:util";
+
 import type { PendingApproval, RpcEvent } from "@wheatley-ai/protocol";
 import { BUILTIN_COMMANDS, parseCommandText } from "@wheatley-ai/sdk";
+import type { CommandSpec } from "@wheatley-ai/sdk";
 
 import { CLI_CHAT_ID } from "../core/agent/agent.js";
 import { CLI_BINDING_ID } from "../core/config/validate.js";
 import { errorMessage } from "../core/error-message.js";
 import type { DaemonClient } from "./client.js";
 import type { CliIo } from "./io.js";
-import { nextLine } from "./io.js";
 import {
   approvalQuestion,
   chooseAgent,
@@ -14,9 +18,20 @@ import {
   decideApproval,
 } from "./session.js";
 import type { ClientFlags } from "./session.js";
+import { openTerminal } from "./terminal.js";
+import type { TerminalUi } from "./terminal.js";
 
 /** Lines that end the chat. */
 const EXIT_LINES = new Set(["/exit", "/quit"]);
+
+const HELP_LINE = "/help";
+
+/** The file in the Deployment home that keeps the input history of the interactive chat. */
+const HISTORY_FILE = "chat_history";
+
+const LOGO = "◉";
+const PROMPT = `${styleText("cyan", "›")} `;
+const APPROVAL_PROMPT = `${styleText("yellow", "allow?")} ${styleText("dim", "[o]nce [c]onversation [a]lways [d]eny <reason>")} ${styleText("yellow", "›")} `;
 
 const isCliChatRun = (event: RpcEvent): boolean =>
   (event.name === "run.started" || event.name === "run.finished") &&
@@ -89,6 +104,11 @@ class ChatState {
     this.#settle();
   };
 
+  /** True while a message waits for its Run or a Run of the CLI Chat is active. */
+  get busy(): boolean {
+    return this.#active.size > 0 || this.#waiting.size > 0;
+  }
+
   /** Resolves when no message waits for its Run and no Run of the CLI Chat is active. */
   get idle(): Promise<undefined> {
     return this.#idle.promise;
@@ -107,15 +127,33 @@ class ChatState {
   };
 }
 
-const render = (
-  io: CliIo,
-  agent: string,
-  state: ChatState,
-  event: RpcEvent
-): void => {
+/** Updates the chat state for one event. */
+const track = (state: ChatState, event: RpcEvent): void => {
   if (event.name === "chat.message" && event.payload.message.role === "user") {
     state.echoed(event.payload.message.messageId, event.payload.message.runId);
-  } else if (event.name === "chat.message") {
+  } else if (event.name === "approval.requested") {
+    state.approvals.push(event.payload.approval);
+  } else if (event.name === "approval.resolved") {
+    state.removeApproval(event.payload.approvalId);
+  } else if (isCliChatRun(event) && event.name === "run.started") {
+    state.started(event.payload.run.runId);
+  } else if (isCliChatRun(event) && event.name === "run.finished") {
+    state.finished(event.payload.run.runId);
+  }
+};
+
+const failedRunError = (event: RpcEvent): string | undefined =>
+  isCliChatRun(event) &&
+  event.name === "run.finished" &&
+  event.payload.run.status === "failed"
+    ? (event.payload.run.error ?? "unknown error")
+    : undefined;
+
+/** Writes one event as plain lines, for pipes and scripts. */
+const renderPlain = (io: CliIo, agent: string, event: RpcEvent): void => {
+  const runError = failedRunError(event);
+
+  if (event.name === "chat.message" && event.payload.message.role !== "user") {
     io.stdout(`${agent}> ${event.payload.message.text}\n`);
   } else if (event.name === "run.toolStarted") {
     io.stdout(`  [${event.payload.toolName}] ${event.payload.inputPreview}\n`);
@@ -124,21 +162,57 @@ const render = (
       `  [${event.payload.toolName} failed] ${event.payload.outputPreview}\n`
     );
   } else if (event.name === "approval.requested") {
-    state.approvals.push(event.payload.approval);
     io.stdout(approvalQuestion(event.payload.approval));
-  } else if (event.name === "approval.resolved") {
-    state.removeApproval(event.payload.approvalId);
-  } else if (isCliChatRun(event) && event.name === "run.started") {
-    state.started(event.payload.run.runId);
-  } else if (isCliChatRun(event) && event.name === "run.finished") {
-    if (event.payload.run.status === "failed") {
-      io.stderr(
-        `The Run failed: ${event.payload.run.error ?? "unknown error"}\n`
+  } else if (runError !== undefined) {
+    io.stderr(`The Run failed: ${runError}\n`);
+  }
+};
+
+/** Indents every line after the first, so that a reply lines up after its logo. */
+const indent = (text: string): string => text.replaceAll("\n", "\n  ");
+
+/** Writes one event to the interactive terminal. Returns the new spinner label, if the event changes it. */
+const renderTerminal = (
+  ui: TerminalUi,
+  event: RpcEvent
+): string | undefined => {
+  const runError = failedRunError(event);
+
+  if (event.name === "chat.message" && event.payload.message.role !== "user") {
+    ui.print(
+      `${styleText("cyan", LOGO)} ${indent(event.payload.message.text)}\n`
+    );
+  } else if (event.name === "run.toolStarted") {
+    ui.print(
+      styleText(
+        "dim",
+        `  ↳ ${event.payload.toolName} ${event.payload.inputPreview}`
+      )
+    );
+
+    return `running ${event.payload.toolName}`;
+  } else if (event.name === "run.toolFinished") {
+    if (event.payload.isError) {
+      ui.print(
+        styleText(
+          "red",
+          `  ✗ ${event.payload.toolName} failed: ${event.payload.outputPreview}`
+        )
       );
     }
 
-    state.finished(event.payload.run.runId);
+    return "thinking";
+  } else if (event.name === "approval.requested") {
+    const { approval } = event.payload;
+
+    ui.print(
+      `${styleText("yellow", "?")} ${styleText("bold", approval.toolName)} needs approval\n${styleText("dim", `  ${indent(approval.inputPreview)}`)}`
+    );
+  } else if (runError !== undefined) {
+    ui.print(styleText("red", `✗ The Run failed: ${runError}`));
   }
+
+  return undefined;
 };
 
 const handleLine = async (
@@ -180,10 +254,111 @@ const handleLine = async (
   });
 };
 
+const COMMAND_WORDS = [
+  ...BUILTIN_COMMANDS.map((command) => `/${command.name}`),
+  HELP_LINE,
+  "/exit",
+];
+
+const helpText = (): string =>
+  [
+    ...BUILTIN_COMMANDS.map(
+      (command: CommandSpec) =>
+        `  ${styleText("cyan", `/${command.name}`)}${command.argument === undefined ? "" : ` ${command.argument}`}  ${styleText("dim", command.description)}`
+    ),
+    `  ${styleText("cyan", "/exit")}  ${styleText("dim", "End the chat")}`,
+    styleText(
+      "dim",
+      "  Tab completes a command. Ctrl+C stops the active Run. Ctrl+D ends the chat."
+    ),
+  ].join("\n");
+
+const readHistory = async (file: string): Promise<string[]> => {
+  try {
+    const text = await readFile(file, "utf-8");
+
+    return text.split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const writeHistory = async (
+  file: string,
+  history: readonly string[]
+): Promise<void> => {
+  try {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, `${history.join("\n")}\n`, { mode: 0o600 });
+  } catch {
+    // The history is a convenience. A chat without it still works.
+  }
+};
+
+/** Opens the interactive terminal, or returns `undefined` for a pipe or a script. */
+const openChatTerminal = async (
+  io: CliIo,
+  home: string
+): Promise<TerminalUi | undefined> => {
+  const streams = io.terminal?.();
+
+  if (streams === undefined) {
+    return undefined;
+  }
+
+  const file = path.join(home, HISTORY_FILE);
+  const history = await readHistory(file);
+
+  return openTerminal(streams.input, streams.output, {
+    completions: COMMAND_WORDS,
+    history,
+    onHistory: (next) => {
+      void writeHistory(file, next);
+    },
+  });
+};
+
+/** Keeps the prompt and the spinner in step with the chat state. */
+const syncStatus = (ui: TerminalUi, state: ChatState, label: string): void => {
+  if (state.approvals.length > 0) {
+    ui.stopSpin();
+    ui.setPrompt(APPROVAL_PROMPT);
+
+    return;
+  }
+
+  ui.setPrompt(PROMPT);
+
+  if (state.busy) {
+    ui.spin(label);
+  } else {
+    ui.stopSpin();
+  }
+};
+
+/** The output of a chat: plain text, or the interactive terminal with its status. */
+const chatOutput = (io: CliIo, ui: TerminalUi | undefined): CliIo =>
+  ui === undefined
+    ? io
+    : {
+        ...io,
+        stderr: (text) => {
+          ui.print(styleText("red", text));
+        },
+        stdout: (text) => {
+          if (text !== "") {
+            ui.print(text);
+          }
+        },
+      };
+
 /**
  * `wheatley chat`: an interactive session in the Agent's CLI Chat (`cli` binding, Chat `default`), which the dashboard
  * shares (ADR 0007). Lines that start with a built-in command run it; `/exit` or the end of input ends the session
  * after the active Runs end. While an Approval waits, the next line answers it.
+ *
+ * On a terminal, the chat shows a prompt with Tab completion and saved history, and a spinner while a Run works.
+ * Ctrl+C then stops the active Run. Pipes and scripts get plain lines.
  *
  * Resolves with the exit code.
  */
@@ -198,32 +373,101 @@ export const runChat = async (
     return 1;
   }
 
+  let ui: TerminalUi | undefined;
+
   try {
     const agent = await chooseAgent(client, flags.agent);
     const state = new ChatState();
 
+    ui = await openChatTerminal(io, flags.home);
+
+    const out = chatOutput(io, ui);
+    const terminal = ui;
+    let label = "thinking";
+
+    const sync = (): void => {
+      if (terminal !== undefined) {
+        syncStatus(terminal, state, label);
+      }
+    };
+
     client.onEvent((event) => {
-      render(io, agent, state, event);
+      track(state, event);
+
+      if (terminal === undefined) {
+        renderPlain(io, agent, event);
+
+        return;
+      }
+
+      if (event.name === "run.started") {
+        label = "thinking";
+      }
+
+      label = renderTerminal(terminal, event) ?? label;
+      sync();
     });
+
+    if (terminal !== undefined) {
+      terminal.onInterrupt = () => {
+        if (!state.busy || state.approvals.length > 0) {
+          return false;
+        }
+
+        terminal.print(styleText("dim", "Stopping the Run…"));
+        client.request("chat.command", { agent, name: "stop" }).catch(() => {
+          // The Run can end before the request arrives.
+        });
+
+        return true;
+      };
+    }
+
     await client.request("events.subscribe", {
       agents: [agent],
       topics: ["chat", "run", "approval"],
     });
-    io.stdout(
-      `Chat with ${agent}. Commands: ${BUILTIN_COMMANDS.map((command) => `/${command.name}`).join(" ")} /exit\n`
-    );
+
+    if (terminal === undefined) {
+      io.stdout(
+        `Chat with ${agent}. Commands: ${BUILTIN_COMMANDS.map((command) => `/${command.name}`).join(" ")} /exit\n`
+      );
+    } else {
+      terminal.print(
+        `${styleText(["cyan", "bold"], `${LOGO} wheatley`)} ${styleText("dim", version)}\n${styleText("dim", `  Chat with ${agent}. Type /help for commands.`)}\n`
+      );
+      sync();
+    }
+
+    const lines = terminal?.lines ?? io.lines;
 
     for (;;) {
       // oxlint-disable-next-line no-await-in-loop -- The chat reads one line at a time.
-      const line = await nextLine(io);
+      const result = await lines.next();
+      const line = result.done === true ? undefined : result.value.trim();
 
-      if (line === undefined || EXIT_LINES.has(line.trim())) {
+      if (line === undefined || EXIT_LINES.has(line)) {
         break;
       }
 
-      if (line.trim() !== "") {
-        // oxlint-disable-next-line no-await-in-loop -- Each line is handled before the next one is read.
-        await handleLine(io, client, agent, state, line.trim());
+      if (terminal !== undefined && line === HELP_LINE) {
+        terminal.print(helpText());
+      } else if (line !== "") {
+        label = "thinking";
+
+        try {
+          // oxlint-disable-next-line no-await-in-loop -- Each line is handled before the next one is read.
+          await handleLine(out, client, agent, state, line);
+        } catch (error) {
+          // A pipe or a script stops at the first error. An interactive chat reports it and goes on.
+          if (terminal === undefined) {
+            throw error;
+          }
+
+          terminal.print(styleText("red", `✗ ${errorMessage(error)}`));
+        }
+
+        sync();
       }
     }
 
@@ -235,6 +479,7 @@ export const runChat = async (
 
     return 1;
   } finally {
+    ui?.close();
     await client.close();
   }
 };
