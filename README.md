@@ -1,6 +1,6 @@
 # Wheatley
 
-Wheatley is a persistent personal AI agent written in TypeScript. It replaces Hermes and OpenCloud for daily tasks. The project takes its name from Wheatley in _Portal 2_.
+Wheatley is a persistent personal AI agent written in TypeScript. It replaces Hermes and OpenCloud for daily tasks.
 
 ## Architecture and stack
 
