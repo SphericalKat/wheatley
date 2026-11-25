@@ -7,6 +7,7 @@ import {
   PermissionRuleSchema,
   SecretNameSchema,
 } from "./domain.js";
+import { CRON_EXPRESSION_MIN_LENGTH, MAX_TCP_PORT } from "./limits.js";
 
 const strict = { additionalProperties: false } as const;
 
@@ -64,7 +65,7 @@ export const DaemonConfigSchema = Type.Object(
     allowedOrigins: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     drainTimeout: Type.Optional(DurationSchema),
     host: Type.Optional(Type.String({ minLength: 1 })),
-    port: Type.Optional(Type.Integer({ maximum: 65_535, minimum: 1 })),
+    port: Type.Optional(Type.Integer({ maximum: MAX_TCP_PORT, minimum: 1 })),
   },
   strict
 );
@@ -76,7 +77,7 @@ export const WebhooksConfigSchema = Type.Object(
   {
     enabled: Type.Boolean(),
     host: Type.Optional(Type.String({ minLength: 1 })),
-    port: Type.Optional(Type.Integer({ maximum: 65_535, minimum: 1 })),
+    port: Type.Optional(Type.Integer({ maximum: MAX_TCP_PORT, minimum: 1 })),
   },
   strict
 );
@@ -91,7 +92,9 @@ export const MemoryConfigSchema = Type.Object(
         {
           enabled: Type.Optional(Type.Boolean()),
           model: Type.Optional(ModelChoiceSchema),
-          schedule: Type.Optional(Type.String({ minLength: 9 })),
+          schedule: Type.Optional(
+            Type.String({ minLength: CRON_EXPRESSION_MIN_LENGTH })
+          ),
           timezone: Type.Optional(Type.String({ minLength: 1 })),
         },
         strict

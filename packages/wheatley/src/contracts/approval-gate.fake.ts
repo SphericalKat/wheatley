@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { TOOL_INPUT_PREVIEW_MAX_LENGTH } from "@wheatley/protocol";
 import type {
   ApprovalOutcome,
   PendingApproval,
@@ -20,8 +21,6 @@ import { simulateIo } from "./fake-io.js";
 import { systemClock } from "./module.js";
 import type { Clock, EventSink } from "./module.js";
 import { matchesToolPattern } from "./tool-names.js";
-
-const PREVIEW_LENGTH = 500;
 
 interface ApprovalRecord {
   readonly approval: PendingApproval;
@@ -280,7 +279,7 @@ export class InMemoryApprovalGate implements ApprovalGate {
 
     const inputPreview = this.#deps.secrets
       .redact(JSON.stringify(call.input))
-      .slice(0, PREVIEW_LENGTH);
+      .slice(0, TOOL_INPUT_PREVIEW_MAX_LENGTH);
 
     const approval: PendingApproval = {
       agent: this.#agentName,

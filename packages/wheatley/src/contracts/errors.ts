@@ -17,14 +17,14 @@ export type SeamErrorCode =
   | "not_found"
   /** The target already exists or is in a state that forbids the change. */
   | "conflict"
-  /** The caller may not make this change, for example an Agent that creates a `webhook` Trigger. */
+  /** The caller has no permission for this change, for example an Agent that creates a `webhook` Trigger. */
   | "forbidden"
   /** The Agent is stopped or degraded. */
   | "agent_unavailable";
 
 /**
  * The error that seam methods throw for expected failures. Seam methods throw other errors only for defects and I/O
- * failures; the JSON-RPC router reports those as `InternalError`.
+ * failures. The JSON-RPC router reports those as `InternalError`.
  */
 export class SeamError extends Error {
   override readonly name = "SeamError";

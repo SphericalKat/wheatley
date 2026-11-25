@@ -39,6 +39,7 @@ import {
   TriggerPatchSchema,
 } from "./domain.js";
 import { EventTopicSchema } from "./events.js";
+import { DISPLAY_NAME_MAX_LENGTH } from "./limits.js";
 
 /** The protocol version of this package. The CLI and dashboard compare it in `system.hello`. */
 export const PROTOCOL_VERSION = 1;
@@ -133,7 +134,9 @@ export const methods = {
       agent: AgentNameSchema,
       attachments: Type.Optional(Type.Array(AttachmentUploadSchema)),
       interactive: Type.Boolean(),
-      senderDisplayName: Type.Optional(Type.String({ maxLength: 200 })),
+      senderDisplayName: Type.Optional(
+        Type.String({ maxLength: DISPLAY_NAME_MAX_LENGTH })
+      ),
       text: Type.String({ minLength: 1 }),
     }),
     Type.Object({
@@ -163,7 +166,9 @@ export const methods = {
     params({
       agent: AgentNameSchema,
       attachments: Type.Optional(Type.Array(AttachmentUploadSchema)),
-      senderDisplayName: Type.Optional(Type.String({ maxLength: 200 })),
+      senderDisplayName: Type.Optional(
+        Type.String({ maxLength: DISPLAY_NAME_MAX_LENGTH })
+      ),
       text: Type.String(),
     }),
     Type.Object({ messageId: IdSchema })

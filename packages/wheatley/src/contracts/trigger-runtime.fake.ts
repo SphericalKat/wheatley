@@ -23,6 +23,49 @@ const assertActorMayChange = (
   }
 };
 
+const CRON_FIELD = /^[\dA-Za-z*,/-]+$/u;
+const CRON_FIELD_COUNT = 5;
+const WHITESPACE = /\s+/u;
+
+const isTimeZone = (timeZone: string): boolean => {
+  try {
+    const format = new Intl.DateTimeFormat("en-US", { timeZone });
+
+    return format.resolvedOptions().timeZone !== "";
+  } catch {
+    return false;
+  }
+};
+
+/** Checks the cron expression shape and the IANA time zone. It does not check field ranges. */
+const assertValidSchedule = (trigger: Pick<Trigger, "schedule">): void => {
+  const { schedule } = trigger;
+
+  if (schedule.kind !== "cron") {
+    return;
+  }
+
+  const fields = schedule.schedule.trim().split(WHITESPACE);
+
+  const validFields =
+    fields.length === CRON_FIELD_COUNT &&
+    fields.every((field) => CRON_FIELD.test(field));
+
+  if (!validFields) {
+    throw new SeamError(
+      "invalid_name",
+      `Invalid cron expression: ${schedule.schedule}`
+    );
+  }
+
+  if (!isTimeZone(schedule.timezone)) {
+    throw new SeamError(
+      "invalid_name",
+      `Invalid time zone: ${schedule.timezone}`
+    );
+  }
+};
+
 /** Options of the fake Trigger runtime. */
 export interface FakeTriggerRuntimeOptions {
   readonly clock?: Clock;
@@ -85,6 +128,7 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
   ): Promise<Trigger> => {
     await simulateIo();
     assertActorMayChange(actor, input);
+    assertValidSchedule(input);
     const id = `trigger-${this.#nextId}`;
     this.#nextId += 1;
 
@@ -118,6 +162,7 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
     assertActorMayChange(actor, current);
     const updated: Trigger = { ...current, ...patch };
     assertActorMayChange(actor, updated);
+    assertValidSchedule(updated);
     this.#triggers.set(triggerId, updated);
     this.#changed("updated", updated);
 
@@ -240,7 +285,6 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
       lastFiredAt: new Date(this.#clock.now()).toISOString(),
     };
 
-    this.#triggers.set(trigger.id, fired);
     const firingId = `firing-${this.#nextFiringId}`;
     this.#nextFiringId += 1;
 
@@ -251,6 +295,7 @@ export class InMemoryTriggerRuntime implements TriggerRuntime {
       trigger: fired,
     });
 
+    this.#triggers.set(trigger.id, fired);
     this.#runIds.add(started.runId);
     this.#changed("fired", fired);
 

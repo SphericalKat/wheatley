@@ -20,7 +20,7 @@ export interface ToolDescriptor {
   /** The canonical name from `canonicalToolName`. */
   readonly name: string;
   readonly description: string;
-  /** Plain JSON Schema for the model provider. Standard JSON Schema input is converted at load time. */
+  /** Plain JSON Schema for the model provider. The provider converts Standard JSON Schema input at load time. */
   readonly inputSchema: JsonSchema;
   readonly source: ToolSource;
   /** The action when no Permission Policy rule matches: the built-in default, or `ask` for Plugin and MCP Tools. */
@@ -47,12 +47,16 @@ export interface ToolProvider {
   ) => Promise<ToolResult>;
   /** Load and connection status of each Plugin or MCP Server of this provider. */
   readonly health: () => readonly ExtensionStatus[];
-  /** Releases Plugin instances and closes MCP connections. Called once when the Agent stops. */
+  /** Releases Plugin instances and closes MCP connections. The Agent calls it once when it stops. */
   readonly close: () => Promise<void>;
 }
 
 /** The Skills part of an Agent's extensions. */
 export interface SkillProvider extends ToolProvider {
+  /**
+   * The Skills that loaded from the shared `skills/` folder (`origin: "shared"`) and the Agent's `skills/` folder
+   * (`origin: "agent"`). A `SKILL.md` file that the provider skipped has no entry here and appears in `warnings`.
+   */
   readonly skills: () => readonly SkillInfo[];
   /** The Tier 1 catalog text for the system prompt: one line per Skill with its name and description. */
   readonly catalogPrompt: () => string;
@@ -72,8 +76,8 @@ export interface ProviderInput {
   /** `~/.wheatley/agents/<name>/`, or `/data/agents/<name>/` in Docker. Agent Skills are in its `skills/` folder. */
   readonly agentDir: string;
   /**
-   * The Deployment home, `~/.wheatley/` or `/data/` in Docker. npm Plugins are installed in `extensions/` and shared
-   * Skills are in `skills/` below it. Relative local Plugin paths resolve against it.
+   * The Deployment home, `~/.wheatley/` or `/data/` in Docker. npm Plugins live in its `extensions/` folder, and shared
+   * Skills live in its `skills/` folder. Relative local Plugin paths resolve against it.
    */
   readonly homeDir: string;
   readonly config: AgentConfig;
@@ -87,10 +91,16 @@ export interface ProviderInput {
 export interface AgentExtensions {
   /** All Tools, in the order built-in, Plugins, MCP, Skills. Canonical names are unique. */
   readonly tools: () => readonly ToolDescriptor[];
+  /** The `SkillProvider.skills` of the Skills provider. Returns an empty array if no Skill loaded. */
   readonly skills: () => readonly SkillInfo[];
+  /** The `SkillProvider.catalogPrompt` of the Skills provider. Returns an empty string if no Skill loaded. */
   readonly skillCatalogPrompt: () => string;
   /** Frontends by `type`: the built-in Telegram, Slack, and Discord Frontends plus Plugin Frontends. */
   readonly frontends: () => ReadonlyMap<string, Frontend>;
+  /**
+   * The `ToolProvider.health` entries of the Plugin providers and the MCP provider, and the `SkillProvider.warnings`.
+   * A failed Plugin or MCP Server appears here with its error and contributes no Tools to `tools`.
+   */
   readonly health: () => {
     readonly plugins: readonly ExtensionStatus[];
     readonly mcpServers: readonly ExtensionStatus[];
@@ -102,15 +112,15 @@ export interface AgentExtensions {
     input: JsonValue,
     ctx: ToolContext
   ) => Promise<ToolResult>;
-  /** Closes every provider, also if one of them fails to close. */
+  /** Closes every provider, even if one of them fails to close. */
   readonly close: () => Promise<void>;
 }
 
 /** Creates the extensions of each Agent (ADR 0006). Agents share no extension instances. */
 export interface ExtensionCatalog {
   /**
-   * Loads the Plugins, MCP Servers, and Skills of one Agent. Never rejects because of one broken extension: the
-   * Agent starts without it, and `health` reports the error.
+   * Loads the Plugins, MCP Servers, and Skills of one Agent. It does not reject because of one broken extension. The
+   * Agent starts without that extension, and `health` reports the error.
    */
   readonly createAgentExtensions: (
     input: ProviderInput

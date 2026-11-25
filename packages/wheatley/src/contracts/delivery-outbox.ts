@@ -15,7 +15,7 @@ export interface OutboxItem {
   readonly delivery: DeliveryDraft;
   /**
    * For Trigger results: the Conversation that produced the item. On confirmed delivery, the outbox calls
-   * `DeliveryOutboxDeps.onDelivered` so the result is copied into the target Chat's current Conversation (ADR 0010).
+   * `DeliveryOutboxDeps.onDelivered`, which copies the result into the target Chat's current Conversation (ADR 0010).
    */
   readonly sourceConversationId?: string;
 }
@@ -33,7 +33,7 @@ export interface OutboxEntry {
   readonly sourceConversationId: string | undefined;
   readonly status: OutboxStatus;
   readonly attempts: number;
-  /** Epoch milliseconds of the next attempt, or `null` if none is scheduled. */
+  /** Epoch milliseconds of the next attempt, or `null` if the outbox schedules no further attempt. */
   readonly nextAttemptAt: number | null;
   readonly lastError: string | null;
   /** True if the last failure was a permanent `DeliveryError`. */
@@ -46,10 +46,10 @@ export interface OutboxEntry {
  * The durable, at-least-once outbox of one Agent in `agent.sqlite` (ADR 0007, ADR 0010).
  *
  * Invariants:
- * - Order is FIFO per `(bindingId, chatId)`. A `failed` or `dismissed` entry stops blocking newer entries.
+ * - Order is FIFO per `(bindingId, chatId)`. A `failed` or `dismissed` entry no longer blocks newer entries.
  * - A permanent `DeliveryError` fails the entry at once and emits `delivery.failed`.
- * - A retryable error (any other error included) retries with exponential backoff and jitter, honoring
- *   `retryAfterMs`, for at most 10 attempts or 24 hours; then the entry fails and emits `delivery.failed`.
+ * - A retryable error retries with exponential backoff and jitter, and honors `retryAfterMs`. Any other error counts
+ *   as retryable. Retries stop after 10 attempts or 24 hours. Then the entry fails and emits `delivery.failed`.
  * - A retry can deliver the same `messageId` twice.
  */
 export interface DeliveryOutbox {
@@ -72,13 +72,14 @@ export interface DeliveryOutbox {
 /** What the outbox needs from the Agent. */
 export interface DeliveryOutboxDeps {
   /**
-   * Delivers through the Frontend Binding `bindingId`. Rejects with a `DeliveryError` from `@wheatley/sdk`; an
+   * Delivers through the Frontend Binding `bindingId`. Rejects with a `DeliveryError` from `@wheatley/sdk`. An
    * unknown binding is a permanent error.
    */
   readonly deliver: (bindingId: string, delivery: Delivery) => Promise<void>;
   /**
-   * Called once per confirmed entry with a `sourceConversationId`, after the entry is marked `delivered`. A rejection
-   * is logged; the entry stays `delivered` and the outbox does not call `deliver` or `onDelivered` again for it.
+   * The outbox calls it once per confirmed entry with a `sourceConversationId`, after it marks the entry `delivered`.
+   * The outbox logs a rejection. The entry stays `delivered`, and the outbox does not call `deliver` or `onDelivered`
+   * again for it.
    */
   readonly onDelivered: (entry: OutboxEntry) => Promise<void>;
 }

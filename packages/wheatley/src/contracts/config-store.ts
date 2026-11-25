@@ -39,14 +39,14 @@ export interface SecretStore extends SecretReader {
   /**
    * Replaces every occurrence of every secret value in `text` with `[redacted]`, and every occurrence of its
    * JSON-escaped form (`JSON.stringify(value)` without the quotes), so it also works on JSON text. Approvals use it for
-   * `inputPreview` and the logger for records. Values shorter than 4 characters are not replaced.
+   * `inputPreview`, and the logger uses it for records. It does not replace values shorter than 4 characters.
    */
   readonly redact: (text: string) => string;
 }
 
 /**
  * Reads and writes `config.yaml` (ADR 0004). Writes keep YAML comments, are atomic (temporary file plus rename), and
- * run one at a time. A write never restarts an Agent; the caller decides.
+ * run one at a time. A write never restarts an Agent. The caller decides whether to restart it.
  */
 export interface ConfigStore {
   /** Reads and validates `config.yaml` from disk. Throws `SeamError("config_invalid")` with `details.issues`. */
@@ -57,8 +57,8 @@ export interface ConfigStore {
    * Saves a new config and resolves with the new snapshot.
    *
    * Order of checks: `expectedRevision` against the file on disk (`SeamError("revision_conflict")` with
-   * `details.revision`), then the full schema (`SeamError("config_invalid")`). Nothing is written if a check fails. A
-   * structured `config` is applied as a patch to the existing YAML document, so comments and key order stay.
+   * `details.revision`), then the full schema (`SeamError("config_invalid")`). If a check fails, `save` writes nothing.
+   * `save` applies a structured `config` as a patch to the existing YAML document, so comments and key order stay.
    */
   readonly save: (
     input: ConfigSaveInput,

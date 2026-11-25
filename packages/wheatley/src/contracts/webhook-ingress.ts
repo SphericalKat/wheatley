@@ -27,10 +27,14 @@ export interface IngressRequest {
 
 /** What the Ingress needs to know about one Agent. */
 export interface IngressAgent {
+  /**
+   * The current Supervisor state of the Agent. The Ingress reads it on every request and answers `503` for any state
+   * other than `running`. It does not throw.
+   */
   readonly state: () => AgentState;
   /**
-   * The Agent's Trigger runtime while the Agent is `running`, else `undefined`: a degraded Agent can lack the module,
-   * and a stopped Agent has closed `agent.sqlite`.
+   * The Agent's Trigger runtime while the Agent is `running`, else `undefined`. A degraded Agent can lack the module,
+   * and a stopped Agent has no open `agent.sqlite`.
    */
   readonly triggers: () =>
     | Pick<TriggerRuntime, "webhookTokenSecret" | "acceptWebhookEvent">
@@ -46,24 +50,26 @@ export interface WebhookIngressDeps {
 
 /**
  * The HTTP listener for Trigger webhooks and Frontend webhook routes (ADR 0010, ADR 0012). It is separate from the
- * localhost Control Server and is disabled until `webhooks.enabled` is true.
+ * localhost Control Server and stays off until `webhooks.enabled` is true.
  *
- * Responses of `handle` for `POST /webhooks/<agent>/<trigger-id>`, checked in this order:
+ * For `POST /webhooks/<agent>/<trigger-id>`, `handle` checks these conditions in this order:
  * 1. `405` for a method other than `POST`.
  * 2. `404` for an unknown Agent.
  * 3. `503` if the Agent is not `running` or has no Trigger runtime.
  * 4. `404` for an unknown Trigger, or a Trigger that is not an active `webhook` Trigger.
- * 5. `401` for a missing or wrong `Authorization: Bearer <token>` (compared with `crypto.timingSafeEqual`).
+ * 5. `401` for a missing or wrong `Authorization: Bearer <token>`. The Ingress compares tokens with
+ *    `crypto.timingSafeEqual`.
  * 6. `202` after `acceptWebhookEvent` resolved.
  *
- * `POST /frontends/<agent>/<binding-id>/<suffix>` goes to the registered handler, which verifies the request
- * itself; `404` if none is registered, `503` if the Agent is not `running`.
+ * `POST /frontends/<agent>/<binding-id>/<suffix>` goes to the handler that the Frontend registered. That handler
+ * verifies the request itself. The Ingress answers `404` if no Frontend registered a handler for the path, and `503`
+ * if the Agent is not `running`.
  */
 export interface WebhookIngress {
   /** Routes one request. Resolves `500` without details if a handler or the Trigger runtime throws. */
   readonly handle: (request: IngressRequest) => Promise<WebhookResponse>;
   /**
-   * Mounts a Frontend route; it backs `FrontendContext.registerWebhookRoute`. Throws if `pathSuffix` is empty,
+   * Mounts a Frontend route. It backs `FrontendContext.registerWebhookRoute`. Throws if `pathSuffix` is empty,
    * contains `..` or `?`, or is already mounted for the binding.
    */
   readonly registerFrontendRoute: (

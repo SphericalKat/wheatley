@@ -44,8 +44,9 @@ export interface RpcContext {
 /**
  * Handles one JSON-RPC method with params that already passed the method's params schema.
  *
- * Throw a `SeamError` (converted with `toRpcError`) or an `RpcError` for expected failures. The router sends any
- * other error as `InternalError` without its message, and validates the result against the result schema.
+ * For expected failures, throw a `SeamError` or an `RpcError`. The router converts a `SeamError` with `toRpcError`.
+ * It sends any other error as `InternalError` without its message. It also validates the result against the result
+ * schema.
  */
 export type RpcHandler<M extends MethodName> = (
   params: MethodParams<M>,
@@ -84,13 +85,19 @@ export interface DeploymentModuleContext {
   readonly events: EventSink;
 }
 
-/** A created module: its API for other modules, its JSON-RPC handlers, and its lifecycle. */
+/**
+ * A created module: its API for other modules, its JSON-RPC handlers, and its lifecycle. The host is the Agent or the
+ * Deployment that created the module.
+ */
 export interface ModuleInstance<Api> {
   readonly api: Api;
   readonly rpc: RpcHandlerMap;
-  /** Starts background work such as timers or connections. Called once, after every module of the Agent is created. */
+  /** Starts background work such as timers or connections. The host calls it once, after it creates every module. */
   readonly start?: () => Promise<void>;
-  /** Stops background work. Called once, in reverse creation order. Must resolve even after a failed `start`. */
+  /**
+   * Stops background work. The host calls it once, in reverse creation order. It must resolve, also after a failed
+   * `start`.
+   */
   readonly stop?: () => Promise<void>;
 }
 
@@ -106,6 +113,13 @@ export interface AgentModule<Deps, Api> {
   /** The module name and its migration namespace, for example `memory`. Matches `^[a-z][a-z0-9_]{0,31}$`. */
   readonly name: string;
   readonly migrations: readonly Migration[];
+  /**
+   * Creates the module instance. The Agent calls it once, after it applies the migrations of all modules and before it
+   * calls any `start`. It must not start background work, because `start` does that.
+   *
+   * Errors: it throws or rejects if the module cannot set up, for example for invalid `deps`. The Agent then does not
+   * mount the module and enters the `degraded` state (see `IngressAgent.triggers`).
+   */
   readonly create: (
     ctx: AgentModuleContext,
     deps: Deps
@@ -116,6 +130,13 @@ export interface AgentModule<Deps, Api> {
 export interface DeploymentModule<Deps, Api> {
   readonly scope: "deployment";
   readonly name: string;
+  /**
+   * Creates the module instance. The Deployment calls it once, when it starts. It must not start background work,
+   * because `start` does that.
+   *
+   * Errors: it throws or rejects if the module cannot set up, for example for invalid `deps`. The Deployment then
+   * logs the error through `ctx.log`, does not mount the module, and keeps the Control Server and every Agent running.
+   */
   readonly create: (
     ctx: DeploymentModuleContext,
     deps: Deps

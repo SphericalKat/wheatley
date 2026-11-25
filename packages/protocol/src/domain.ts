@@ -1,6 +1,15 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
 
+import {
+  APPROVAL_REASON_MAX_LENGTH,
+  CRON_EXPRESSION_MIN_LENGTH,
+  DELIVERY_PREVIEW_MAX_LENGTH,
+  DISPLAY_NAME_MAX_LENGTH,
+  TOOL_INPUT_PREVIEW_MAX_LENGTH,
+  TRIGGER_NAME_MAX_LENGTH,
+} from "./limits.js";
+
 /** An Agent name. It is the permanent Agent ID and its folder name under `agents/`. */
 export const AgentNameSchema = Type.String({
   pattern: "^[a-z][a-z0-9-]{0,62}$",
@@ -171,8 +180,12 @@ export type ApprovalOutcome = Static<typeof ApprovalOutcomeSchema>;
 export const ApprovalResolutionSchema = Type.Object(
   {
     decision: ApprovalDecisionSchema,
-    reason: Type.Optional(Type.String({ maxLength: 2000 })),
-    resolvedBy: Type.Optional(Type.String({ maxLength: 200 })),
+    reason: Type.Optional(
+      Type.String({ maxLength: APPROVAL_REASON_MAX_LENGTH })
+    ),
+    resolvedBy: Type.Optional(
+      Type.String({ maxLength: DISPLAY_NAME_MAX_LENGTH })
+    ),
   },
   { additionalProperties: false }
 );
@@ -189,7 +202,7 @@ export const PendingApprovalSchema = Type.Object({
   createdAt: TimestampSchema,
   expiresAt: Type.Union([TimestampSchema, Type.Null()]),
   /** Formatted Tool input, at most 500 characters, with secret values redacted. */
-  inputPreview: Type.String({ maxLength: 500 }),
+  inputPreview: Type.String({ maxLength: TOOL_INPUT_PREVIEW_MAX_LENGTH }),
   runId: IdSchema,
   toolName: Type.String(),
 });
@@ -347,7 +360,7 @@ export const TriggerScheduleSchema = Type.Union([
     {
       kind: Type.Literal("cron"),
       /** A 5-field cron expression. */
-      schedule: Type.String({ minLength: 9 }),
+      schedule: Type.String({ minLength: CRON_EXPRESSION_MIN_LENGTH }),
       /** An IANA time zone, for example `Europe/Berlin`. */
       timezone: Type.String({ minLength: 1 }),
     },
@@ -373,7 +386,7 @@ export type TriggerSchedule = Static<typeof TriggerScheduleSchema>;
 export const TriggerInputSchema = Type.Object(
   {
     conversationMode: Type.Optional(ConversationModeSchema),
-    name: Type.String({ maxLength: 200, minLength: 1 }),
+    name: Type.String({ maxLength: TRIGGER_NAME_MAX_LENGTH, minLength: 1 }),
     paused: Type.Optional(Type.Boolean()),
     /** The instruction for each firing. A webhook firing appends the request body. */
     prompt: Type.String({ minLength: 1 }),
@@ -389,7 +402,9 @@ export type TriggerInput = Static<typeof TriggerInputSchema>;
 export const TriggerPatchSchema = Type.Object(
   {
     conversationMode: Type.Optional(ConversationModeSchema),
-    name: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
+    name: Type.Optional(
+      Type.String({ maxLength: TRIGGER_NAME_MAX_LENGTH, minLength: 1 })
+    ),
     paused: Type.Optional(Type.Boolean()),
     prompt: Type.Optional(Type.String({ minLength: 1 })),
     schedule: Type.Optional(TriggerScheduleSchema),
@@ -439,7 +454,7 @@ export const FailedDeliverySchema = Type.Object({
   kind: DeliveryKindSchema,
   lastError: Type.String(),
   permanent: Type.Boolean(),
-  preview: Type.String({ maxLength: 500 }),
+  preview: Type.String({ maxLength: DELIVERY_PREVIEW_MAX_LENGTH }),
 });
 
 export type FailedDelivery = Static<typeof FailedDeliverySchema>;

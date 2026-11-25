@@ -49,8 +49,8 @@ export const canonicalToolName = (origin: ToolOrigin, tool: string): string => {
 
 /**
  * Returns true if a canonical Tool name matches a Permission Policy pattern. `*` matches any run of characters,
- * including `:`; every other character matches itself, case-sensitively. For example `notes:*` matches `notes:add`, and `mcp:github:*`
- * matches every Tool of the `github` MCP Server.
+ * including `:`. Every other character matches itself, case-sensitively. For example, `notes:*` matches `notes:add`,
+ * and `mcp:github:*` matches every Tool of the `github` MCP Server.
  */
 export const matchesToolPattern = (
   pattern: string,

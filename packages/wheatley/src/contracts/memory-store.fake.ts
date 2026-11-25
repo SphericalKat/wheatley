@@ -22,6 +22,9 @@ export const DEFAULT_MEMORY_MAX_CHARS = 4000;
 export const FAKE_FLUSH_PROMPT =
   "Save durable facts from this Conversation to Memory before it compacts.";
 
+/** The number of leading characters that the fake returns as a search hit snippet. */
+const SEARCH_SNIPPET_LENGTH = 200;
+
 const MEMORY = "MEMORY";
 const NAME = /^(?:MEMORY|[a-z0-9][a-z0-9-]{0,63})$/u;
 
@@ -159,7 +162,7 @@ export class InMemoryMemoryStore implements MemoryStore {
             kind: "memory",
             name,
             score,
-            snippet: file.content.slice(0, 200),
+            snippet: file.content.slice(0, SEARCH_SNIPPET_LENGTH),
           });
         }
       }
@@ -176,7 +179,7 @@ export class InMemoryMemoryStore implements MemoryStore {
             kind: "conversation",
             role: message.role,
             score,
-            snippet: message.text.slice(0, 200),
+            snippet: message.text.slice(0, SEARCH_SNIPPET_LENGTH),
           });
         }
       }

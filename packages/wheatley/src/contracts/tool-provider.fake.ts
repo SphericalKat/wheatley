@@ -26,7 +26,7 @@ const plainSchema = (tool: Tool): JsonSchema =>
   "~standard" in tool.inputSchema ? { type: "object" } : tool.inputSchema;
 
 /**
- * A `ToolProvider` over in-memory SDK Tools. It does not validate input against the schema; it does turn unknown
+ * A `ToolProvider` over in-memory SDK Tools. It does not validate input against the schema. It turns unknown
  * Tools, throws, and aborts into error results, as the real providers do.
  */
 export class FakeToolProvider implements ToolProvider {

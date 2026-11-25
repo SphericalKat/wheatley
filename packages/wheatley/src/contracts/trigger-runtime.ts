@@ -8,7 +8,7 @@ import type {
 /** Who changes a Trigger. Only the Operator may create, change, or delete `webhook` Triggers (ADR 0010). */
 export type TriggerActor = "agent" | "operator";
 
-/** One accepted webhook request, stored before the Ingress answers `202 Accepted`. */
+/** One accepted webhook request. The Trigger runtime stores it before the Ingress answers `202 Accepted`. */
 export interface WebhookEvent {
   /** Epoch milliseconds. */
   readonly receivedAt: number;
@@ -18,7 +18,7 @@ export interface WebhookEvent {
   readonly body: Uint8Array;
 }
 
-/** One firing of a Trigger, handed to the Agent as a non-interactive Run. */
+/** One firing of a Trigger. The Trigger runtime gives it to the Agent, which runs it as a non-interactive Run. */
 export interface TriggerFiring {
   readonly firingId: string;
   readonly trigger: Trigger;
@@ -35,7 +35,7 @@ export interface TriggerFiring {
 export interface TriggerRunner {
   /**
    * Starts a non-interactive Run for a firing, in a new Conversation (`per_firing`) or the Trigger's shared
-   * Conversation (`shared`). Resolves with the Run ID once the Run is stored.
+   * Conversation (`shared`). Resolves with the Run ID after the Agent stores the Run.
    *
    * When the Run ends, the Agent calls `TriggerRuntime.isDeliverySuppressed(runId)`. If it resolves `false`, the Agent
    * enqueues the final reply for `firing.target` with `sourceConversationId` set.
@@ -43,7 +43,10 @@ export interface TriggerRunner {
   readonly start: (
     firing: TriggerFiring
   ) => Promise<{ readonly runId: string }>;
-  /** True while a Run of this Trigger is active, including during an Approval pause. Used to skip overlapping ticks. */
+  /**
+   * True while a Run of this Trigger is active, also during an Approval pause. The Trigger runtime calls it to skip a
+   * `cron` tick that overlaps an active Run.
+   */
   readonly isActive: (triggerId: string) => boolean;
 }
 
@@ -51,19 +54,26 @@ export interface TriggerRunner {
  * Stores and schedules the Triggers of one Agent in `agent.sqlite` (ADR 0010). Changes apply at once, without an
  * Agent restart.
  *
- * Scheduling rules: an overdue `once` fires once at start; missed `cron` ticks are skipped and `nextFireAt` moves to
- * the next future tick; a `cron` tick is skipped while the Trigger's previous Run is active; webhook events run in
- * arrival order.
+ * Scheduling rules:
+ * - An overdue `once` Trigger fires one time at start.
+ * - The runtime skips missed `cron` ticks and moves `nextFireAt` to the next future tick.
+ * - The runtime skips a `cron` tick while the previous Run of the Trigger is active.
+ * - Webhook events run in arrival order.
  *
  * The Triggers module also provides the Agent Tools `schedule_trigger`, `list_triggers`, `cancel_trigger`, and
  * `suppress_delivery` through its `ToolProvider`. `schedule_trigger` targets `ToolContext.chat` by default.
- * `suppress_delivery` stores a durable flag for `ToolContext.runId` that `isDeliverySuppressed` reads; it returns an
+ * `suppress_delivery` stores a durable flag for `ToolContext.runId` that `isDeliverySuppressed` reads. It returns an
  * error result in a Run that no Trigger started.
  *
  * Every change emits `trigger.changed`: `created`, `updated`, `deleted`, or `fired` (also for a scheduled firing).
  */
 export interface TriggerRuntime {
+  /**
+   * Resolves every Trigger of the Agent in creation order, also paused Triggers. Resolves an empty array if the Agent
+   * has no Triggers. An `update` or a firing does not change the position of a Trigger.
+   */
   readonly list: () => Promise<readonly Trigger[]>;
+  /** Resolves one Trigger, or `undefined` for an unknown ID. It does not throw `SeamError("not_found")`. */
   readonly get: (triggerId: string) => Promise<Trigger | undefined>;
   /**
    * Creates a Trigger. Throws `SeamError("forbidden")` if an Agent creates a `webhook`

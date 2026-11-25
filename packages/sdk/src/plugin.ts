@@ -22,9 +22,9 @@ export interface PluginSetupContext<Config = JsonValue> {
 
 /** What a Plugin adds to one Agent. */
 export interface PluginContributions {
-  // oxlint-disable-next-line typescript/no-explicit-any -- Tool input is contravariant; each Tool validates its own input type.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Tool input is contravariant. Each Tool validates its own input type.
   readonly tools?: readonly Tool<any>[];
-  // oxlint-disable-next-line typescript/no-explicit-any -- Frontend config is contravariant; each Frontend validates its own config type.
+  // oxlint-disable-next-line typescript/no-explicit-any -- Frontend config is contravariant. Each Frontend validates its own config type.
   readonly frontends?: readonly Frontend<any>[];
   /** Releases resources when the Agent stops or restarts. */
   readonly dispose?: () => Promise<void> | void;
@@ -33,7 +33,7 @@ export interface PluginContributions {
 /**
  * An in-process extension that an Agent loads through `import()` (ADR 0006).
  *
- * A Plugin module default-exports this object. Each Agent that lists the Plugin calls `setup` once for its own instance;
+ * A Plugin module default-exports this object. Each Agent that lists the Plugin calls `setup` once for its own instance.
  * Agents share no Plugin state.
  */
 export interface Plugin<Config = JsonValue> {
@@ -44,8 +44,8 @@ export interface Plugin<Config = JsonValue> {
   /** Wheatley validates the `config` block against it before `setup`. */
   readonly configSchema?: SchemaInput<Config>;
   /**
-   * Creates the Plugin's Tools and Frontends for one Agent. A throw or rejection skips the Plugin and reports the error
-   * in Agent health; the Agent still starts.
+   * Creates the Plugin's Tools and Frontends for one Agent. If `setup` throws or rejects, Wheatley skips the Plugin and
+   * reports the error in Agent health. The Agent still starts.
    */
   readonly setup: (
     ctx: PluginSetupContext<Config>

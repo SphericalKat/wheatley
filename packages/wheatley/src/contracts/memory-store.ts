@@ -9,11 +9,11 @@ import type {
 export interface MemorySnapshot {
   /** At most the character cap. */
   readonly text: string;
-  /** True if an Operator edit on disk made `MEMORY.md` longer than the cap, so `text` is cut. */
+  /** True if an Operator edit on disk made `MEMORY.md` longer than the cap, so `snapshot` cuts `text`. */
   readonly truncated: boolean;
 }
 
-/** One user or assistant message for the Conversation archive. Tool output is never archived. */
+/** One user or assistant message for the Conversation archive. The archive never stores Tool output. */
 export interface ArchivedMessage {
   readonly conversationId: string;
   readonly role: "user" | "assistant";
@@ -50,7 +50,7 @@ export interface MemoryStore {
    * Writes one file and updates the index in the same step.
    *
    * Throws `SeamError("invalid_name")` for a bad name, and `SeamError("memory_budget_exceeded")` if `MEMORY.md` would
-   * exceed the cap; the file then stays unchanged and the message tells the Agent to move details into a topic file.
+   * exceed the cap. The file then stays unchanged, and the message tells the Agent to move details into a topic file.
    */
   readonly write: (
     name: string,

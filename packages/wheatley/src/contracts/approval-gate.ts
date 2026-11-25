@@ -51,8 +51,8 @@ export type GateVerdict =
    * then call `check` again. `expiresAt` is epoch milliseconds, or `null` for no deadline.
    *
    * `signalKey` is `<callKey>:<approvalId>`: the same for every check of one call on one Approval, and new when the
-   * call waits on another Approval. pi-durable consumes a key on the wake that uses it and ends a second sleep on it
-   * with `invalid_park`, so a call that waits twice (step 7, then step 8) needs two keys.
+   * call waits on another Approval. pi-durable consumes a key on the wake that uses it. It ends a second sleep on that
+   * key with `invalid_park`. Thus a call that waits twice (step 7, then step 8) needs two keys.
    */
   | {
       readonly kind: "wait";
@@ -93,24 +93,27 @@ export interface ApprovalGate {
    * 6. A pending Approval for `callKey` returns `wait`, or `deny` (`timeout`) after its deadline, which also
    *    resolves it as `timeout`.
    * 7. If another Approval of the same Run is pending, returns `wait` on that Approval without a new prompt, so
-   *    Approvals are serialized per Run. If that Approval's deadline passed, the gate first resolves it as `timeout`
+   *    the gate serializes Approvals per Run. If that Approval's deadline passed, the gate first resolves it as `timeout`
    *    (with the side effects of `decide`) and continues with step 8.
    * 8. Otherwise opens an Approval: stores it, enqueues `approval_requested` for the Chat, emits
    *    `approval.requested`, and returns `wait`.
    *
    * Approval IDs are unguessable (for example a random UUID), because a Chat decision carries only the ID. The
-   * `inputPreview` is `SecretStore.redact(JSON.stringify(call.input))` cut to 500 characters; `redact` also replaces
+   * `inputPreview` is `SecretStore.redact(JSON.stringify(call.input))` cut to 500 characters. `redact` also replaces
    * the JSON-escaped form of each secret value, so escapes cannot hide a secret.
    */
   readonly check: (call: GatedToolCall) => Promise<GateVerdict>;
   /**
-   * Resolves a pending Approval. The first decision from any surface wins; later calls and unknown IDs resolve
+   * Resolves a pending Approval. The first decision from any surface wins. Later calls and unknown IDs resolve
    * `false`. A `chat` origin must equal the Approval's originating Chat (ADR 0002), else the call resolves `false`
    * and changes nothing. The Operator can decide every Approval.
    *
-   * On success, in order: stores the decision before the first `await`, so a concurrent call sees it; applies
-   * `allow_conversation` (grant) or `allow_always` (`ConfigStore.prependPermissionRule` and the live policy);
-   * enqueues `approval_resolved`; emits `approval.resolved`; calls `deps.wake` for every call waiting on the Approval.
+   * On success, it does these steps in order:
+   * 1. Stores the decision before the first `await`, so a concurrent call sees it.
+   * 2. Applies `allow_conversation` (grant) or `allow_always` (`ConfigStore.prependPermissionRule` and the live policy).
+   * 3. Enqueues `approval_resolved`.
+   * 4. Emits `approval.resolved`.
+   * 5. Calls `deps.wake` for every call that waits on the Approval.
    */
   readonly decide: (
     approvalId: string,
@@ -140,8 +143,8 @@ export interface ApprovalGateDeps {
   readonly secrets: Pick<SecretStore, "redact">;
   readonly outbox: Pick<DeliveryOutbox, "enqueue">;
   /**
-   * Wakes the parked calls, for example through `harness.signal(callKey, signal, signalKey, ...)`. Called after the
-   * decision is stored, so a woken call that runs `check` sees it.
+   * Wakes the parked calls, for example through `harness.signal(callKey, signal, signalKey, ...)`. The gate calls it
+   * after it stores the decision, so a woken call that runs `check` sees it.
    */
   readonly wake: (calls: readonly ParkedCall[]) => Promise<void>;
 }

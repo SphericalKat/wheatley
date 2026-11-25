@@ -3,24 +3,42 @@ import type { Frontend } from "@wheatley/sdk";
 import type {
   AgentExtensions,
   ExtensionCatalog,
+  PluginProvider,
   ProviderInput,
+  SkillProvider,
   ToolProvider,
 } from "./extension-catalog.js";
 import { simulateIo } from "./fake-io.js";
 import { toolErrorResult } from "./tool-provider.fake.js";
 
-/** An `ExtensionCatalog` that gives every Agent the same providers and Frontends. */
+/** The providers of one Agent, as the fake catalog's factory returns them. */
+export interface FakeAgentProviders {
+  readonly builtin?: ToolProvider;
+  /** Plugin providers. A provider that also implements `PluginProvider.frontends` contributes Frontends. */
+  readonly plugins?: readonly (ToolProvider | PluginProvider)[];
+  readonly mcp?: ToolProvider;
+  readonly skills?: SkillProvider;
+  /** The built-in Frontends. */
+  readonly frontends?: readonly Frontend[];
+}
+
+const pluginFrontends = (
+  provider: ToolProvider | PluginProvider
+): readonly Frontend[] => ("frontends" in provider ? provider.frontends() : []);
+
+/**
+ * An `ExtensionCatalog` that calls `createProviders` once for each Agent, so Agents share no provider instances
+ * (ADR 0006).
+ *
+ * `createAgentExtensions` throws if two providers offer the same canonical Tool name. The real providers namespace
+ * their Tools, so a duplicate name in the fake is a defect in the test setup.
+ */
 export class InMemoryExtensionCatalog implements ExtensionCatalog {
-  readonly #providers: readonly ToolProvider[];
-  readonly #frontends: readonly Frontend[];
+  readonly #createProviders: (input: ProviderInput) => FakeAgentProviders;
   readonly #agents: string[] = [];
 
-  constructor(
-    providers: readonly ToolProvider[],
-    frontends: readonly Frontend[] = []
-  ) {
-    this.#providers = providers;
-    this.#frontends = frontends;
+  constructor(createProviders: (input: ProviderInput) => FakeAgentProviders) {
+    this.#createProviders = createProviders;
   }
 
   /** The Agent names that `createAgentExtensions` received, in call order. */
@@ -33,7 +51,30 @@ export class InMemoryExtensionCatalog implements ExtensionCatalog {
   ): Promise<AgentExtensions> => {
     await simulateIo();
     this.#agents.push(input.agentName);
-    const providers = this.#providers;
+
+    const {
+      builtin,
+      plugins = [],
+      mcp,
+      skills,
+      frontends = [],
+    } = this.#createProviders(input);
+
+    const providers = [builtin, ...plugins, mcp, skills].filter(
+      (provider): provider is ToolProvider => provider !== undefined
+    );
+
+    const names = providers.flatMap((provider) =>
+      provider.tools().map((tool) => tool.name)
+    );
+
+    const duplicate = names.find(
+      (name, index) => names.indexOf(name) !== index
+    );
+
+    if (duplicate !== undefined) {
+      throw new Error(`Two providers offer the Tool ${duplicate}`);
+    }
 
     const owner = (name: string): ToolProvider | undefined =>
       providers.find((provider) =>
@@ -52,14 +93,18 @@ export class InMemoryExtensionCatalog implements ExtensionCatalog {
         (await owner(name)?.execute(name, toolInput, ctx)) ??
         toolErrorResult(`Unknown Tool: ${name}`),
       frontends: () =>
-        new Map(this.#frontends.map((frontend) => [frontend.type, frontend])),
+        new Map(
+          [...frontends, ...plugins.flatMap(pluginFrontends)].map(
+            (frontend) => [frontend.type, frontend]
+          )
+        ),
       health: () => ({
-        mcpServers: [],
-        plugins: providers.flatMap((provider) => provider.health()),
-        skillWarnings: [],
+        mcpServers: mcp?.health() ?? [],
+        plugins: plugins.flatMap((provider) => provider.health()),
+        skillWarnings: skills?.warnings() ?? [],
       }),
-      skillCatalogPrompt: () => "",
-      skills: () => [],
+      skillCatalogPrompt: () => skills?.catalogPrompt() ?? "",
+      skills: () => skills?.skills() ?? [],
       tools: () => providers.flatMap((provider) => provider.tools()),
     };
   };

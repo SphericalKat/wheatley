@@ -8,7 +8,7 @@ export interface Migration {
   /** A short description. The runner stores it and refuses to start if a stored name differs. */
   readonly name: string;
   /**
-   * Applies the change. The runner calls it inside a transaction that it owns, with foreign key enforcement off, so a
+   * Applies the change. The runner calls it inside a transaction that it owns, with foreign key enforcement off. Thus a
    * migration can rebuild a referenced table (create, copy, drop, rename) without cascades. The runner denies
    * `BEGIN`, `COMMIT`, and `ROLLBACK` while it runs, and SQLite rejects `VACUUM` inside a transaction. A throw rolls
    * back this migration only.
@@ -178,10 +178,10 @@ const pendingFor = (
 /**
  * Lists the migrations that `runMigrations` would apply, in order, without writing to the database.
  *
- * Use it to decide whether a pre-migration backup is needed. Throws a `MigrationError`:
- * - `invalid_definition` for broken definitions;
+ * Use it to decide whether to back up the database before migration. Throws a `MigrationError`:
+ * - `invalid_definition` for broken definitions.
  * - `newer_schema` if the database has a migration that no definition declares, for example in a namespace of a newer
- *   Wheatley version or past the last declared version;
+ *   Wheatley version or past the last declared version.
  * - `history_mismatch` if a stored migration name differs from its declaration.
  */
 export const planMigrations = (
@@ -307,11 +307,12 @@ const applyOne = (
  * Applies every pending migration and returns the applied ones, in order.
  *
  * Order: namespaces in the given order, versions ascending within a namespace. Each migration runs in its own
- * `BEGIN IMMEDIATE` transaction together with its ledger row in `wheatley_migrations`, so a failed migration leaves
+ * `BEGIN IMMEDIATE` transaction together with its ledger row in `wheatley_migrations`. Thus a failed migration leaves
  * the database at the previous migration. Before it commits, the runner runs `PRAGMA foreign_key_check` and fails the
- * migration on any violation. A migration that another connection applied after the plan is skipped and not returned.
+ * migration on any violation. The runner skips a migration that another connection applied after the plan, and does
+ * not return it.
  * A second call applies nothing. Throws the errors of `planMigrations`, and `migration_failed` with the original error
- * as `cause` if a migration fails; migrations before it stay applied.
+ * as `cause` if a migration fails. Migrations before it stay applied.
  */
 export const runMigrations = (
   db: DatabaseSync,

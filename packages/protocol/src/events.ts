@@ -16,6 +16,10 @@ import {
   RunSummarySchema,
   TriggerSchema,
 } from "./domain.js";
+import {
+  TOOL_INPUT_PREVIEW_MAX_LENGTH,
+  TOOL_OUTPUT_PREVIEW_MAX_LENGTH,
+} from "./limits.js";
 
 /**
  * Every v1 live event that the daemon sends as a JSON-RPC notification. The notification `method` is the event name
@@ -88,14 +92,14 @@ export const events = {
   "run.toolFinished": Type.Object({
     agent: AgentNameSchema,
     isError: Type.Boolean(),
-    outputPreview: Type.String({ maxLength: 500 }),
+    outputPreview: Type.String({ maxLength: TOOL_OUTPUT_PREVIEW_MAX_LENGTH }),
     runId: IdSchema,
     toolCallId: IdSchema,
     toolName: Type.String(),
   }),
   "run.toolStarted": Type.Object({
     agent: AgentNameSchema,
-    inputPreview: Type.String({ maxLength: 500 }),
+    inputPreview: Type.String({ maxLength: TOOL_INPUT_PREVIEW_MAX_LENGTH }),
     runId: IdSchema,
     toolCallId: IdSchema,
     toolName: Type.String(),
