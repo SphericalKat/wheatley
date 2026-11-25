@@ -1,8 +1,7 @@
-import path from "node:path";
-
 import type { ApprovalDecision, PendingApproval } from "@wheatley/protocol";
 
-import { DAEMON_SOCKET_FILE } from "../core/daemon.js";
+import { daemonSocketPath } from "../core/daemon-socket.js";
+import type { SocketEnv } from "../core/daemon-socket.js";
 import { errorMessage } from "../core/error-message.js";
 import { DaemonClient } from "./client.js";
 import type { DaemonTarget } from "./client.js";
@@ -16,10 +15,10 @@ export interface ClientFlags {
   readonly agent: string | undefined;
 }
 
-/** The daemon address of the flags. */
-export const targetOf = (flags: ClientFlags): DaemonTarget =>
+/** The daemon address of the flags. Errors: throws if the home has no usable socket path (see `daemonSocketPath`). */
+export const targetOf = (flags: ClientFlags, env: SocketEnv): DaemonTarget =>
   flags.url === undefined
-    ? { socketPath: path.join(flags.home, DAEMON_SOCKET_FILE) }
+    ? { socketPath: daemonSocketPath(flags.home, env) }
     : { url: flags.url };
 
 /**
@@ -133,7 +132,7 @@ export const connect = async (
   version: string
 ): Promise<DaemonClient | undefined> => {
   try {
-    return await DaemonClient.connect(targetOf(flags), version);
+    return await DaemonClient.connect(targetOf(flags, io.env), version);
   } catch (error) {
     io.stderr(
       `Cannot reach the Wheatley daemon (${errorMessage(error)}). Start it with "wheatley daemon".\n`
