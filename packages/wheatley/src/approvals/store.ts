@@ -43,6 +43,7 @@ export const approvalsMigrations: readonly Migration[] = [
           signal_key TEXT NOT NULL,
           PRIMARY KEY (approval_id, call_key)
         ) STRICT;
+        CREATE INDEX approvals_waiters_call ON approvals_waiters (call_key);
         CREATE TABLE approvals_grants (
           conversation_id TEXT NOT NULL,
           tool_name TEXT NOT NULL,
@@ -213,14 +214,19 @@ const COLUMNS = `approval_id, call_key, run_id, conversation_id, binding_id, cha
 /**
  * Synchronous access to the `approvals_*` tables. Every method runs one statement, so a caller that does not await
  * between two calls sees no write of another caller in between.
+ *
+ * Errors: a read throws `TypeError` if a row does not match the schema. A write throws the `node:sqlite` error.
  */
 export interface ApprovalStore {
+  /** The Approval with this ID, or `undefined`. */
   readonly byId: (approvalId: string) => StoredApproval | undefined;
+  /** The Approval that this call opened, or `undefined`. A call opens at most one Approval. */
   readonly byCallKey: (callKey: string) => StoredApproval | undefined;
   /** The oldest pending Approval of the Run, or `undefined`. */
   readonly oldestPendingInRun: (runId: string) => StoredApproval | undefined;
   /** Pending Approvals, oldest first, optionally of one Run. */
   readonly pending: (runId?: string) => StoredApproval[];
+  /** Stores a pending Approval. Throws a UNIQUE constraint error if the ID or the `callKey` already has an Approval. */
   readonly insert: (approval: NewApproval) => void;
   /** Stores the resolution if the Approval is still pending. Returns `true` if this call resolved it. */
   readonly resolve: (
@@ -229,13 +235,19 @@ export interface ApprovalStore {
   ) => boolean;
   /** Registers a parked call. A second registration of the same call keeps the first one. */
   readonly addWaiter: (approvalId: string, call: ParkedCall) => void;
+  /** The calls that waited on the Approval, in the order they parked. Resolution does not remove them. */
   readonly waiters: (approvalId: string) => ParkedCall[];
+  /** `true` if the call waited on an Approval that ended as `cancelled`. */
+  readonly waitedOnCancelled: (callKey: string) => boolean;
+  /** `true` if the Conversation has an `allow_conversation` grant for the Tool. */
   readonly hasGrant: (conversationId: string, toolName: string) => boolean;
+  /** Stores an `allow_conversation` grant. A second grant for the same pair keeps the first one. */
   readonly addGrant: (
     conversationId: string,
     toolName: string,
     grantedAt: number
   ) => void;
+  /** Removes every grant of the Conversation. */
   readonly clearGrants: (conversationId: string) => void;
 }
 
@@ -275,6 +287,11 @@ export const createApprovalStore = (db: DatabaseSync): ApprovalStore => {
 
   const selectWaiters = db.prepare(
     "SELECT call_key, signal_key FROM approvals_waiters WHERE approval_id = ? ORDER BY rowid"
+  );
+
+  const selectCancelledWait = db.prepare(
+    `SELECT 1 FROM approvals_waiters JOIN approvals_requests USING (approval_id)
+     WHERE approvals_waiters.call_key = ? AND outcome = 'cancelled' LIMIT 1`
   );
 
   const selectGrant = db.prepare(
@@ -334,6 +351,8 @@ export const createApprovalStore = (db: DatabaseSync): ApprovalStore => {
           approvalId
         ).changes
       ) === 1,
+    waitedOnCancelled: (callKey) =>
+      selectCancelledWait.get(callKey) !== undefined,
     waiters: (approvalId) => selectWaiters.all(approvalId).map(toParkedCall),
   };
 };

@@ -15,6 +15,7 @@ import type {
   GatedToolCall,
   GateVerdict,
 } from "../contracts/approval-gate.js";
+import type { OutboxItem } from "../contracts/delivery-outbox.js";
 import type { AgentModuleContext } from "../contracts/module.js";
 import { policyAction } from "./policy.js";
 import { buildInputPreview } from "./preview.js";
@@ -34,7 +35,7 @@ interface OpenedApproval {
 }
 
 /** An Approval that this gate resolved and must still announce. */
-interface Resolved {
+interface Claim {
   readonly approval: StoredApproval;
   readonly resolution: StoredResolution;
 }
@@ -66,7 +67,13 @@ const isFromOriginatingChat = (
     origin.bindingId === approval.chat.bindingId &&
     origin.chatId === approval.chat.chatId);
 
-/** The verdict for a call whose own Approval ended with `outcome`. */
+const stoppedMessage = (toolName: string): string =>
+  `The Run stopped before a decision on ${toolName}`;
+
+/**
+ * The verdict for a call from the outcome of its own Approval. An allow outcome returns `allow`. `deny` and `cancelled`
+ * return `deny` with that reason. Every other outcome, including `null`, returns `deny` (`timeout`).
+ */
 const verdictForOutcome = (approval: StoredApproval): GateVerdict => {
   const { outcome, reason, toolName } = approval;
 
@@ -84,7 +91,7 @@ const verdictForOutcome = (approval: StoredApproval): GateVerdict => {
   }
 
   return outcome === "cancelled"
-    ? denial("cancelled", `The Run stopped before a decision on ${toolName}`)
+    ? denial("cancelled", stoppedMessage(toolName))
     : denial(
         "timeout",
         `No decision on ${toolName} before the Approval timed out`
@@ -102,10 +109,15 @@ const verdictForOutcome = (approval: StoredApproval): GateVerdict => {
  * - The live Permission Policy starts as `deps.policy`. An `allow_always` decision prepends an exact-tool `allow` rule
  *   to it before the first `await`, so a call that the decision wakes sees the rule.
  * - A wake never names the call that runs `check`, because that call is not parked.
+ * - After `cancelRun`, a call that waited on a cancelled Approval gets `deny` (`cancelled`) at its next `check`. It does
+ *   not open an Approval of its own.
  *
- * Errors: a failed `config.prependPermissionRule` or `outbox.enqueue` is logged and does not stop the decision or
- * the wake. A failed `deps.wake` rejects the gate method. The decision stays stored, and the parked call sees it at
- * its next `check`.
+ * Errors:
+ * - If `outbox.enqueue` fails, the gate logs the error and continues with the event and the wake.
+ * - If `config.prependPermissionRule` fails, the gate keeps the rule in the live policy, completes the event and the
+ *   wake, and then rejects `decide`. The rule ends when the Agent restarts.
+ * - A failed `deps.wake` rejects the gate method. The decision stays stored, and the parked call sees it at its next
+ *   `check`.
  */
 export const createApprovalGate = (
   ctx: ApprovalGateContext,
@@ -123,7 +135,7 @@ export const createApprovalGate = (
     approval: StoredApproval,
     outcome: ApprovalOutcome,
     resolution?: Pick<ApprovalResolution, "reason" | "resolvedBy">
-  ): Resolved | undefined => {
+  ): Claim | undefined => {
     const stored: StoredResolution = {
       outcome,
       reason: resolution?.reason,
@@ -136,34 +148,46 @@ export const createApprovalGate = (
       : undefined;
   };
 
+  /** Claims each Approval with `outcome` and returns the claims that this gate won. */
+  const claimEach = (
+    approvals: readonly StoredApproval[],
+    outcome: ApprovalOutcome
+  ): Claim[] => approvals.flatMap((approval) => claim(approval, outcome) ?? []);
+
+  /** Enqueues a delivery for the Chat of the Approval. If the enqueue fails, the gate logs the error and continues. */
+  const enqueueFor = async (
+    { approvalId, chat }: Pick<StoredApproval, "approvalId" | "chat">,
+    delivery: OutboxItem["delivery"]
+  ): Promise<void> => {
+    if (chat === null) {
+      return;
+    }
+
+    try {
+      await deps.outbox.enqueue({ ...chat, delivery });
+    } catch (error) {
+      log.error(`Could not enqueue ${delivery.kind}`, {
+        approvalId,
+        error: String(error),
+      });
+    }
+  };
+
   /** Enqueues `approval_resolved`, emits `approval.resolved`, and wakes every parked call except `runningCallKey`. */
   const announce = async (
-    { approval, resolution }: Resolved,
+    { approval, resolution }: Claim,
     runningCallKey?: string
   ): Promise<void> => {
-    const { approvalId, chat } = approval;
+    const { approvalId } = approval;
     const { outcome, reason, resolvedBy } = resolution;
 
-    if (chat !== null) {
-      try {
-        await deps.outbox.enqueue({
-          bindingId: chat.bindingId,
-          chatId: chat.chatId,
-          delivery: {
-            approvalId,
-            decision: outcome,
-            kind: "approval_resolved",
-            reason,
-            resolvedBy,
-          },
-        });
-      } catch (error) {
-        log.error("Could not enqueue approval_resolved", {
-          approvalId,
-          error: String(error),
-        });
-      }
-    }
+    await enqueueFor(approval, {
+      approvalId,
+      decision: outcome,
+      kind: "approval_resolved",
+      reason,
+      resolvedBy,
+    });
 
     events.emit("approval.resolved", {
       agent: agentName,
@@ -183,10 +207,10 @@ export const createApprovalGate = (
   };
 
   const announceAll = async (
-    resolved: readonly Resolved[],
+    claims: readonly Claim[],
     runningCallKey?: string
   ): Promise<void> => {
-    for (const item of resolved) {
+    for (const item of claims) {
       // oxlint-disable-next-line no-await-in-loop -- Resolutions reach each Chat in the order the gate stored them.
       await announce(item, runningCallKey);
     }
@@ -205,14 +229,8 @@ export const createApprovalGate = (
   };
 
   /** Times out every expired pending Approval in `pending` and returns the claims. */
-  const expire = (pending: readonly StoredApproval[]): Resolved[] =>
-    pending.flatMap((approval) => {
-      const claimed = isExpired(approval)
-        ? claim(approval, "timeout")
-        : undefined;
-
-      return claimed === undefined ? [] : [claimed];
-    });
+  const expire = (pending: readonly StoredApproval[]): Claim[] =>
+    claimEach(pending.filter(isExpired), "timeout");
 
   /** Stores a new Approval for `call` and parks the call on it. */
   const open = (call: GatedToolCall): OpenedApproval => {
@@ -240,27 +258,14 @@ export const createApprovalGate = (
 
   /** Enqueues `approval_requested` and emits `approval.requested`. */
   const request = async (approval: PendingApproval): Promise<void> => {
-    if (approval.chat !== null) {
-      try {
-        await deps.outbox.enqueue({
-          bindingId: approval.chat.bindingId,
-          chatId: approval.chat.chatId,
-          delivery: {
-            approvalId: approval.approvalId,
-            expiresAt: approval.expiresAt,
-            inputPreview: approval.inputPreview,
-            kind: "approval_requested",
-            runId: approval.runId,
-            toolName: approval.toolName,
-          },
-        });
-      } catch (error) {
-        log.error("Could not enqueue approval_requested", {
-          approvalId: approval.approvalId,
-          error: String(error),
-        });
-      }
-    }
+    await enqueueFor(approval, {
+      approvalId: approval.approvalId,
+      expiresAt: approval.expiresAt,
+      inputPreview: approval.inputPreview,
+      kind: "approval_requested",
+      runId: approval.runId,
+      toolName: approval.toolName,
+    });
 
     events.emit("approval.requested", { agent: agentName, approval });
   };
@@ -278,9 +283,9 @@ export const createApprovalGate = (
       return park(own, callKey);
     }
 
-    const claimed = claim(own, "timeout");
+    const claims = claimEach([own], "timeout");
     const current = store.byId(own.approvalId) ?? own;
-    await announceAll(claimed === undefined ? [] : [claimed], callKey);
+    await announceAll(claims, callKey);
 
     return verdictForOutcome(current);
   };
@@ -327,12 +332,24 @@ export const createApprovalGate = (
 
     const own = store.byCallKey(call.callKey);
 
-    return own === undefined
-      ? await checkRun(call)
-      : await checkOwn(own, call.callKey);
+    if (own !== undefined) {
+      return await checkOwn(own, call.callKey);
+    }
+
+    if (store.waitedOnCancelled(call.callKey)) {
+      return denial("cancelled", stoppedMessage(call.toolName));
+    }
+
+    return await checkRun(call);
   };
 
-  const applyAllowAlways = async (toolName: string): Promise<void> => {
+  /**
+   * Prepends an exact-tool `allow` rule to the live policy, then saves it to `config.yaml`. Resolves with an `Error` if
+   * the save fails, so that `decide` can complete the wake before it rejects.
+   */
+  const applyAllowAlways = async (
+    toolName: string
+  ): Promise<Error | undefined> => {
     const rule: PermissionRule = { action: "allow", tool: toolName };
 
     if (!sameRule(rules[0], rule)) {
@@ -341,10 +358,12 @@ export const createApprovalGate = (
 
     try {
       await deps.config.prependPermissionRule(agentName, rule);
+
+      return undefined;
     } catch (error) {
-      log.error(
-        "Could not save the allow_always rule to config.yaml; it applies until the Agent restarts",
-        { error: String(error), tool: toolName }
+      return new Error(
+        `config.yaml did not save the allow_always rule for ${toolName}. The rule applies until the Agent restarts.`,
+        { cause: error }
       );
     }
   };
@@ -384,21 +403,22 @@ export const createApprovalGate = (
       );
     }
 
-    if (resolution.decision === "allow_always") {
-      await applyAllowAlways(approval.toolName);
-    }
+    const saveError =
+      resolution.decision === "allow_always"
+        ? await applyAllowAlways(approval.toolName)
+        : undefined;
 
     await announce(claimed);
+
+    if (saveError !== undefined) {
+      throw saveError;
+    }
 
     return true;
   };
 
   const cancelRun = async (runId: string): Promise<number> => {
-    const cancelled = store.pending(runId).flatMap((approval) => {
-      const claimed = claim(approval, "cancelled");
-
-      return claimed === undefined ? [] : [claimed];
-    });
+    const cancelled = claimEach(store.pending(runId), "cancelled");
 
     await announceAll(cancelled);
 
@@ -409,7 +429,7 @@ export const createApprovalGate = (
     conversationId: string
   ): Promise<void> => {
     store.clearGrants(conversationId);
-    // The seam is async, but node:sqlite writes synchronously.
+    // The seam is async, but node:sqlite writes synchronously. Lint requires both `async` and an `await` here.
     await Promise.resolve();
   };
 

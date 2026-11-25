@@ -467,7 +467,7 @@ describe("decisions", () => {
     ).resolves.toMatchObject({ kind: "wait" });
   });
 
-  it("keeps an allow_always decision live and logs the error if config.yaml cannot take the rule", async () => {
+  it("keeps an allow_always decision live, wakes the call, and rejects if config.yaml cannot take the rule", async () => {
     const gate = gateWith([], {
       config: {
         prependPermissionRule: async () => {
@@ -481,13 +481,44 @@ describe("decisions", () => {
 
     await expect(
       gate.decide(approvalId, { decision: "allow_always" }, OPERATOR)
-    ).resolves.toBe(true);
+    ).rejects.toThrow("config.yaml did not save the allow_always rule");
+    await expect(gate.check(call("c1"))).resolves.toStrictEqual({
+      kind: "allow",
+    });
     await expect(
       gate.check(call("c2", "write_file", { runId: "run-2" }))
     ).resolves.toStrictEqual({
       kind: "allow",
     });
-    expect(errors).toHaveLength(1);
+    expect(deliveryKinds()).toStrictEqual([
+      "approval_requested",
+      "approval_resolved",
+    ]);
+    expect(woken.map(({ callKey }) => callKey)).toStrictEqual(["c1"]);
+  });
+
+  it("logs a failed enqueue and still completes the decision and the wake", async () => {
+    const gate = gateWith([], {
+      outbox: {
+        enqueue: async () => {
+          await Promise.resolve();
+          throw new Error("outbox closed");
+        },
+      },
+    });
+
+    const approvalId = approvalIdOf(await gate.check(call("c1")));
+
+    await expect(
+      gate.decide(approvalId, { decision: "allow_once" }, CHAT)
+    ).resolves.toBe(true);
+    await expect(gate.check(call("c1"))).resolves.toStrictEqual({
+      kind: "allow",
+    });
+    expect(errors).toStrictEqual([
+      "Could not enqueue approval_requested",
+      "Could not enqueue approval_resolved",
+    ]);
     expect(woken.map(({ callKey }) => callKey)).toStrictEqual(["c1"]);
   });
 
@@ -667,15 +698,24 @@ describe("/stop cancellation", () => {
       "c1",
       "c2",
     ]);
-    await expect(gate.check(call("c1"))).resolves.toStrictEqual({
+
+    const stopped = {
       kind: "deny",
       message: "The Run stopped before a decision on write_file",
       reason: "cancelled",
-    });
+    } as const;
+
+    await expect(gate.check(call("c1"))).resolves.toStrictEqual(stopped);
+    await expect(gate.check(call("c2"))).resolves.toStrictEqual(stopped);
     await expect(
       gate.decide(approvalId, { decision: "allow_once" }, CHAT)
     ).resolves.toBe(false);
     expect(await gate.listPending()).toHaveLength(1);
+    expect(deliveryKinds()).toStrictEqual([
+      "approval_requested",
+      "approval_requested",
+      "approval_resolved",
+    ]);
     await expect(gate.cancelRun("run-1")).resolves.toBe(0);
   });
 });

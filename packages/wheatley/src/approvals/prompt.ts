@@ -92,6 +92,7 @@ export interface ApprovalPromptOptions {
   readonly signal?: AbortSignal;
   /** The display name to send as `resolvedBy`. */
   readonly resolvedBy?: string;
+  /** The time source for the "Times out in" line of the card. The default is the system clock. */
   readonly clock?: Clock;
 }
 
