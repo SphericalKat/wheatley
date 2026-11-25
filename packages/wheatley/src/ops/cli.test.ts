@@ -105,14 +105,45 @@ describe("wheatley restore", () => {
     expect(io.stderr.join("\n")).toContain("wheatley service stop");
   });
 
-  it("lists the backups if no backup is named", async () => {
+  it("lists the backups and exits 0 if no backup is named", async () => {
     const file = await seedBackup();
     const io = captureIo();
 
     await expect(createOpsCommands(deps()).restore(["home"], io)).resolves.toBe(
-      2
+      0
     );
-    expect(io.stderr.join("\n")).toContain(file);
+    expect(io.stdout).toEqual([
+      "Backups of Agent home, newest first:",
+      `  ${file}  (pre-migration, 2026-11-26T09:30:00.000Z)`,
+    ]);
+    expect(io.stderr).toEqual([]);
+  });
+
+  it("reports an Agent without backups and exits 0", async () => {
+    const io = captureIo();
+
+    await expect(createOpsCommands(deps()).restore(["home"], io)).resolves.toBe(
+      0
+    );
+    expect(io.stdout).toEqual(["Agent home has no backups."]);
+    expect(io.stderr).toEqual([]);
+  });
+
+  it("prints the usage and exits 2 without an Agent name", async () => {
+    const io = captureIo();
+
+    await expect(createOpsCommands(deps()).restore([], io)).resolves.toBe(2);
+    expect(io.stdout).toEqual([]);
+    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
+  });
+
+  it("prints the usage and exits 2 for an extra argument", async () => {
+    const io = captureIo();
+
+    await expect(
+      createOpsCommands(deps()).restore(["home", "a.sqlite", "b"], io)
+    ).resolves.toBe(2);
+    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
   });
 
   it("rejects an Agent name that would leave the agents folder", async () => {

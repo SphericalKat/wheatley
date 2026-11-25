@@ -163,8 +163,8 @@ it("backs up agent.sqlite before a migration and restores it with wheatley resto
 
   const noBackups = await harness.cli(["restore", AGENT]);
 
-  expect(noBackups.code).toBe(2);
-  expect(noBackups.stderr).toContain(`Agent ${AGENT} has no backups.`);
+  expect(noBackups.code).toBe(0);
+  expect(noBackups.stdout).toContain(`Agent ${AGENT} has no backups.`);
 
   const first = await harness.connect();
   await createTrigger(first, "before-upgrade");
@@ -212,9 +212,9 @@ it("backs up agent.sqlite before a migration and restores it with wheatley resto
 
   const listing = await harness.cli(["restore", AGENT]);
 
-  expect(listing.code).toBe(2);
-  expect(listing.stderr).toContain(`Backups of Agent ${AGENT}, newest first:`);
-  expect(listing.stderr).toContain(`${preMigration}  (pre-migration, `);
+  expect(listing.code).toBe(0);
+  expect(listing.stdout).toContain(`Backups of Agent ${AGENT}, newest first:`);
+  expect(listing.stdout).toContain(`${preMigration}  (pre-migration, `);
 
   // The daemon holds agent.sqlite open, so restore refuses and changes nothing.
   const refused = await harness.cli(["restore", AGENT, preMigration ?? ""]);
@@ -468,8 +468,8 @@ it(
       // `restore` reads the home folder from WHEATLEY_HOME=/data.
       const restore = await dockerRun(image, ["wheatley", "restore", AGENT]);
 
-      expect(restore.code).toBe(2);
-      expect(restore.stderr).toContain(`Agent ${AGENT} has no backups.`);
+      expect(restore.code).toBe(0);
+      expect(restore.stdout).toContain(`Agent ${AGENT} has no backups.`);
 
       // The deployed package contains the bundled dashboard.
       const dashboard = await dockerRun(image, [
