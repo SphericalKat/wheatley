@@ -7,7 +7,7 @@ import type { DiscordFrontendOptions } from "./binding.js";
 import { discordConfigSchema, parseDiscordConfig } from "./config.js";
 
 /** The `type` of a Discord Frontend Binding in `config.yaml`. */
-export const DISCORD_FRONTEND_TYPE = "discord";
+const DISCORD_FRONTEND_TYPE = "discord";
 
 /** The Discord Frontend keeps no tables in `agent.sqlite`. It stores Approval prompts in the binding's `dataDir`. */
 export const discordMigrations: readonly Migration[] = [];
@@ -39,9 +39,6 @@ export const createDiscordFrontend = (
   },
   type: DISCORD_FRONTEND_TYPE,
 });
-
-/** The built-in Discord Frontend with production defaults. */
-export const discordFrontend: Frontend = createDiscordFrontend();
 
 /**
  * The Agent module of the Discord Frontend. Its `api` is the `Frontend` that the Agent adds to the built-in Frontends

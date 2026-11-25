@@ -27,7 +27,7 @@ import {
   toUploadPayloads,
 } from "./attachments.js";
 import type { DiscordConfig } from "./config.js";
-import { loadDiscordRuntime } from "./discord-runtime.js";
+import { loadDiscordRuntime, NO_MENTIONS } from "./discord-runtime.js";
 import type {
   ButtonInteraction,
   DiscordChannel,
@@ -41,6 +41,7 @@ import type {
 } from "./discord-runtime.js";
 import {
   discordErrorCode,
+  errorText,
   toDeliveryError,
   UNKNOWN_MESSAGE_CODE,
 } from "./errors.js";
@@ -61,10 +62,6 @@ const RECENT_DELIVERY_LIMIT = 1000;
 const OPTION_NAME_UNSAFE = /[^a-z0-9_-]+/gu;
 const DEFAULT_OPTION_NAME = "args";
 
-const NO_MENTIONS = {
-  parse: [],
-} as const satisfies OutboundMessage["allowedMentions"];
-
 /** Derives the Slash Command option name from a command argument hint, for example `<model-id>` to `model-id`. */
 const optionName = (argument: string): string => {
   const name = argument.toLowerCase().replaceAll(OPTION_NAME_UNSAFE, "");
@@ -74,9 +71,6 @@ const optionName = (argument: string): string => {
 
 const displayName = (name: string): string =>
   name.slice(0, DISPLAY_NAME_MAX_LENGTH);
-
-const errorText = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
 
 /** Splits Agent text and files into Discord messages: text chunks first, files on the last chunk or after it. */
 const outboundPayloads = (
@@ -189,7 +183,8 @@ const handleSlashCommand = async (
  *
  * Chats: a DM channel, a guild channel, and a thread each are a separate Chat whose ID is the Discord channel ID, so
  * a thread maps to `<thread_id>`. A Chat is allowed if its ID, or for a thread the parent channel ID, is in
- * `allowedChatIds`. The binding drops other messages and logs their Chat ID at `info` level.
+ * `allowedChatIds`. The binding drops other messages. It logs their Chat ID at `info` level if the message addresses
+ * the bot (a DM, a mention, or a reply to the bot), so that busy guild channels do not flood the log (ADR 0012).
  */
 export class DiscordBinding implements FrontendBinding {
   readonly #config: DiscordConfig;
@@ -535,10 +530,9 @@ export class DiscordBinding implements FrontendBinding {
       return;
     }
 
-    const record = this.#prompts.byKey(press.key);
-    const approvalId = this.#prompts.approvalIdFor(press.key);
+    const prompt = this.#prompts.lookup(press.key);
 
-    if (approvalId === undefined) {
+    if (prompt === undefined) {
       await interaction.reply({
         content: "This Approval is no longer available.",
         flags: discord.MessageFlags.Ephemeral,
@@ -551,7 +545,7 @@ export class DiscordBinding implements FrontendBinding {
     const resolvedBy = displayName(interaction.user.displayName);
 
     const won = await sink.decide({
-      approvalId,
+      approvalId: prompt.approvalId,
       chatId,
       resolution: { decision: press.decision, resolvedBy },
     });
@@ -568,7 +562,7 @@ export class DiscordBinding implements FrontendBinding {
     await interaction.editReply({
       components: [approvalButtons(discord, press.key, true)],
       content: resolvedContent(
-        record?.content ?? interaction.message.content,
+        prompt.record?.content ?? interaction.message.content,
         press.decision,
         resolvedBy
       ),
@@ -622,7 +616,13 @@ export class DiscordBinding implements FrontendBinding {
       }
 
       default: {
-        break;
+        // A Delivery kind from a newer SDK. A retry cannot teach this binding to deliver it.
+        const unknownDelivery: { readonly kind: string } = delivery;
+
+        throw new DeliveryError(
+          `The Discord binding cannot deliver ${unknownDelivery.kind}`,
+          { kind: "permanent" }
+        );
       }
     }
   }

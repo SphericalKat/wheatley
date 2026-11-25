@@ -1,10 +1,13 @@
 import type { JsonObject, JsonSchema, JsonValue } from "@wheatley/sdk";
 
+const GUILD_MESSAGE_MODES = ["mention_or_reply", "all"] as const;
+const STREAMING_MODES = ["edit", "typing"] as const;
+
 /** How the binding treats messages in guild channels and guild threads. DMs always reach the Agent. */
-export type GuildMessageMode = "mention_or_reply" | "all";
+export type GuildMessageMode = (typeof GUILD_MESSAGE_MODES)[number];
 
 /** How the binding shows live Run progress: a typing indicator plus a draft message that it edits, or typing only. */
-export type StreamingMode = "edit" | "typing";
+export type StreamingMode = (typeof STREAMING_MODES)[number];
 
 /** The validated settings of one Discord Frontend Binding. */
 export interface DiscordConfig {
@@ -41,33 +44,28 @@ const snowflakeList = (minItems: number): JsonObject => ({
   uniqueItems: true,
 });
 
+const configProperties: JsonObject = {
+  allowedChatIds: snowflakeList(1),
+  commandGuildIds: snowflakeList(0),
+  editIntervalMs: {
+    maximum: MAX_EDIT_INTERVAL_MS,
+    minimum: MIN_EDIT_INTERVAL_MS,
+    type: "integer",
+  },
+  guildMessages: { enum: [...GUILD_MESSAGE_MODES], type: "string" },
+  streaming: { enum: [...STREAMING_MODES], type: "string" },
+  tokenSecret: { minLength: 1, type: "string" },
+};
+
 /** The plain JSON Schema of the `config` object of a `type: discord` Frontend Binding. */
 export const discordConfigSchema: JsonSchema = {
   additionalProperties: false,
-  properties: {
-    allowedChatIds: snowflakeList(1),
-    commandGuildIds: snowflakeList(0),
-    editIntervalMs: {
-      maximum: MAX_EDIT_INTERVAL_MS,
-      minimum: MIN_EDIT_INTERVAL_MS,
-      type: "integer",
-    },
-    guildMessages: { enum: ["mention_or_reply", "all"], type: "string" },
-    streaming: { enum: ["edit", "typing"], type: "string" },
-    tokenSecret: { minLength: 1, type: "string" },
-  },
+  properties: configProperties,
   required: ["tokenSecret", "allowedChatIds"],
   type: "object",
 };
 
-const KNOWN_KEYS: ReadonlySet<string> = new Set([
-  "allowedChatIds",
-  "commandGuildIds",
-  "editIntervalMs",
-  "guildMessages",
-  "streaming",
-  "tokenSecret",
-]);
+const KNOWN_KEYS: ReadonlySet<string> = new Set(Object.keys(configProperties));
 
 const isJsonObject = (value: JsonValue | undefined): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -186,15 +184,10 @@ export const parseDiscordConfig = (value: JsonValue): DiscordConfig => {
     guildMessages: readEnum(
       value.guildMessages,
       "guildMessages",
-      ["mention_or_reply", "all"],
+      GUILD_MESSAGE_MODES,
       "mention_or_reply"
     ),
-    streaming: readEnum(
-      value.streaming,
-      "streaming",
-      ["edit", "typing"],
-      "edit"
-    ),
+    streaming: readEnum(value.streaming, "streaming", STREAMING_MODES, "edit"),
     tokenSecret,
   };
 };

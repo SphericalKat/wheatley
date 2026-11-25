@@ -67,7 +67,11 @@ export interface ApprovalPress {
   readonly decision: ApprovalDecision;
 }
 
-const longestKey = MAX_CUSTOM_ID_LENGTH - CUSTOM_ID_PREFIX.length - 4;
+/** A `custom_id` is `<prefix>:<decision code>:<key>`: two separators and a one-character decision code. */
+const CUSTOM_ID_OVERHEAD = ":".length * 2 + 1;
+
+const longestKey =
+  MAX_CUSTOM_ID_LENGTH - CUSTOM_ID_PREFIX.length - CUSTOM_ID_OVERHEAD;
 
 /** Returns the `custom_id` key for an Approval ID. IDs that do not fit in a `custom_id` become a hash. */
 export const promptKey = (approvalId: string): string =>
@@ -227,29 +231,24 @@ export class PromptStore {
     return this.#records.get(approvalId);
   }
 
-  /** Finds a record by its `custom_id` key. */
-  byKey(key: string): PromptRecord | undefined {
+  /**
+   * Resolves a button `custom_id` key to its Approval ID and stored record. An unhashed key is the Approval ID, so it
+   * resolves also without a record. A hashed key needs its record, so it returns `undefined` if the record is gone.
+   */
+  lookup(
+    key: string
+  ):
+    | { readonly approvalId: string; readonly record: PromptRecord | undefined }
+    | undefined {
     for (const record of this.#records.values()) {
       if (record.key === key) {
-        return record;
+        return { approvalId: record.approvalId, record };
       }
     }
 
-    return undefined;
-  }
-
-  /**
-   * Returns the Approval ID of a button `custom_id` key. A hashed key needs its stored record, so it returns
-   * `undefined` if the record is gone.
-   */
-  approvalIdFor(key: string): string | undefined {
-    const record = this.byKey(key);
-
-    if (record !== undefined) {
-      return record.approvalId;
-    }
-
-    return key.startsWith(HASHED_KEY_MARKER) ? undefined : key;
+    return key.startsWith(HASHED_KEY_MARKER)
+      ? undefined
+      : { approvalId: key, record: undefined };
   }
 
   /** Stores a record and resolves once the file holds it. */

@@ -5,6 +5,8 @@ import type { Attachment } from "@wheatley/sdk";
 import { DeliveryError } from "@wheatley/sdk";
 import type { AttachmentPayload } from "discord.js";
 
+import { errorText } from "./errors.js";
+
 /** Discord accepts at most this many files in one message. */
 export const MAX_FILES_PER_MESSAGE = 10;
 
@@ -128,9 +130,7 @@ const stageOne = async (
   try {
     return await download(file, options);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-
-    return skipped(file, `download failed: ${reason}`);
+    return skipped(file, `download failed: ${errorText(error)}`);
   }
 };
 

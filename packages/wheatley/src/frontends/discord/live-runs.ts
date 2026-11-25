@@ -1,7 +1,9 @@
 import type { Logger, RunEvent } from "@wheatley/sdk";
 
 import type { StreamingMode } from "./config.js";
+import { NO_MENTIONS } from "./discord-runtime.js";
 import type { SendableChannel, SentMessage } from "./discord-runtime.js";
+import { errorText } from "./errors.js";
 import { RecentIds } from "./recent-ids.js";
 
 /** Discord limits message content to this many characters. */
@@ -77,30 +79,13 @@ export class LiveRuns {
       return;
     }
 
-    switch (event.kind) {
-      case "run_started": {
-        this.#startTyping(this.#state(event.runId, event.chatId));
-        break;
-      }
-
-      case "text_delta": {
-        this.#append(this.#state(event.runId, event.chatId), event.delta);
-        break;
-      }
-
-      case "run_finished": {
-        this.#finish(event.runId);
-        break;
-      }
-
-      case "tool_started":
-      case "tool_finished": {
-        break;
-      }
-
-      default: {
-        break;
-      }
+    // The live view shows no tool progress, so it ignores `tool_started` and `tool_finished`.
+    if (event.kind === "run_started") {
+      this.#startTyping(this.#state(event.runId, event.chatId));
+    } else if (event.kind === "text_delta") {
+      this.#append(this.#state(event.runId, event.chatId), event.delta);
+    } else if (event.kind === "run_finished") {
+      this.#finish(event.runId);
     }
   };
 
@@ -173,7 +158,7 @@ export class LiveRuns {
       } catch (error) {
         this.#options.log.warn(`Discord could not ${action}`, {
           chatId: state.chatId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorText(error),
           runId: state.runId,
         });
       }
@@ -245,11 +230,11 @@ export class LiveRuns {
     if (state.draft === undefined) {
       const channel = await this.#channel(state);
       state.draft = await channel.send({
-        allowedMentions: { parse: [] },
+        allowedMentions: NO_MENTIONS,
         content,
       });
     } else {
-      await state.draft.edit({ allowedMentions: { parse: [] }, content });
+      await state.draft.edit({ allowedMentions: NO_MENTIONS, content });
     }
 
     state.shownText = content;

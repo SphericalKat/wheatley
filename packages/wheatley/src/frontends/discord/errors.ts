@@ -38,6 +38,10 @@ const hasRetryAfter = (
   "retryAfter" in cause &&
   typeof cause.retryAfter === "number";
 
+/** Returns the message of an `Error`, or the string form of any other thrown value, for log fields and notes. */
+export const errorText = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
 /** Returns the Discord JSON error code of a `DiscordAPIError`, or `undefined` for other errors. */
 export const discordErrorCode = (cause: unknown): number | undefined =>
   hasDiscordCode(cause) ? cause.code : undefined;

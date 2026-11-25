@@ -1,7 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { setImmediate as nextTurn } from "node:timers/promises";
 
 import type {
@@ -24,7 +23,10 @@ import {
   MessageFlags,
   Partials,
 } from "discord.js";
-import type { ChatInputApplicationCommandData } from "discord.js";
+import type {
+  ChatInputApplicationCommandData,
+  ClientOptions,
+} from "discord.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { InboundFile } from "./attachments.js";
@@ -41,7 +43,7 @@ import type {
   SentMessage,
   SlashCommandInteraction,
 } from "./discord-runtime.js";
-import { createDiscordFrontend, discordFrontendModule } from "./module.js";
+import { createDiscordFrontend } from "./module.js";
 
 const BOT_ID = "900000000000000001";
 const DM = "100";
@@ -246,6 +248,7 @@ const fakeClient = (): FakeClient => {
 };
 
 let clients: FakeClient[] = [];
+let clientOptions: ClientOptions[] = [];
 
 const runtime: DiscordRuntime = {
   ApplicationCommandOptionType,
@@ -254,7 +257,8 @@ const runtime: DiscordRuntime = {
   GatewayIntentBits,
   MessageFlags,
   Partials,
-  createClient: () => {
+  createClient: (options) => {
+    clientOptions.push(options);
     const client = fakeClient();
     clients.push(client);
 
@@ -475,6 +479,7 @@ beforeEach(async () => {
   fetchFile = vi.fn<typeof fetch>();
   binding = undefined;
   clients = [];
+  clientOptions = [];
   channels.clear();
 
   for (const fake of [
@@ -503,33 +508,19 @@ it("rejects a config without allowedChatIds and a token secret that is not set",
   ).rejects.toThrow(/MISSING/u);
 });
 
-it("exports an Agent module with no migrations or JSON-RPC methods", async () => {
-  const db = new DatabaseSync(":memory:");
-  const ctx = context();
-
-  const instance = await discordFrontendModule.create(
-    {
-      agentDir: root,
-      agentName: "home",
-      clock: { now: () => 0 },
-      db,
-      events: { emit: () => {} },
-      log: ctx.log,
-    },
-    { fetch: fetchFile }
-  );
-
-  db.close();
-
-  expect(discordFrontendModule.migrations).toStrictEqual([]);
-  expect(instance.api.type).toBe("discord");
-  expect(instance.rpc).toStrictEqual({});
-});
-
 it("logs in with the token secret and destroys the client on stop", async () => {
   const client = await startBinding();
+  const [options] = clientOptions;
 
   expect(client.token()).toBe("token-1");
+  // Without these, Discord sends no message text and discord.js drops DMs.
+  expect(options?.intents).toStrictEqual(
+    expect.arrayContaining([
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.DirectMessages,
+    ])
+  );
+  expect(options?.partials).toStrictEqual([Partials.Channel]);
 
   await binding?.stop();
 

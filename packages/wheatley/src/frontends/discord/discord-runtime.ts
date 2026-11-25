@@ -15,10 +15,29 @@ export interface OutboundMessage {
   readonly allowedMentions?: { readonly parse: readonly [] };
 }
 
+/** The `allowedMentions` value that stops a message from pinging anyone. */
+export const NO_MENTIONS = {
+  parse: [],
+} as const satisfies OutboundMessage["allowedMentions"];
+
+/*
+ * Errors: every method below that calls the Discord REST API rejects with an error from `@discordjs/rest`.
+ * - `DiscordAPIError`: Discord answered with an error. It carries the Discord JSON error `code` and the HTTP `status`.
+ * - `HTTPError`: Discord answered with an HTTP error and no JSON body. It carries the HTTP `status`.
+ * - `RateLimitError`: the request hit a rate limit that discord.js does not wait out. It carries `retryAfter` in ms.
+ * Other errors, such as a network failure, reject with a plain `Error`. `toDeliveryError` in `errors.ts` reads these
+ * fields.
+ */
+
 /** A message that the bot sent. */
 export interface SentMessage {
   readonly id: string;
+  /**
+   * Replaces the fields of the message that `message` sets and keeps the others. Resolves with the edited message.
+   * Rejects with a `DiscordAPIError` (code 10008, Unknown Message) if someone deleted the message.
+   */
   readonly edit: (message: OutboundMessage) => Promise<SentMessage>;
+  /** Deletes the message. Rejects with a `DiscordAPIError` (code 10008, Unknown Message) if it is already gone. */
   readonly delete: () => Promise<SentMessage>;
 }
 
@@ -35,12 +54,24 @@ export interface DiscordChannel {
 /** A channel that the bot can post to. */
 export interface SendableChannel extends DiscordChannel {
   readonly messages: {
+    /**
+     * Edits a message of this channel by ID, also one that an earlier process sent. Rejects with a `DiscordAPIError`
+     * (code 10008, Unknown Message) if the message is gone, and with code 50001 or 50013 if the bot lost access.
+     */
     readonly edit: (
       messageId: string,
       message: OutboundMessage
     ) => Promise<SentMessage>;
   };
+  /**
+   * Posts one message. Messages of one channel appear in the order in which their `send` calls resolve, so callers
+   * that need an order must await each call. Rejects with a `DiscordAPIError` for a deleted channel or missing
+   * permissions, an `HTTPError` for a 5xx answer, or a `RateLimitError`.
+   */
   readonly send: (message: OutboundMessage) => Promise<SentMessage>;
+  /**
+   * Shows the typing indicator for about 10 seconds, or until the bot posts a message. Rejects like `send`.
+   */
   readonly sendTyping: () => Promise<void>;
 }
 
@@ -124,15 +155,34 @@ export interface DiscordClient {
   ) => Promise<number>;
   /** Resolves `null` for a channel that the bot cannot see. Rejects with a `DiscordAPIError` for an unknown ID. */
   readonly fetchChannel: (channelId: string) => Promise<DiscordChannel | null>;
-  /** Connects to the Gateway. Rejects for an invalid token. */
+  /**
+   * Connects to the Gateway. It can resolve before the session is ready, so wait for `onReady`. Rejects for an invalid
+   * token. Register every listener before `login`, so that no event arrives without a listener.
+   */
   readonly login: (token: string) => Promise<void>;
+  /** Closes the Gateway connection and clears the token. Registered listeners stay, but no further events arrive. */
   readonly destroy: () => Promise<void>;
-  /** Calls `listener` once, when the Gateway session is ready. */
+  /**
+   * Calls `listener` once, when the Gateway session is ready. discord.js queues Gateway events until then, so no
+   * `onMessage` or `onInteraction` event comes before it.
+   */
   readonly onReady: (listener: () => void) => void;
+  /**
+   * Calls `listener` for each message that the bot can see, also its own messages and messages from unlisted
+   * channels. The client does not await the listener, so the listener must catch its own errors.
+   */
   readonly onMessage: (listener: (message: DiscordMessage) => void) => void;
+  /**
+   * Calls `listener` for each Slash Command and component interaction. Discord expects an answer within 3 seconds, so
+   * the listener must defer or reply before slow work. The client does not await the listener.
+   */
   readonly onInteraction: (
     listener: (interaction: DiscordInteraction) => void
   ) => void;
+  /**
+   * Calls `listener` for client errors that have no caller, for example a failed Gateway reconnect. Without a listener,
+   * discord.js throws such errors and the process crashes.
+   */
   readonly onError: (listener: (error: Error) => void) => void;
 }
 
@@ -149,7 +199,8 @@ export interface DiscordRuntime extends Pick<
   readonly createClient: (options: DiscordJs.ClientOptions) => DiscordClient;
 }
 
-const adaptClient = (
+/** Adapts a `discord.js` client to `DiscordClient`. */
+export const adaptClient = (
   discord: typeof DiscordJs,
   client: DiscordJs.Client
 ): DiscordClient => ({
