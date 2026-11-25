@@ -1,3 +1,4 @@
+import { DEFAULT_WEBHOOK_HOST, DEFAULT_WEBHOOK_PORT } from "@wheatley/protocol";
 import type { WebhooksConfig } from "@wheatley/protocol";
 
 import type {
@@ -24,11 +25,7 @@ import {
 import { createOutboxRpc, createTriggerRpc } from "./rpc.js";
 import { SqliteTriggerRuntime } from "./trigger-runtime.js";
 import { createTriggerToolProvider } from "./trigger-tools.js";
-import {
-  DEFAULT_WEBHOOK_HOST,
-  DEFAULT_WEBHOOK_PORT,
-  HttpWebhookIngress,
-} from "./webhook-ingress.js";
+import { HttpWebhookIngress } from "./webhook-ingress.js";
 
 export {
   OUTBOX_NAMESPACE,

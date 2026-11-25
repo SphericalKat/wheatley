@@ -21,12 +21,6 @@ import type {
 } from "../contracts/webhook-ingress.js";
 import { errorText } from "./errors.js";
 
-/** The listener host if `webhooks.host` is absent. A reverse proxy in front of it terminates TLS. */
-export const DEFAULT_WEBHOOK_HOST = "127.0.0.1";
-
-/** The listener port if `webhooks.port` is absent. */
-export const DEFAULT_WEBHOOK_PORT = 8788;
-
 /** A request must arrive in full within this time. */
 const REQUEST_TIMEOUT_MS = 30_000;
 

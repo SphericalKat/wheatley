@@ -1,10 +1,15 @@
+import {
+  DEFAULT_WEBHOOK_HOST,
+  DEFAULT_WEBHOOK_PORT,
+  webhookTriggerPath,
+} from "@wheatley/protocol";
 import type { WebhooksConfig } from "@wheatley/protocol";
 
-/** The Webhook Ingress host if `webhooks.host` is absent. It matches `DEFAULT_WEBHOOK_HOST` of the daemon. */
-const DEFAULT_WEBHOOK_HOST = "127.0.0.1";
-
-/** The Webhook Ingress port if `webhooks.port` is absent. It matches `DEFAULT_WEBHOOK_PORT` of the daemon. */
-const DEFAULT_WEBHOOK_PORT = 8788;
+/** Wildcard bind addresses and the loopback address of the same family that a local client can send requests to. */
+const LOOPBACK_FOR_WILDCARD: ReadonlyMap<string, string> = new Map([
+  ["0.0.0.0", "127.0.0.1"],
+  ["::", "::1"],
+]);
 
 /** Where a webhook Trigger takes `POST` requests. */
 export interface WebhookEndpoint {
@@ -21,19 +26,21 @@ const urlHost = (host: string): string =>
 /**
  * Returns the endpoint of the webhook Trigger `triggerId` of `agent`. `webhooks` is the `webhooks` block of the
  * loaded `config.yaml`. The URL names the listener address, which can differ from the address of a reverse proxy.
+ * For a wildcard bind address (`0.0.0.0` or `::`), the URL names the loopback address of the same family.
  */
 export const webhookEndpoint = (
   agent: string,
   triggerId: string,
   webhooks: WebhooksConfig | undefined
 ): WebhookEndpoint => {
-  const path = `/webhooks/${encodeURIComponent(agent)}/${encodeURIComponent(triggerId)}`;
+  const path = webhookTriggerPath(agent, triggerId);
 
   if (webhooks?.enabled !== true) {
     return { path, url: null };
   }
 
-  const host = urlHost(webhooks.host ?? DEFAULT_WEBHOOK_HOST);
+  const bindHost = webhooks.host ?? DEFAULT_WEBHOOK_HOST;
+  const host = urlHost(LOOPBACK_FOR_WILDCARD.get(bindHost) ?? bindHost);
   const port = webhooks.port ?? DEFAULT_WEBHOOK_PORT;
 
   return { path, url: `http://${host}:${port}${path}` };

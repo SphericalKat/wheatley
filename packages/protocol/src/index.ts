@@ -3,6 +3,8 @@ export {
   AgentConfigSchema,
   type DaemonConfig,
   DaemonConfigSchema,
+  DEFAULT_WEBHOOK_HOST,
+  DEFAULT_WEBHOOK_PORT,
   type DeploymentConfig,
   DeploymentConfigSchema,
   type FrontendBindingConfig,
@@ -23,6 +25,7 @@ export {
   StringOrSecretSchema,
   type WebhooksConfig,
   WebhooksConfigSchema,
+  webhookTriggerPath,
 } from "./config.js";
 
 export {

@@ -369,7 +369,7 @@ const CopyableValue = ({
   readonly label: string;
   readonly value: string;
 }) => {
-  const [error, setError] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-xs">
@@ -379,19 +379,19 @@ const CopyableValue = ({
       </code>
       <ActionButton
         onClick={async () => {
-          setError(null);
+          setCopyError(null);
 
           try {
             await navigator.clipboard.writeText(value);
-          } catch (error_) {
-            setError(errorMessage(error_));
+          } catch (error) {
+            setCopyError(errorMessage(error));
           }
         }}
         title={`Copy ${label}`}
       >
         Copy
       </ActionButton>
-      <ErrorText error={error} />
+      <ErrorText error={copyError} />
     </span>
   );
 };

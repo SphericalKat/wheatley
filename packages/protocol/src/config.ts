@@ -84,6 +84,20 @@ export const WebhooksConfigSchema = Type.Object(
 
 export type WebhooksConfig = Static<typeof WebhooksConfigSchema>;
 
+/** The Webhook Ingress host if `webhooks.host` is absent. A reverse proxy in front of it terminates TLS. */
+export const DEFAULT_WEBHOOK_HOST = "127.0.0.1";
+
+/** The Webhook Ingress port if `webhooks.port` is absent. */
+export const DEFAULT_WEBHOOK_PORT = 8788;
+
+/**
+ * Returns the Webhook Ingress path of the webhook Trigger `triggerId` of `agent`: `/webhooks/<agent>/<triggerId>`.
+ * The ingress matches the raw path segments without percent-decoding, so the parts stay unencoded. Agent names are
+ * URL-safe by `AgentNameSchema`.
+ */
+export const webhookTriggerPath = (agent: string, triggerId: string): string =>
+  `/webhooks/${agent}/${triggerId}`;
+
 /** Memory settings of one Agent (ADR 0009). */
 export const MemoryConfigSchema = Type.Object(
   {
