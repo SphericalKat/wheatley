@@ -314,8 +314,8 @@ importers:
         specifier: 2.4.0
         version: 2.4.0
       '@types/ws':
-        specifier: 8.18.1
-        version: 8.18.1
+        specifier: 8.18.2
+        version: 8.18.2
       '@wheatley/dashboard':
         specifier: workspace:*
         version: link:../dashboard
@@ -1248,9 +1248,6 @@ packages:
 
   '@types/retry@0.12.5':
     resolution: {integrity: sha512-3xSjTp3v03X/lSQLkczaN9UIEwJMoMCA1+Nb5HfbJEQWogdeQIyVtTvxPXDQjZ5zws8rFQfVfRdz03ARihPJgw==}
-
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/ws@8.18.2':
     resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
@@ -3214,10 +3211,6 @@ snapshots:
   '@types/retry@0.12.0': {}
 
   '@types/retry@0.12.5': {}
-
-  '@types/ws@8.18.1':
-    dependencies:
-      '@types/node': 26.6.6
 
   '@types/ws@8.18.2':
     dependencies:

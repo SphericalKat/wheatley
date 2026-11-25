@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "@types/ws": "8.18.1",
+    "@types/ws": "8.18.2",
     "@wheatley/dashboard": "workspace:*",
     "@wheatley/protocol": "workspace:*",
     "@wheatley/sdk": "workspace:*"
