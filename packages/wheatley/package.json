@@ -16,7 +16,9 @@
     "@earendil-works/pi-durable": "1.6.1",
     "@earendil-works/pi-schema": "1.6.1",
     "@wheatley/protocol": "workspace:*",
-    "@wheatley/sdk": "workspace:*"
+    "@wheatley/sdk": "workspace:*",
+    "typebox": "1.4.7",
+    "yaml": "2.9.1"
   },
   "engines": {
     "node": ">=26.13.1"
