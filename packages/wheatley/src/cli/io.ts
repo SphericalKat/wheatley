@@ -15,6 +15,13 @@ export interface CliIo {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Aborts when the process receives `SIGINT` or `SIGTERM`. */
   readonly shutdown: AbortSignal;
+  /**
+   * Hands standard input and output to an interactive terminal in place of `lines`. Returns `undefined` if either is
+   * not a terminal, or if a command already read from `lines`.
+   */
+  readonly terminal?: () =>
+    | { readonly input: NodeJS.ReadStream; readonly output: NodeJS.WriteStream }
+    | undefined;
 }
 
 /** The terminal of the running process. */
@@ -28,18 +35,42 @@ export const processIo = (): CliIo => {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
-  const readline = createInterface({ input: process.stdin, terminal: false });
+  // Created on the first read, so that `terminal` can take standard input instead.
+  let lines: AsyncIterator<string> | undefined;
+  let terminalOpen = false;
 
   return {
     env: process.env,
     isTTY: isatty(process.stdin.fd),
-    lines: readline[Symbol.asyncIterator](),
+    lines: {
+      next: async () => {
+        lines ??= createInterface({
+          input: process.stdin,
+          terminal: false,
+        })[Symbol.asyncIterator]();
+
+        return await lines.next();
+      },
+    },
     shutdown: shutdown.signal,
     stderr: (text) => {
       process.stderr.write(text);
     },
     stdout: (text) => {
       process.stdout.write(text);
+    },
+    terminal: () => {
+      const usable =
+        lines === undefined &&
+        !terminalOpen &&
+        isatty(process.stdin.fd) &&
+        isatty(process.stdout.fd);
+
+      terminalOpen ||= usable;
+
+      return usable
+        ? { input: process.stdin, output: process.stdout }
+        : undefined;
     },
   };
 };

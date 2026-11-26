@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "customConditions": ["@wheatley/source"]
+    "customConditions": ["@wheatley/source"],
+    "jsx": "react-jsx"
   },
   "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts"]
 }
