@@ -357,14 +357,30 @@ The default host is `127.0.0.1`, and the default port is `8788`.
 
 `wheatley chat` opens the CLI Chat of an Agent. The dashboard shows the same Chat. If the Deployment has more than one Agent and none has the name `default`, pass `--agent <name>`. Type `/exit` or press `Ctrl+D` to end the Chat.
 
-In a terminal, `wheatley chat` has these features:
+In a terminal, `wheatley chat` opens a full-screen chat:
 
-- The Chat starts with a `WHEATLEY` banner. A terminal narrower than 52 columns gets a one-line banner.
-- Type `/` to open the command menu under the prompt. Up and Down select a command, `Tab` completes it, and `Enter` runs it.
-- `/help` lists the commands with their descriptions.
-- The Up and Down arrows recall earlier input when the menu is closed. Wheatley saves the input history in `<home>/chat_history`.
-- A spinner shows while a Run works, with the elapsed time. During a Tool call, it shows the Tool name. Between Tool calls, it rotates through short lines in Wheatley's voice. You can type the next message during the Run.
-- `Ctrl+C` stops the active Run. On an empty prompt with no active Run, `Ctrl+C` ends the Chat.
+- A welcome card shows the version, the Agent, its model, its skills, plugins, and MCP servers, the folder, and a tip.
+- Replies stream as they arrive and show as formatted Markdown: headings, lists, quotes, links, inline code, and code blocks. Long lines wrap at word boundaries.
+- Each Tool call shows as one row with its input, the result, and the time it took. A failed call also shows the start of its output.
+- A line after each reply shows the time, the Tool calls, the tokens, and the cost.
+- A spinner shows while a Run works. During a Tool call, it shows the Tool. Between Tool calls, it shows short lines in Wheatley's voice.
+- An Approval opens a panel. Choose with the arrows and Enter, a number, or the letters `o`, `c`, `a`, and `d`. `d` asks for a reason. `Esc` denies.
+- The status bar shows the Agent, the model, the tokens and cost of the session, and the keys for the current state.
+- When a Run takes 10 seconds or more, or needs an Approval, the terminal gets a notification and a bell.
+- When the chat ends, it prints the duration, Runs, tokens, and cost of the session.
+
+Input:
+
+- Type `/` to open the command menu. It also matches words in the descriptions. Up and Down select a command, and `Tab` or Right completes it. `Enter` runs it.
+- An unknown command, for example `/stpo`, is not sent. The chat suggests the closest command.
+- Start a line with `!` to run a shell command in the current folder, for example `!git status`. The command does not go to the Agent.
+- End a line with `\` and press `Enter`, or press `Alt+Enter`, to add a new line. A paste keeps its lines. A paste longer than 8 lines shows as `[Pasted text #1 · 40 lines]` until you send it.
+- The Up and Down arrows recall earlier input. Wheatley saves the input history in `<home>/chat_history`.
+- `Ctrl+W`, `Ctrl+U`, and `Ctrl+K` delete the word before the cursor, the text before the cursor, and the text after it.
+- `Esc` closes the menu or interrupts the Run. Press `Esc` twice to clear the line.
+- `Ctrl+C` clears the line, then stops the Run, then exits when you press it twice. `Ctrl+D` exits on an empty line.
+- `/copy` puts the last reply on the clipboard. It works over SSH in terminals that support OSC 52.
+- `/help` lists the commands and keys.
 
 If standard input or output is not a terminal, for example a pipe, `wheatley chat` reads and writes plain lines.
 

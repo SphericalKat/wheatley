@@ -65,24 +65,34 @@ const BANNER_WIDTH = BANNER_ROWS[0].length;
 /** The space that the banner keeps on each side. */
 const BANNER_MARGIN = 4;
 
-/** The banner that `wheatley chat` prints on start. A terminal too narrow for the block letters gets one line. */
-export const banner = (
-  columns: number,
-  version: string,
-  agent: string
-): string => {
-  const details = styleText(
-    "dim",
-    `  v${version} · chatting with ${agent} · /help for commands`
-  );
+/** "WHEATLEY" in colored block letters, or one line on a terminal too narrow for them. */
+export const bannerArt = (columns: number): string =>
+  columns < BANNER_WIDTH + BANNER_MARGIN
+    ? styleText(["cyan", "bold"], "◉ wheatley")
+    : BANNER_ROWS.map((row, index) =>
+        styleText(BANNER_COLORS[index] ?? "cyan", row)
+      ).join("\n");
 
-  if (columns < BANNER_WIDTH + BANNER_MARGIN) {
-    return `${styleText(["cyan", "bold"], "◉ wheatley")}\n${details}\n`;
-  }
+/** Tips for the welcome screen. */
+export const TIPS = [
+  "Type / to open the command menu, then Tab to complete.",
+  "Start a line with ! to run a shell command here, for example !git status.",
+  "End a line with \\ and press Enter to add a new line. Pasted text keeps its lines.",
+  "Press Esc to interrupt a Run. You can type the next message while it works.",
+  "/copy puts the last reply on your clipboard, even over SSH.",
+  "Ctrl+W deletes a word, Ctrl+U the line before the cursor, and Ctrl+K the rest.",
+  "The dashboard shows this same Chat at http://127.0.0.1:7420/.",
+  "Up and Down recall what you typed earlier, across sessions.",
+] as const;
 
-  const art = BANNER_ROWS.map(
-    (row, index) => `  ${styleText(BANNER_COLORS[index] ?? "cyan", row)}`
-  );
+/** Lines for the end of a chat. Original, in the same eager voice as the thinking lines. */
+export const GOODBYES = [
+  "Right. Off you go, then. I'll just be here. Thinking.",
+  "Lovely chat. Really top quality. Same time tomorrow?",
+  "Bye! Don't touch anything on the way out.",
+  "Going quiet now. Very quiet. Starting… now.",
+] as const;
 
-  return `\n${art.join("\n")}\n\n${details}\n`;
-};
+/** A random element of `items`. */
+export const pick = <T>(items: readonly T[]): T | undefined =>
+  items[Math.floor(Math.random() * items.length)];
