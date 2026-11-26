@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0](https://github.com/SphericalKat/wheatley/compare/v0.1.1...v0.2.0) (2026-11-26)
+
+
+### Features
+
+* **cli:** add a banner, a live command menu, and rotating thinking lines to wheatley chat ([891ee0b](https://github.com/SphericalKat/wheatley/commit/891ee0bbe2f940dea7abf08332256b502d9f7a77))
+* **cli:** rebuild the wheatley chat terminal with Ink ([aa41bf1](https://github.com/SphericalKat/wheatley/commit/aa41bf19e6abe6a534c138a6e2f218e05080f167))
+* **cli:** rebuild the wheatley chat terminal with Ink ([0895456](https://github.com/SphericalKat/wheatley/commit/0895456d3565a1bc96157c8d3fc73826cc14b12a))
+
 ## [0.1.1](https://github.com/SphericalKat/wheatley/compare/v0.1.0...v0.1.1) (2026-11-25)
 
 
