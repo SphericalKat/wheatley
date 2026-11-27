@@ -4,6 +4,21 @@ Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript
 
 ![Wheatley CLI thinking demo](docs/assets/wheatley-thinking.gif)
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Chat and Approvals](#chat-and-approvals)
+- [Dashboard](#dashboard)
+- [Triggers and webhooks](#triggers-and-webhooks)
+- [Memory](#memory)
+- [Operations](#operations)
+- [Write a Plugin](#write-a-plugin)
+- [Development](#development)
+- [License](#license)
+
 ## Requirements
 
 - Node.js `26.13.1` or newer. The install script downloads Node.js automatically if your machine does not have a compatible version.
