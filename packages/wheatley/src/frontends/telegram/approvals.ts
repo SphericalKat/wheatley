@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
-
 import type {
   ApprovalDecision,
   ApprovalOutcome,
@@ -10,15 +6,13 @@ import type {
 } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
 
 import type { InlineButton } from "./client.js";
 import { escapeHtml } from "./markdown.js";
-import { SerialQueue } from "./serial-queue.js";
+import { shortToken, TokenStore } from "./token-store.js";
 
 const STORE_FILE = "approvals.json";
 const CALLBACK_PREFIX = "ap";
-const TOKEN_LENGTH = 16;
 const CALLBACK_DATA = /^ap:(?<token>[\w-]+):(?<code>[ocad])$/u;
 
 /** The four buttons of an Approval prompt, in display order, with their callback codes. */
@@ -54,14 +48,9 @@ const PromptSchema = Type.Object({
 /** The Telegram message that shows one pending Approval. */
 export type ApprovalPrompt = Static<typeof PromptSchema>;
 
-const StoreSchema = Type.Record(Type.String(), PromptSchema);
-
 /** Returns the short key of an Approval for callback data, which Telegram limits to 64 bytes. */
 export const approvalToken = (approvalId: string): string =>
-  createHash("sha256")
-    .update(approvalId)
-    .digest("base64url")
-    .slice(0, TOKEN_LENGTH);
+  shortToken(approvalId);
 
 /** The inline keyboard of an Approval prompt: two rows of two buttons. */
 export const approvalKeyboard = (
@@ -132,75 +121,38 @@ export const approvalResolvedText = (
 /**
  * The Approval prompts of one binding, kept in `approvals.json` of the binding's data directory so that an Approval
  * that ends after a restart still edits its prompt.
- *
- * Invariant: every write replaces the file atomically, and writes run one at a time.
  */
 export class ApprovalPromptStore {
-  readonly #path: string;
-  #prompts = new Map<string, ApprovalPrompt>();
-  readonly #writes = new SerialQueue();
+  readonly #store: TokenStore<typeof PromptSchema>;
 
   constructor(dataDir: string) {
-    this.#path = path.join(dataDir, STORE_FILE);
+    this.#store = new TokenStore({
+      dataDir,
+      file: STORE_FILE,
+      schema: PromptSchema,
+    });
   }
 
   /** Reads the file. A missing file is an empty store. Rejects if the file is not a valid store. */
   readonly load = async (): Promise<void> => {
-    let text: string;
-
-    try {
-      text = await readFile(this.#path, "utf-8");
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        return;
-      }
-
-      throw error;
-    }
-
-    const parsed: unknown = JSON.parse(text);
-
-    if (!Value.Check(StoreSchema, parsed)) {
-      throw new Error(`Invalid Telegram approval store: ${this.#path}`);
-    }
-
-    this.#prompts = new Map(Object.entries(parsed));
+    await this.#store.load();
   };
 
   /** Returns the prompt of an Approval by its callback token. */
   readonly byToken = (token: string): ApprovalPrompt | undefined =>
-    this.#prompts.get(token);
+    this.#store.get(token);
 
   /** Returns the prompt of an Approval. */
   readonly get = (approvalId: string): ApprovalPrompt | undefined =>
-    this.#prompts.get(approvalToken(approvalId));
+    this.#store.get(approvalToken(approvalId));
 
   /** Stores a prompt. Resolves once the file is written. */
   readonly put = async (prompt: ApprovalPrompt): Promise<void> => {
-    this.#prompts.set(approvalToken(prompt.approvalId), prompt);
-    await this.#persist();
+    await this.#store.put(approvalToken(prompt.approvalId), prompt);
   };
 
   /** Removes a prompt. Resolves once the file is written. */
   readonly delete = async (approvalId: string): Promise<void> => {
-    if (this.#prompts.delete(approvalToken(approvalId))) {
-      await this.#persist();
-    }
-  };
-
-  readonly #persist = async (): Promise<void> => {
-    await this.#writes.run(async () => {
-      const temporary = `${this.#path}.tmp`;
-      await writeFile(
-        temporary,
-        JSON.stringify(Object.fromEntries(this.#prompts)),
-        "utf-8"
-      );
-      await rename(temporary, this.#path);
-    });
+    await this.#store.delete(approvalToken(approvalId));
   };
 }
