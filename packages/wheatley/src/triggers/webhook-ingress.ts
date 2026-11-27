@@ -1,15 +1,18 @@
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
-import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import { createAdaptorServer } from "@hono/node-server";
 import type {
   Logger,
   WebhookResponse,
   WebhookRoute,
   WebhookRouteHandler,
 } from "@wheatley-ai/sdk";
+import { Hono } from "hono";
+import type { Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 
 import { SeamError } from "../contracts/errors.js";
 import type { Clock } from "../contracts/module.js";
@@ -27,6 +30,11 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const BEARER = /^Bearer (?<token>\S+)$/u;
 const SAFE_SUFFIX = /^[A-Za-z0-9._~\-/]+$/u;
 
+/** The origin of the `Request` that `handle` builds. The Ingress routes on the path only. */
+const INTERNAL_ORIGIN = "http://ingress.invalid";
+
+const FRONTEND_PREFIX = /^\/frontends\/[^/]+\/[^/]+\//u;
+
 const status = (code: number): WebhookResponse => ({ status: code });
 
 const tokensMatch = (given: string, expected: string): boolean => {
@@ -36,44 +44,22 @@ const tokensMatch = (given: string, expected: string): boolean => {
   return left.length === right.length && timingSafeEqual(left, right);
 };
 
-const headersOf = (request: IncomingMessage) =>
-  Object.fromEntries(
-    Object.entries(request.headers).flatMap(([name, value]) =>
-      value === undefined
-        ? []
-        : [[name, Array.isArray(value) ? value.join(", ") : value]]
-    )
+const toResponse = (result: WebhookResponse): Response =>
+  new Response(
+    result.body instanceof Uint8Array
+      ? new Uint8Array(result.body)
+      : result.body,
+    { headers: result.headers, status: result.status }
   );
 
-/**
- * Reads the body and stops at `MAX_WEBHOOK_BODY_BYTES`. Resolves `undefined` as soon as the declared length or the
- * streamed bytes pass the cap, without reading the rest.
- */
-const readBody = async (
-  request: IncomingMessage
-): Promise<Uint8Array | undefined> => {
-  const declared = Number(request.headers["content-length"] ?? "0");
+const fromResponse = async (response: Response): Promise<WebhookResponse> => {
+  const body = new Uint8Array(await response.arrayBuffer());
 
-  if (declared > MAX_WEBHOOK_BODY_BYTES) {
-    return undefined;
-  }
-
-  const chunks: Buffer[] = [];
-  let size = 0;
-
-  // The early return must not destroy the socket before the `413` answer.
-  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-    size += buffer.length;
-
-    if (size > MAX_WEBHOOK_BODY_BYTES) {
-      return undefined;
-    }
-
-    chunks.push(buffer);
-  }
-
-  return new Uint8Array(Buffer.concat(chunks));
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers),
+    ...(body.byteLength > 0 && { body }),
+  };
 };
 
 const isAddressInfo = (
@@ -86,8 +72,24 @@ export interface HttpWebhookIngressOptions extends WebhookIngressDeps {
   readonly log: Logger;
 }
 
+/** A routed request with its body read in full. */
+interface ReadRequest {
+  readonly path: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
+}
+
+const readRequest = async (c: Context): Promise<ReadRequest> => ({
+  body: new Uint8Array(await c.req.arrayBuffer()),
+  headers: Object.fromEntries(c.req.raw.headers),
+  path: new URL(c.req.url).pathname,
+  query: c.req.query(),
+});
+
 /**
- * The Webhook Ingress (ADR 0010, ADR 0012): the routing of `WebhookIngress` and a `node:http` listener for it.
+ * The Webhook Ingress (ADR 0010, ADR 0012): the routing of `WebhookIngress` as a Hono app and a `node:http` listener
+ * for it.
  *
  * The listener answers `413` for a body over 256 KiB as soon as the declared length or the streamed bytes pass the
  * cap, and closes the connection without reading the rest.
@@ -95,10 +97,12 @@ export interface HttpWebhookIngressOptions extends WebhookIngressDeps {
 export class HttpWebhookIngress implements WebhookIngress {
   readonly #options: HttpWebhookIngressOptions;
   readonly #routes = new Map<string, WebhookRouteHandler>();
+  readonly #app: Hono;
   #server: Server | undefined;
 
   constructor(options: HttpWebhookIngressOptions) {
     this.#options = options;
+    this.#app = this.#createApp();
   }
 
   readonly registerFrontendRoute = (
@@ -140,35 +144,23 @@ export class HttpWebhookIngress implements WebhookIngress {
   readonly handle = async (
     request: IngressRequest
   ): Promise<WebhookResponse> => {
-    if (request.method !== "POST") {
-      return status(405);
+    const url = new URL(request.path, INTERNAL_ORIGIN);
+
+    for (const [name, value] of Object.entries(request.query)) {
+      url.searchParams.set(name, value);
     }
 
-    const [empty, area, agentName = "", target = "", ...rest] =
-      request.path.split("/");
+    const hasBody = request.method !== "GET" && request.method !== "HEAD";
 
-    if (empty !== "") {
-      return status(404);
-    }
+    const response = await this.#app.fetch(
+      new Request(url, {
+        body: hasBody ? new Uint8Array(request.body) : undefined,
+        headers: request.headers,
+        method: request.method,
+      })
+    );
 
-    try {
-      if (area === "webhooks" && rest.length === 0) {
-        return await this.#trigger(agentName, target, request);
-      }
-
-      if (area === "frontends") {
-        return await this.#frontend(agentName, rest.join("/"), request);
-      }
-
-      return status(404);
-    } catch (error) {
-      this.#options.log.error("A webhook request failed", {
-        error: errorText(error),
-        path: request.path,
-      });
-
-      return status(500);
-    }
+    return await fromResponse(response);
   };
 
   /** The bound address while the listener runs, else `undefined`. */
@@ -180,9 +172,17 @@ export class HttpWebhookIngress implements WebhookIngress {
 
   /** Starts the listener on `host` and `port`. Rejects if the port is in use. */
   readonly listen = async (host: string, port: number): Promise<void> => {
-    const server = createServer((request, response) => {
-      void this.#serve(request, response);
+    const server = createAdaptorServer({
+      fetch: this.#app.fetch,
+      // The default replaces the global `Request` and `Response` for the whole process.
+      overrideGlobalObjects: false,
     });
+
+    if (!(server instanceof Server)) {
+      throw new TypeError(
+        "The Webhook Ingress listener is not an HTTP/1.1 server"
+      );
+    }
 
     server.requestTimeout = REQUEST_TIMEOUT_MS;
 
@@ -206,10 +206,53 @@ export class HttpWebhookIngress implements WebhookIngress {
     await closed;
   };
 
+  readonly #createApp = (): Hono => {
+    const app = new Hono();
+
+    app.post(
+      "*",
+      bodyLimit({
+        maxSize: MAX_WEBHOOK_BODY_BYTES,
+        onError: (c) => c.body(null, 413, { connection: "close" }),
+      })
+    );
+    app.post("/webhooks/:agent/:triggerId", async (c) =>
+      toResponse(
+        await this.#trigger(
+          c.req.param("agent"),
+          c.req.param("triggerId"),
+          await readRequest(c)
+        )
+      )
+    );
+    app.post("/frontends/:agent/:bindingId/*", async (c) => {
+      const request = await readRequest(c);
+
+      return toResponse(
+        await this.#frontend(
+          c.req.param("agent"),
+          request.path.replace(FRONTEND_PREFIX, ""),
+          request
+        )
+      );
+    });
+    app.all("*", (c) => c.body(null, c.req.method === "POST" ? 404 : 405));
+    app.onError((failure, c) => {
+      this.#options.log.error("A webhook request failed", {
+        error: errorText(failure),
+        path: c.req.path,
+      });
+
+      return c.body(null, 500);
+    });
+
+    return app;
+  };
+
   readonly #trigger = async (
     agentName: string,
     triggerId: string,
-    request: IngressRequest
+    request: ReadRequest
   ): Promise<WebhookResponse> => {
     const agent = this.#options.agent(agentName);
 
@@ -262,7 +305,7 @@ export class HttpWebhookIngress implements WebhookIngress {
   readonly #frontend = async (
     agentName: string,
     pathSuffix: string,
-    request: IngressRequest
+    request: ReadRequest
   ): Promise<WebhookResponse> => {
     const agent = this.#options.agent(agentName);
     const handler = this.#routes.get(request.path);
@@ -282,47 +325,5 @@ export class HttpWebhookIngress implements WebhookIngress {
       pathSuffix,
       query: request.query,
     });
-  };
-
-  readonly #serve = async (
-    request: IncomingMessage,
-    response: ServerResponse
-  ): Promise<void> => {
-    const url = new URL(request.url ?? "/", "http://ingress.invalid");
-
-    try {
-      const body =
-        request.method === "POST" ? await readBody(request) : new Uint8Array();
-
-      if (body === undefined) {
-        response.writeHead(413, { connection: "close" });
-        response.end(() => {
-          request.destroy();
-        });
-
-        return;
-      }
-
-      const result = await this.handle({
-        body,
-        headers: headersOf(request),
-        method: request.method ?? "",
-        path: url.pathname,
-        query: Object.fromEntries(url.searchParams),
-      });
-
-      response.writeHead(result.status, result.headers);
-      response.end(result.body);
-    } catch (error) {
-      this.#options.log.warn("A webhook request was not read", {
-        error: errorText(error),
-      });
-
-      if (!response.headersSent) {
-        response.writeHead(400, { connection: "close" });
-      }
-
-      response.end();
-    }
   };
 }
