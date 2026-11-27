@@ -346,6 +346,19 @@ describe("wheatley status and init", () => {
     expect(terminal.stderr()).toBe("");
   });
 
+  it("prints the package version on stdout and exits 0 for --version", async () => {
+    const terminal = scriptedIo([]);
+
+    const manifest: unknown = JSON.parse(
+      await readFile(new URL("../../package.json", import.meta.url), "utf-8")
+    );
+
+    await expect(runCli(["--version"], terminal.io)).resolves.toBe(0);
+    expect(terminal.stdout()).toMatch(/^\S+\n$/u);
+    expect(manifest).toMatchObject({ version: terminal.stdout().trim() });
+    expect(terminal.stderr()).toBe("");
+  });
+
   it("reads the backups of restore from the --home folder", async () => {
     const backup = "agent-20260101T000000000Z-pre-migration.sqlite";
     const backupsDir = path.join(home.dir, "agents", "home", "backups");

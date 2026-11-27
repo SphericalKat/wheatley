@@ -4,7 +4,7 @@ Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript
 
 ## Requirements
 
-- Node.js `26.13.1` or later. The repository pins `26.13.1` in `.node-version`.
+- Node.js `26.13.1` or later. The repository pins `26.13.1` in `.node-version`. The `curl` installer downloads Node.js if the host has no Node.js `26.13.1` or later.
 - `pnpm` `12.23.0`, for a build from source.
 - An API key for a model provider, for example Anthropic or OpenAI.
 - Docker with Docker Compose, for the Docker install only.
@@ -17,6 +17,47 @@ Each release publishes these artifacts:
 - The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
 - The Docker image `ghcr.io/sphericalkat/wheatley`.
 - A GitHub release with a `v<version>` tag and the changelog.
+
+### Install with the `curl` installer
+
+The installer works on macOS (`arm64` and `x64`) and on Linux with glibc (`x64` and `arm64`).
+
+1. Run the installer:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
+   ```
+
+   To install one release, add `--version`:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 0.2.0
+   ```
+
+2. Open a new shell, or run the `export PATH=...` line that the installer prints.
+3. Check the installed version:
+
+   ```bash
+   wheatley --version
+   ```
+
+4. Continue with the [Quick start](#quick-start).
+
+The installer uses these folders. It does not write to `~/.wheatley`, which holds the Deployment home.
+
+| Folder | Contents |
+| --- | --- |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | The installed `@wheatley-ai/cli` package. |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/runtime` | Node.js `26.13.1`, if the host has no suitable Node.js. |
+| `${XDG_BIN_HOME:-$HOME/.local/bin}` | The `wheatley` command. |
+
+The installer works like this:
+
+- If the host has Node.js `26.13.1` or later with `npm`, the installer uses them. Otherwise, it downloads Node.js `26.13.1` from `https://nodejs.org/dist` and verifies the file against `SHASUMS256.txt`. Set `WHEATLEY_NODE_MIRROR` to use another download site.
+- The downloaded Node.js needs `libatomic` on Linux. On Debian or Ubuntu, run `apt-get install libatomic1`.
+- On musl systems, for example Alpine Linux, the installer stops. Install Node.js `26.13.1` or later with the system package manager and run the installer again, or use Docker.
+- If `~/.local/bin` is not on `PATH`, the installer adds it to the profile of your shell. To prevent this change, add `--no-modify-path`.
+- To update, run the installer again. It keeps the same folders.
 
 ### Install from npm
 

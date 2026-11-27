@@ -30,6 +30,7 @@ Commands:
 
 Options:
   -h, --help         Show this help
+  --version          Print the Wheatley version
   --home <dir>       The Deployment home (default: $WHEATLEY_HOME or ~/.wheatley)
   --url <ws-url>     Connect over TCP instead of the Unix socket in the home folder
   --agent <name>     The Agent of chat and ask
@@ -205,9 +206,16 @@ export const runCli = async (
     return 0;
   }
 
+  const version = await packageVersion();
+
+  if (values.version === true) {
+    io.stdout(`${version}\n`);
+
+    return 0;
+  }
+
   const [command, ...rest] = positionals;
   const home = resolveHome(values.home, io.env);
-  const version = await packageVersion();
   const client: ClientFlags = { agent: values.agent, home, url: values.url };
 
   switch (command) {
@@ -285,6 +293,7 @@ const parseCliArgs = (argv: readonly string[]) =>
       port: { type: "string" },
       provider: { type: "string" },
       url: { type: "string" },
+      version: { type: "boolean" },
     },
     strict: true,
   });
