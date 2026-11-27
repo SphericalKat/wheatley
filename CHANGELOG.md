@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/SphericalKat/wheatley/compare/v0.5.0...v0.6.0) (2026-11-27)
+
+
+### Features
+
+* **installer:** style install.sh output like OpenCode with Wheatley banner ([#128](https://github.com/SphericalKat/wheatley/issues/128)) ([627edb0](https://github.com/SphericalKat/wheatley/commit/627edb098b3faf61ceba58b055bdeb5f31dddae9))
+* **plugins:** add bundled web-search Plugin with bare-name resolution ([1e06aae](https://github.com/SphericalKat/wheatley/commit/1e06aae1d528ef57131370aa1844a893bb0b6a83))
+* **plugins:** add bundled web-search Plugin with bare-name resolution ([a1f3be5](https://github.com/SphericalKat/wheatley/commit/a1f3be5395c19626a722286f1d8ff09d32f320ad))
+* **telegram:** show tool progress bubble and start fresh replies after tool calls ([#131](https://github.com/SphericalKat/wheatley/issues/131)) ([815731a](https://github.com/SphericalKat/wheatley/commit/815731ac9dc1e92325d7bb81ad70bc99c9871252))
+* **tui:** show earlier CLI Conversation messages when the chat opens ([#130](https://github.com/SphericalKat/wheatley/issues/130)) ([3f0a402](https://github.com/SphericalKat/wheatley/commit/3f0a4022819aa5869498e47298d26c9e193124ad))
+
+
+### Bug Fixes
+
+* **plugins:** address review findings in the web-search Plugin ([f2ad85e](https://github.com/SphericalKat/wheatley/commit/f2ad85e5fcf9b0399c2bdf6c133347b2d2c91511))
+
 ## [0.5.0](https://github.com/SphericalKat/wheatley/compare/v0.4.0...v0.5.0) (2026-11-27)
 
 
