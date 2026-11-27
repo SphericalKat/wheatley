@@ -374,6 +374,37 @@ describe("wheatley status and init", () => {
     }
   });
 
+  it("shows where config.yaml is invalid when the daemon cannot start", async () => {
+    const broken = await temporaryDir();
+    const file = path.join(broken.dir, "config.yaml");
+    const terminal = scriptedIo([]);
+
+    try {
+      await writeFile(file, "version: 1\nagents:\n  home:\n    model: 5\n");
+
+      await expect(
+        runCli(["daemon", "--home", broken.dir, "--port", "0"], terminal.io)
+      ).resolves.toBe(1);
+    } finally {
+      await broken.remove();
+    }
+
+    expect(terminal.stderr()).toBe(
+      [
+        "error: invalid value at /agents/home/model",
+        ` --> ${file}:4:5`,
+        "  |",
+        "3 |   home:",
+        "4 |     model: 5",
+        "  |     ^^^^^^^^ must be object",
+        "  |",
+        "",
+        "Cannot start the daemon: config.yaml is invalid",
+        "",
+      ].join("\n")
+    );
+  });
+
   it("rejects an option of another command with exit code 2", async () => {
     for (const [argv, option] of [
       [["status", "--home", home.dir, "--provider", "x"], "--provider"],

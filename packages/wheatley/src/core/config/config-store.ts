@@ -48,13 +48,25 @@ export interface FileConfigStoreOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-const invalidConfig = (issues: readonly ConfigIssue[]): SeamError =>
-  new SeamError("config_invalid", "config.yaml is invalid", {
-    issues: issues.map(({ message, path: issuePath }) => ({
-      message,
-      path: issuePath,
-    })),
-  });
+/**
+ * The error for invalid `config.yaml` text. `file` is the path that holds the text, so a reader can show the source.
+ * Omit it for text that is not on disk yet, such as a rejected save.
+ */
+const invalidConfig = (
+  issues: readonly ConfigIssue[],
+  file?: string
+): SeamError => {
+  const list = issues.map(({ message, path: issuePath }) => ({
+    message,
+    path: issuePath,
+  }));
+
+  return new SeamError(
+    "config_invalid",
+    "config.yaml is invalid",
+    file === undefined ? { issues: list } : { file, issues: list }
+  );
+};
 
 /** Holds the secret references of the last config that the store read or wrote. */
 interface ReferenceHolder {
@@ -156,7 +168,7 @@ export class FileConfigStore implements ConfigStore {
     const parsed = parseConfigText(raw);
 
     if (!parsed.ok) {
-      throw invalidConfig(parsed.issues);
+      throw invalidConfig(parsed.issues, this.#file);
     }
 
     return this.#snapshot(raw, parsed.config);
@@ -195,7 +207,7 @@ export class FileConfigStore implements ConfigStore {
       const parsed = parseConfigText(current);
 
       if (!parsed.ok) {
-        throw invalidConfig(parsed.issues);
+        throw invalidConfig(parsed.issues, this.#file);
       }
 
       const agentConfig = parsed.config.agents[agent];

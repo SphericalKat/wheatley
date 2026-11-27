@@ -39,17 +39,22 @@ interface LoadedSecrets {
 
 const isText = (value: unknown): value is string => typeof value === "string";
 
-const invalid = (issues: readonly ConfigIssue[]): SeamError =>
+const invalid = (file: string, issues: readonly ConfigIssue[]): SeamError =>
   new SeamError("config_invalid", "secrets.yaml is invalid", {
+    file,
     issues: issues.map(({ message, path }) => ({ message, path })),
   });
 
-/** Parses `secrets.yaml`: a map of secret names to string values. An empty or missing file has no secrets. */
-const parseSecrets = (raw: string): LoadedSecrets => {
+/**
+ * Parses `secrets.yaml`: a map of secret names to string values. An empty or missing file has no secrets. `file` is the
+ * path that holds `raw`, for the error details.
+ */
+const parseSecrets = (file: string, raw: string): LoadedSecrets => {
   const doc = parseDocument(raw, { prettyErrors: false });
 
   if (doc.errors.length > 0) {
     throw invalid(
+      file,
       doc.errors.map((error) => ({ message: error.message, path: "/" }))
     );
   }
@@ -61,7 +66,7 @@ const parseSecrets = (raw: string): LoadedSecrets => {
   }
 
   if (!isMap(doc.contents)) {
-    throw invalid([
+    throw invalid(file, [
       { message: "secrets.yaml must be a map of names to values", path: "/" },
     ]);
   }
@@ -88,7 +93,7 @@ const parseSecrets = (raw: string): LoadedSecrets => {
   }
 
   if (issues.length > 0) {
-    throw invalid(issues);
+    throw invalid(file, issues);
   }
 
   return { doc, values };
@@ -115,7 +120,7 @@ export class FileSecretStore implements SecretStore {
   static async open(options: FileSecretStoreOptions): Promise<FileSecretStore> {
     const raw = (await readTextIfExists(options.file)) ?? "";
 
-    return new FileSecretStore(options, parseSecrets(raw).values);
+    return new FileSecretStore(options, parseSecrets(options.file, raw).values);
   }
 
   readonly get = (name: string): string | undefined =>
@@ -201,7 +206,7 @@ export class FileSecretStore implements SecretStore {
   readonly #change = async (edit: (doc: Document) => void): Promise<void> => {
     await this.#queue.run(async () => {
       const raw = (await readTextIfExists(this.#options.file)) ?? "";
-      const { doc } = parseSecrets(raw);
+      const { doc } = parseSecrets(this.#options.file, raw);
 
       doc.contents ??= doc.createNode({});
 
@@ -209,7 +214,7 @@ export class FileSecretStore implements SecretStore {
       const text = doc.toString();
 
       await writeFileAtomic(this.#options.file, text, SECRETS_FILE_MODE);
-      this.#values = parseSecrets(text).values;
+      this.#values = parseSecrets(this.#options.file, text).values;
     });
   };
 
