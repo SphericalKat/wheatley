@@ -1,0 +1,114 @@
+name: Docs sweep
+
+on:
+  schedule:
+    # 03:30 UTC is 09:00 IST.
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: docs-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sync documentation with recent commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: range
+        name: Find the commit range since the last sync
+        run: |
+          echo "SUMMARY_FILE=${RUNNER_TEMP}/docs-sweep-summary.md" >> "$GITHUB_ENV"
+          SUMMARY_FILE="${RUNNER_TEMP}/docs-sweep-summary.md"
+
+          base="$(git log --grep='^docs: daily sync$' -n 1 --format=%H)"
+          if [ -z "$base" ]; then
+            base="$(git rev-list --first-parent -n 1 --before='36 hours ago' HEAD)"
+          fi
+          if [ -z "$base" ]; then
+            base="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+          fi
+          head="$(git rev-parse HEAD)"
+          echo "range=${base}..${head}" >> "$GITHUB_OUTPUT"
+
+          code_paths="$(git diff --name-only "$base" "$head" -- . \
+            ':(exclude)*.md' ':(exclude)*.mdx' ':(exclude)docs/' ':(exclude)packages/docs/')"
+          if [ -z "$code_paths" ]; then
+            echo "has_code_changes=false" >> "$GITHUB_OUTPUT"
+            printf 'No commits in `%s..%s` change paths outside the documentation. The sweep did not run.\n' \
+              "${base:0:7}" "${head:0:7}" > "$SUMMARY_FILE"
+          else
+            echo "has_code_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the docs-sync skill in sweep mode
+        if: steps.range.outputs.has_code_changes == 'true'
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Read `.agents/skills/docs-sync/SKILL.md` and follow it in `sweep` mode.
+            Use the commit range `${{ steps.range.outputs.range }}`.
+            Write the summary to `${{ env.SUMMARY_FILE }}`.
+          claude_args: >-
+            --max-turns 30 --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+
+      - name: Write the fallback summary
+        if: always() && steps.range.outputs.has_code_changes == 'true'
+        run: |
+          if [ ! -f "$SUMMARY_FILE" ]; then
+            echo "The docs-sync skill did not write a summary. Read the workflow run log for details." > "$SUMMARY_FILE"
+          fi
+
+      - name: Write the step summary
+        if: always()
+        run: |
+          if [ -f "$SUMMARY_FILE" ]; then
+            cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - id: changes
+        name: Check for documentation changes
+        if: steps.range.outputs.has_code_changes == 'true'
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.changes.outputs.changed == 'true'
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.changed == 'true'
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Format and lint the edited files
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm fix
+          pnpm check
+
+      - name: Open or update the pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: docs-sweep
+          commit-message: "docs: daily sync"
+          title: "docs: daily sync"
+          body-path: ${{ env.SUMMARY_FILE }}
