@@ -107,6 +107,24 @@ it("formats Exa results and sends the API key as a query parameter", async () =>
   });
 });
 
+it("reads the text block of an MCP result that also holds other block types", async () => {
+  routes.set("mcp.exa.ai", () =>
+    mcpEvent({
+      content: [
+        { resource: { uri: "exa://search" }, type: "resource" },
+        {
+          text: "Title: Alpha\nURL: https://a.example/\nText: First",
+          type: "text",
+        },
+      ],
+    })
+  );
+
+  const result = await search({ provider: "exa", query: "alpha" });
+
+  expect(resultText(result)).toBe("## [Alpha](https://a.example/)\n\nFirst");
+});
+
 it("formats Firecrawl results and sends the API key as a bearer token", async () => {
   routes.set("mcp.firecrawl.dev", () =>
     mcpText(

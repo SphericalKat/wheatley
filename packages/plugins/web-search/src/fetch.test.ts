@@ -73,6 +73,7 @@ const HANDLERS = new Map<string, Handler>(
     },
     "/oversized": oversized,
     "/page": send("text/html; charset=utf-8", PAGE),
+    "/xhtml": send("Application/XHTML+XML", PAGE),
     "/redirect-ftp": redirect("ftp://example.com/file"),
     "/redirect-twice": redirect("/redirect-once", 301),
     "/redirect-once": redirect("/page", 307),
@@ -137,6 +138,14 @@ it("converts HTML to Markdown by default and drops the head, scripts, and styles
   const result = await fetchUrl({ url: `${base}/page` });
 
   expect(result.isError).toBeUndefined();
+  expect(resultText(result)).toBe(
+    "# Heading\n\nSome **bold** text and a [link](https://example.com/).\n\n-   One\n-   Two"
+  );
+});
+
+it("converts XHTML with a mixed-case Content-Type", async () => {
+  const result = await fetchUrl({ url: `${base}/xhtml` });
+
   expect(resultText(result)).toBe(
     "# Heading\n\nSome **bold** text and a [link](https://example.com/).\n\n-   One\n-   Two"
   );

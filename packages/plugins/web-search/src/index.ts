@@ -1,21 +1,21 @@
 import { definePlugin } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
+import type { Static } from "typebox";
 
 import { createFetchTool } from "./fetch.js";
 import { toJsonSchema } from "./schema.js";
 import { createSearchTool, SelectionSchema } from "./search.js";
-import type { Selection } from "./search.js";
 
-/** The `config` block of the Plugin in `config.yaml`. */
-interface WebSearchConfig {
-  /** The search provider. `random` (the default) picks one and fails over when it is rate limited. */
-  readonly provider?: Selection;
-}
-
+/**
+ * The `config` block of the Plugin in `config.yaml`. `provider` defaults to `random`, which picks one provider and
+ * fails over when it is rate limited.
+ */
 const ConfigSchema = Type.Object(
   { provider: Type.Optional(SelectionSchema) },
   { additionalProperties: false }
 );
+
+export type WebSearchConfig = Static<typeof ConfigSchema>;
 
 /**
  * The bundled `web-search` Plugin (ADR 0015). It contributes `web-search:search`, which queries Exa, Firecrawl,

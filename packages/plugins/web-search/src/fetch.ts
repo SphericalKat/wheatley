@@ -1,10 +1,11 @@
 import { defineTool } from "@wheatley-ai/sdk";
-import type { Tool, ToolResult } from "@wheatley-ai/sdk";
+import type { Tool } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 
 import { htmlToMarkdown, htmlToText } from "./html.js";
 import { HttpStatusError, readTextWithin, USER_AGENT } from "./http.js";
+import { errorResult, textResult } from "./results.js";
 import { toJsonSchema } from "./schema.js";
 
 /** The largest response body that the `fetch` Tool reads. */
@@ -28,10 +29,13 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set([
 /** The `User-Agent` of the second attempt after a Cloudflare challenge rejects the browser-like one. */
 const FALLBACK_USER_AGENT = "wheatley";
 
-/** Image types that are text, so the Tool can return them. */
-const TEXTUAL_IMAGE_TYPES: ReadonlySet<string> = new Set([
-  "image/svg+xml",
-  "image/vnd.fastbidsheet",
+/** The image type that is text, so the Tool can return it. */
+const SVG_TYPE = "image/svg+xml";
+
+/** The media types that the Tool converts from HTML. */
+const HTML_TYPES: ReadonlySet<string> = new Set([
+  "text/html",
+  "application/xhtml+xml",
 ]);
 
 const TEXTUAL_APPLICATION_TYPES: ReadonlySet<string> = new Set([
@@ -111,7 +115,7 @@ const isTextual = (mime: string): boolean =>
   mime.endsWith("+xml");
 
 const isImage = (mime: string): boolean =>
-  mime.startsWith("image/") && !TEXTUAL_IMAGE_TYPES.has(mime);
+  mime.startsWith("image/") && mime !== SVG_TYPE;
 
 const isCloudflareChallenge = (response: Response): boolean =>
   response.status === HTTP_FORBIDDEN &&
@@ -160,8 +164,8 @@ const follow = async (url: URL, request: FetchRequest): Promise<Response> => {
   }
 };
 
-const convert = (body: string, contentType: string, format: Format): string => {
-  if (!contentType.includes("text/html") || format === "html") {
+const convert = (body: string, mime: string, format: Format): string => {
+  if (!HTML_TYPES.has(mime) || format === "html") {
     return body;
   }
 
@@ -197,12 +201,16 @@ const download = async (
   const contentType = response.headers.get("content-type") ?? "";
   const mime = mediaType(contentType);
 
-  if (isImage(mime) || !isTextual(mime)) {
+  if (isImage(mime)) {
     await response.body?.cancel();
 
-    const kind = isImage(mime) ? "image" : "file";
+    throw new Error(`Unsupported fetched image content type: ${mime}`);
+  }
 
-    throw new Error(`Unsupported fetched ${kind} content type: ${mime}`);
+  if (!isTextual(mime)) {
+    await response.body?.cancel();
+
+    throw new Error(`Unsupported fetched file content type: ${mime}`);
   }
 
   const body = await readTextWithin(
@@ -212,17 +220,14 @@ const download = async (
       new Error(`Response too large (exceeds ${MAX_FETCH_BYTES} byte limit)`)
   );
 
-  return convert(body, contentType, format);
+  return convert(body, mime, format);
 };
 
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- A caught value has no type.
-const errorResult = (url: string, error: unknown): ToolResult => {
+const fetchErrorText = (url: string, error: unknown): string => {
   const reason = error instanceof Error ? `: ${error.message}` : "";
 
-  return {
-    content: [{ text: `Unable to fetch ${url}${reason}`, type: "text" }],
-    isError: true,
-  };
+  return `Unable to fetch ${url}${reason}`;
 };
 
 /** Creates the `fetch` Tool. It allows every host, including localhost and private addresses. */
@@ -242,15 +247,17 @@ export const createFetchTool = (): Tool<FetchInput> =>
           AbortSignal.any([ctx.signal, timeout])
         );
 
-        return { content: [{ text: output, type: "text" }] };
+        return textResult(output);
       } catch (error) {
         if (ctx.signal.aborted) {
           throw error;
         }
 
         return errorResult(
-          input.url,
-          timeout.aborted ? new Error("Request timed out") : error
+          fetchErrorText(
+            input.url,
+            timeout.aborted ? new Error("Request timed out") : error
+          )
         );
       }
     },

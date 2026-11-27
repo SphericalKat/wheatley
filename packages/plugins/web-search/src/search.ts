@@ -1,11 +1,12 @@
 import { defineTool } from "@wheatley-ai/sdk";
-import type { SecretReader, Tool, ToolResult } from "@wheatley-ai/sdk";
+import type { SecretReader, Tool } from "@wheatley-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 
 import { HttpStatusError } from "./http.js";
 import { PROVIDER_IDS, PROVIDERS } from "./providers.js";
 import type { ProviderId, SearchHit, SearchProvider } from "./providers.js";
+import { errorResult, textResult } from "./results.js";
 import { toJsonSchema } from "./schema.js";
 
 /** How the Plugin picks a provider when a call names none. */
@@ -225,15 +226,6 @@ const errorText = (error: unknown, query: string): string => {
 
   return `Web search request failed (HTTP ${cause.status}) at ${provider.name}`;
 };
-
-const textResult = (text: string): ToolResult => ({
-  content: [{ text, type: "text" }],
-});
-
-const errorResult = (text: string): ToolResult => ({
-  content: [{ text, type: "text" }],
-  isError: true,
-});
 
 /** Creates the `search` Tool of one Agent. */
 export const createSearchTool = (

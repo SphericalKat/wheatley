@@ -15,10 +15,10 @@ const SSE_DATA_PREFIX = "data: ";
 
 const MCP_ACCEPT = "application/json, text/event-stream";
 
-/** The `result` of an MCP `tools/call` response, reduced to its text blocks. */
+/** The `result` of an MCP `tools/call` response. Only `text` blocks carry `text`. */
 const ToolCallResult = Type.Object({
   content: Type.Array(
-    Type.Object({ text: Type.String(), type: Type.String() })
+    Type.Object({ text: Type.Optional(Type.String()), type: Type.String() })
   ),
   structuredContent: Type.Optional(Type.Unknown()),
 });
@@ -140,4 +140,7 @@ export const callMcpTool = async (
 /** Returns the first non-empty text block of an MCP Tool result. */
 export const firstText = (
   result: McpToolResult | undefined
-): string | undefined => result?.content.find(({ text }) => text !== "")?.text;
+): string | undefined =>
+  result?.content.find(
+    ({ text, type }) => type === "text" && text !== undefined && text !== ""
+  )?.text;

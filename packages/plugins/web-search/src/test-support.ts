@@ -1,7 +1,7 @@
 import type { Logger, Tool, ToolContext } from "@wheatley-ai/sdk";
 
 import plugin from "./index.js";
-import type { Selection } from "./search.js";
+import type { WebSearchConfig } from "./index.js";
 
 const ignore = (): void => undefined;
 
@@ -29,7 +29,7 @@ export const toolContext = (
 /** Runs `setup` of the Plugin and returns its Tool `name`. */
 export const pluginTool = async (
   name: "search" | "fetch",
-  config: { readonly provider?: Selection } = {},
+  config: WebSearchConfig = {},
   secrets: Readonly<Record<string, string>> = {}
 ): Promise<Tool> => {
   const contributions = await plugin.setup({

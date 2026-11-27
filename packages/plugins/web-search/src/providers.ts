@@ -79,7 +79,7 @@ const isPresent = (value: MaybeText): value is string =>
   value !== undefined && value !== null && value !== "";
 
 /** Builds a hit. Empty fields and unparseable dates become `undefined`. */
-const hit = (fields: {
+const toHit = (fields: {
   readonly url: string;
   readonly title?: MaybeText;
   readonly content?: MaybeText;
@@ -134,7 +134,7 @@ const parseExaText = (text: string): SearchHit[] =>
     }
 
     return [
-      hit({
+      toHit({
         content: EXA_CONTENT.exec(block)?.groups?.value?.trim(),
         published: matchField(block, EXA_PUBLISHED),
         title: matchField(block, EXA_TITLE),
@@ -195,7 +195,7 @@ const firecrawl: SearchProvider = {
     const response = parseJsonText(FirecrawlResponse, firstText(result));
 
     return (response?.data.web ?? []).map((item) =>
-      hit({ content: item.description, title: item.title, url: item.url })
+      toHit({ content: item.description, title: item.title, url: item.url })
     );
   },
   secret: "FIRECRAWL_API_KEY",
@@ -231,7 +231,7 @@ const parallel: SearchProvider = {
     }
 
     return structured.results.map((item) =>
-      hit({
+      toHit({
         content: item.excerpts.join("\n\n"),
         published: item.publish_date,
         title: item.title,
@@ -295,7 +295,7 @@ const tavily: SearchProvider = {
     }
 
     return body.results.map((item) =>
-      hit({ content: item.content, title: item.title, url: item.url })
+      toHit({ content: item.content, title: item.title, url: item.url })
     );
   },
   secret: "TAVILY_API_KEY",
@@ -390,7 +390,7 @@ const tinyfish: SearchProvider = {
     const response = parseJsonText(TinyFishResponse, firstText(result));
 
     return (response?.results ?? []).map((item) =>
-      hit({ content: item.snippet, title: item.title, url: item.url })
+      toHit({ content: item.snippet, title: item.title, url: item.url })
     );
   },
   secret: "TINYFISH_API_KEY",

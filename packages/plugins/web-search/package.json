@@ -25,6 +25,9 @@
     "@types/turndown": "5.0.6",
     "@wheatley-ai/sdk": "workspace:*"
   },
+  "peerDependencies": {
+    "@wheatley-ai/sdk": "workspace:*"
+  },
   "engines": {
     "node": ">=26.13.1"
   }

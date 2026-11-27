@@ -1,6 +1,6 @@
 # Bundled Plugins and bare-name resolution
 
-Wheatley ships **Bundled Plugins** inside `@wheatley-ai/cli` as workspace packages under `packages/plugins/*`. Each **Bundled Plugin** imports only `@wheatley-ai/sdk` and vendors into `@wheatley-ai/cli` at build time. When an **Agent** sets a bare `source` name in `config.yaml`, Wheatley checks the built-in registry before `~/.wheatley/extensions`.
+Wheatley ships **Bundled Plugins** inside `@wheatley-ai/cli` as workspace packages under `packages/plugins/*`. Each **Bundled Plugin** imports no Wheatley package except `@wheatley-ai/sdk` and vendors into `@wheatley-ai/cli` at build time. When an **Agent** sets a bare `source` name in `config.yaml`, Wheatley checks the built-in registry before `~/.wheatley/extensions`.
 
 ## Considered Options
 
