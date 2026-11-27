@@ -27,6 +27,9 @@ import type { ModelPicker, PickerAction } from "./model-picker.js";
 /** The parts of the daemon client that the chat uses. */
 export type ChatClient = Pick<DaemonClient, "onEvent" | "request">;
 
+const MODEL_CHANGED_REPLY =
+  /^This Conversation now uses (?<model>[^/\s]+\/[^\s]+)\.$/u;
+
 /** One block of the transcript. The transcript only grows, so the terminal prints each entry once. */
 export type Entry =
   | { readonly id: number; readonly kind: "banner" }
@@ -156,6 +159,7 @@ export class ChatController {
   readonly #markdown = createMarkdownStream();
   #replyStarted = false;
   #runStartedAt: number | undefined;
+  #defaultModel: string | undefined;
   #tools = 0;
   #lastReply = "";
   #shell: ChildProcess | undefined;
@@ -215,7 +219,8 @@ export class ChatController {
       const model = config.agents[agent]?.model;
 
       if (model !== undefined) {
-        this.#update({ model: `${model.provider}/${model.id}` });
+        this.#defaultModel = `${model.provider}/${model.id}`;
+        this.#update({ model: this.#defaultModel });
       }
 
       const extensions = await client.request("extensions.list", { agent });
@@ -408,11 +413,19 @@ export class ChatController {
     }
 
     if (command !== undefined) {
-      await this.#options.client.request("chat.command", {
+      const { accepted } = await this.#options.client.request("chat.command", {
         agent: this.#options.agent,
         args: command.args,
         name: command.name,
       });
+
+      if (
+        accepted &&
+        command.name === "new" &&
+        this.#defaultModel !== undefined
+      ) {
+        this.#update({ model: this.#defaultModel });
+      }
 
       return;
     }
@@ -576,7 +589,15 @@ export class ChatController {
       this.#runs.add(event.payload.run.runId);
       this.#runStartedAt = this.#now();
       this.#tools = 0;
-      this.#update({ thinkingLines: shuffledThinkingLines() });
+
+      if (event.payload.run.model === undefined) {
+        this.#update({ thinkingLines: shuffledThinkingLines() });
+      } else {
+        this.#update({
+          model: event.payload.run.model,
+          thinkingLines: shuffledThinkingLines(),
+        });
+      }
     } else if (isCliChatRun(event) && event.name === "run.finished") {
       this.#finishRun(event.payload.run);
     } else if (ofRunEvent(event, this.#runs) !== undefined) {
@@ -638,6 +659,7 @@ export class ChatController {
     readonly messageId: string;
     readonly role: "assistant" | "user";
     readonly runId?: string;
+    readonly source?: string;
     readonly text: string;
   }): void => {
     if (message.role === "user") {
@@ -679,6 +701,15 @@ export class ChatController {
     }
 
     this.#endSegment();
+
+    if (message.source === "command") {
+      const changed = MODEL_CHANGED_REPLY.exec(message.text);
+
+      if (changed?.groups?.model !== undefined) {
+        this.#update({ model: changed.groups.model });
+      }
+    }
+
     this.#append({
       first: true,
       kind: "reply",

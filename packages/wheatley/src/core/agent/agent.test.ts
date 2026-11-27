@@ -819,4 +819,150 @@ describe("Agent", () => {
       await second.close();
     }
   });
+
+  it("updates saved Conversations when config.model changes across an Agent restart", async () => {
+    const first = await openAgent();
+
+    llm.faux.setResponses([fauxAssistantMessage("first reply")]);
+    await sendAndFinish(first, "hello", 1);
+    await first.close();
+
+    const replacement = fauxProvider({
+      models: [{ id: "next-1" }],
+      provider: "next-provider",
+    });
+
+    replacement.setResponses([fauxAssistantMessage("second reply")]);
+
+    const { models } = llm;
+
+    models.deleteProvider(FAKE_PROVIDER);
+    models.setProvider(replacement.provider);
+
+    const second = await openAgent({
+      config: {
+        model: { id: "next-1", provider: "next-provider" },
+        permissionPolicy: [{ action: "allow", tool: "*" }],
+      },
+      models,
+    });
+
+    try {
+      await expect(second.modelPicker(CLI_CHAT)).resolves.toMatchObject({
+        current: { id: "next-1", provider: "next-provider" },
+      });
+
+      await sendAndFinish(second, "after switch", 2);
+      expect(events.of("run.finished").at(-1)?.run.status).toBe("completed");
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "second reply"
+      );
+    } finally {
+      await second.close();
+    }
+  });
+
+  it("keeps a /model override across restarts when still configured, and falls back to config.model when unconfigured", async () => {
+    const extra = fauxProvider({
+      models: [{ id: "alt-1" }],
+      provider: "alt",
+    });
+
+    llm.models.setProvider(extra.provider);
+
+    const first = await openAgent();
+
+    await expect(first.command(CLI_CHAT, "model", "alt/alt-1")).resolves.toBe(
+      true
+    );
+    await first.close();
+
+    const second = await openAgent();
+
+    await expect(second.modelPicker(CLI_CHAT)).resolves.toMatchObject({
+      current: { id: "alt-1", provider: "alt" },
+    });
+    await second.close();
+
+    llm.models.deleteProvider("alt");
+
+    const third = await openAgent();
+
+    try {
+      await expect(third.modelPicker(CLI_CHAT)).resolves.toMatchObject({
+        current: { id: llm.modelId, provider: FAKE_PROVIDER },
+      });
+    } finally {
+      await third.close();
+    }
+  });
+
+  it("rejects /model for an unconfigured provider and resolves unambiguous shorthand model IDs", async () => {
+    const configured = fauxProvider({
+      models: [{ id: "unique-model" }, { id: "shared-model" }],
+      provider: "configured",
+    });
+
+    const alsoConfigured = fauxProvider({
+      models: [{ id: "shared-model" }],
+      provider: "also-configured",
+    });
+
+    const unconfiguredBase = fauxProvider({
+      models: [{ id: "locked-1" }],
+      provider: "locked",
+    });
+
+    llm.models.setProvider(configured.provider);
+    llm.models.setProvider(alsoConfigured.provider);
+    llm.models.setProvider({
+      ...unconfiguredBase.provider,
+      auth: {
+        apiKey: {
+          name: "API key",
+          resolve: async () => {
+            await Promise.resolve();
+          },
+        },
+      },
+    });
+
+    const agent = await openAgent();
+
+    try {
+      await expect(
+        agent.command(CLI_CHAT, "model", "locked/locked-1")
+      ).resolves.toBe(false);
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "Provider is not configured: locked"
+      );
+
+      await expect(
+        agent.command(CLI_CHAT, "model", "unique-model")
+      ).resolves.toBe(true);
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "This Conversation now uses configured/unique-model."
+      );
+
+      await expect(
+        agent.command(CLI_CHAT, "model", "shared-model")
+      ).resolves.toBe(true);
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        "This Conversation now uses configured/shared-model."
+      );
+
+      await expect(
+        agent.command(CLI_CHAT, "model", `${FAKE_PROVIDER}/${llm.modelId}`)
+      ).resolves.toBe(true);
+
+      await expect(
+        agent.command(CLI_CHAT, "model", "shared-model")
+      ).resolves.toBe(false);
+      expect(events.of("chat.message").at(-1)?.message.text).toContain(
+        "Multiple configured providers offer shared-model:"
+      );
+    } finally {
+      await agent.close();
+    }
+  });
 });
