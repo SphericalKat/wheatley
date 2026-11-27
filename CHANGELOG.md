@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.1](https://github.com/SphericalKat/wheatley/compare/v0.6.0...v0.6.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **ci:** stop checkout from persisting the read-only token in the Claude workflow ([ba671dc](https://github.com/SphericalKat/wheatley/commit/ba671dc3a8dcbe7ed6034b32b589f26ca10556ce))
+* **ci:** stop checkout from persisting the read-only token in the Claude workflow ([0ff3077](https://github.com/SphericalKat/wheatley/commit/0ff3077bb7f4651e3d1ecfba9ae6daee26963bf1))
+* **dashboard:** keep events that arrive during Inbox, Logs and Config loads ([0d76ad0](https://github.com/SphericalKat/wheatley/commit/0d76ad0073a60a7890a009a334564282790e0413))
+* **dashboard:** keep events that arrive during Inbox, Logs and Config loads ([2c01089](https://github.com/SphericalKat/wheatley/commit/2c01089f613475435145673d742fade9f2eed750)), closes [#120](https://github.com/SphericalKat/wheatley/issues/120)
+
 ## [0.6.0](https://github.com/SphericalKat/wheatley/compare/v0.5.0...v0.6.0) (2026-11-27)
 
 
