@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.0](https://github.com/SphericalKat/wheatley/compare/v0.2.0...v0.3.0) (2026-11-27)
+
+
+### Features
+
+* add curl installer with XDG layout and managed Node.js runtime ([481e74a](https://github.com/SphericalKat/wheatley/commit/481e74a88229dd9c780baf5c15b7c82c5d956917))
+* add curl installer with XDG layout and managed Node.js runtime ([f5df269](https://github.com/SphericalKat/wheatley/commit/f5df269c2ded59f607442126fdfb1a7d2fd4c12a)), closes [#87](https://github.com/SphericalKat/wheatley/issues/87)
+* publish the wheatley Homebrew formula on release ([8d26bfb](https://github.com/SphericalKat/wheatley/commit/8d26bfbbcc01870d5b6fe1de440bbd239600c9bd))
+* publish the wheatley Homebrew formula on release ([6acbf5a](https://github.com/SphericalKat/wheatley/commit/6acbf5ad1f7ea7f95765aae7965442ab0592654c)), closes [#88](https://github.com/SphericalKat/wheatley/issues/88)
+* publish wheatley-cli AUR package on release ([8eaa022](https://github.com/SphericalKat/wheatley/commit/8eaa022fd53a496fe0b04b222884e8a297327e83))
+* publish wheatley-cli AUR package on release ([7e2b36d](https://github.com/SphericalKat/wheatley/commit/7e2b36db493ccac9bcd73db9f18c7968fb53342f)), closes [#89](https://github.com/SphericalKat/wheatley/issues/89)
+
+
+### Bug Fixes
+
+* **deps:** update dependency string-width to v9 ([1e85020](https://github.com/SphericalKat/wheatley/commit/1e8502067a6219f032e5a6754d54cf1f15800544))
+* **deps:** update dependency string-width to v9 ([6394d59](https://github.com/SphericalKat/wheatley/commit/6394d590800fab063a69bd8b434e7df3cdadd1c9))
+* detect install methods and look up versions over HTTP in wheatley update ([5046a3c](https://github.com/SphericalKat/wheatley/commit/5046a3c7bbd48e18c43ffc5d7ae339fa823aa945))
+* fail curl updates on download errors and keep path hints first ([c8fa166](https://github.com/SphericalKat/wheatley/commit/c8fa1661f7d1c5d038ed83f41b9020b261d1f690))
+* overhaul wheatley update for flexible package managers and HTTP version lookup ([13e687c](https://github.com/SphericalKat/wheatley/commit/13e687c23d04e3aca8664e38b93b1d52c8264f53))
+* read the Homebrew tarball URL from the formula ([cfa75db](https://github.com/SphericalKat/wheatley/commit/cfa75dbbb64a34cfd07956cfb10ac6ac7c31833e))
+
 ## [0.2.0](https://github.com/SphericalKat/wheatley/compare/v0.1.1...v0.2.0) (2026-11-26)
 
 
