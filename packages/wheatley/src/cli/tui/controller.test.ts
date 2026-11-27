@@ -91,6 +91,36 @@ const start = async (
   return controller;
 };
 
+/** Opens another chat on the running daemon, as a new `wheatley chat` process does. */
+const reopen = async (
+  request: ChatClient["request"] = client.request
+): Promise<ChatController> => {
+  const controller = new ChatController({
+    agent: "home",
+    client: { onEvent: client.onEvent, request },
+    control: (sequence) => {
+      controls.push(sequence);
+    },
+  });
+
+  await controller.start();
+
+  return controller;
+};
+
+/** Sends each text and waits for its Run to end. */
+const chat = async (
+  controller: ChatController,
+  ...texts: readonly string[]
+): Promise<void> => {
+  for (const text of texts) {
+    // oxlint-disable-next-line no-await-in-loop -- The Runs of one Conversation run one after another.
+    await controller.submit(text);
+    // oxlint-disable-next-line no-await-in-loop -- The next text waits for this Run.
+    await controller.idle;
+  }
+};
+
 /** Resolves when `predicate` holds for the view. */
 const until = async (
   controller: ChatController,
@@ -487,5 +517,100 @@ it("sends /model with an argument to the Agent without a picker", async () => {
   expect(requests.map(({ method }) => method)).not.toContain("models.list");
   expect(commandsSent()).toStrictEqual([
     { agent: "home", args: "zeta/z-1", name: "model" },
+  ]);
+});
+
+it("shows the earlier messages after the banner when the chat opens again, and /copy copies the last reply", async () => {
+  llm.faux.setResponses([
+    fauxAssistantMessage("First **answer**."),
+    fauxAssistantMessage("Second answer."),
+  ]);
+  const first = await start("allow");
+
+  await chat(first, "first question", "second question");
+
+  const resumed = await reopen();
+  const { entries } = resumed.view();
+
+  expect(entries[0]?.kind).toBe("banner");
+  expect(shown(entries)).toStrictEqual([
+    "user: first question",
+    "reply: First answer.",
+    "user: second question",
+    "reply: Second answer.",
+  ]);
+
+  await resumed.submit("/copy");
+
+  expect(controls.at(-1)).toBe(
+    `\u001B]52;c;${Buffer.from("Second answer.").toString("base64")}\u0007`
+  );
+});
+
+it("shows a notice before the earlier messages when the Conversation has more of them", async () => {
+  const questions = Array.from({ length: 26 }, (_, index) => `q${index}`);
+
+  llm.faux.setResponses(
+    questions.map((_, index) => fauxAssistantMessage(`a${index}`))
+  );
+  const first = await start("allow");
+
+  await chat(first, ...questions);
+
+  const resumed = await reopen();
+  const lines = shown(resumed.view().entries);
+
+  expect(lines).toHaveLength(51);
+  expect(lines.slice(0, 3)).toStrictEqual([
+    "notice: Showing the last 50 messages. Earlier messages remain in this Conversation.",
+    "user: q1",
+    "reply: a1",
+  ]);
+  expect(lines.at(-1)).toBe("reply: a25");
+});
+
+it("shows no earlier messages after /new", async () => {
+  llm.faux.setResponses([fauxAssistantMessage("Old answer.")]);
+  const first = await start("allow");
+
+  await chat(first, "old question");
+  await first.submit("/new");
+
+  const resumed = await reopen();
+  const lines = shown(resumed.view().entries);
+
+  expect(lines).not.toContain("user: old question");
+  expect(lines).not.toContain("reply: Old answer.");
+});
+
+it("shows a message once when its event arrives while the history loads", async () => {
+  llm.faux.setResponses([fauxAssistantMessage("Live answer.")]);
+  await start("allow");
+
+  const resumed = await reopen(async (method, params) => {
+    if (method === "chat.history") {
+      const { promise, resolve } = Promise.withResolvers<undefined>();
+
+      const stop = client.onEvent((event) => {
+        if (event.name === "run.finished") {
+          stop();
+          resolve(undefined);
+        }
+      });
+
+      await client.request("chat.send", {
+        agent: "home",
+        text: "from the dashboard",
+      });
+      await promise;
+    }
+
+    return await client.request(method, params);
+  });
+
+  expect(shown(resumed.view().entries)).toStrictEqual([
+    "user: from the dashboard",
+    "reply: Live answer.",
+    "turn: 0 tools",
   ]);
 });
