@@ -221,11 +221,7 @@ describe("wheatley chat", () => {
   });
 
   it("prints one Agent reply for each command that cannot run", async () => {
-    const terminal = scriptedIo([
-      "/model unknown-model",
-      "/goal",
-      "/stop",
-    ]);
+    const terminal = scriptedIo(["/model unknown-model", "/goal", "/stop"]);
 
     const code = await runCli(
       ["chat", "--home", home.dir, "--agent", "home"],
