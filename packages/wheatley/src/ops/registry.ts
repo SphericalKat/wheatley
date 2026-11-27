@@ -15,7 +15,7 @@ const REGISTRY_TIMEOUT_MS = 10_000;
 
 const TRAILING_SLASHES = /\/+$/u;
 
-/** The subset of `fetch` that the registry query uses. Tests replace it at this network boundary. */
+/** The subset of `fetch` that the registry query uses. */
 export type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
 
 const PackumentSchema = Type.Object({

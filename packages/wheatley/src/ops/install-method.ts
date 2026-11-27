@@ -210,10 +210,13 @@ const PROBES: Readonly<Record<NodeManager, readonly string[]>> = {
 /** Resolves `true` if the global package list of `manager` contains Wheatley. A missing manager counts as `false`. */
 const listsWheatley = async (
   manager: NodeManager,
-  runner: CommandRunner
+  { runner, userHome }: InstallationInput
 ): Promise<boolean> => {
   try {
-    const result = await runner.run(manager, PROBES[manager]);
+    // Corepack shims of pnpm and yarn refuse to run inside a project whose `packageManager` names another manager.
+    const result = await runner.run(manager, PROBES[manager], {
+      cwd: userHome,
+    });
 
     return result.exitCode === 0 && result.stdout.includes(PACKAGE_NAME);
   } catch {
@@ -223,7 +226,8 @@ const listsWheatley = async (
 
 /**
  * Picks the Node.js package manager that owns the install. It ranks the managers by the path of the package, then
- * confirms the ranking with their global package lists, which it queries in parallel.
+ * confirms the ranking with their global package lists, which it queries in parallel. A path hint wins over a list
+ * that only another manager confirms, because that list can belong to a second copy of Wheatley.
  */
 const detectNodeManager = async (
   dir: string,
@@ -242,7 +246,7 @@ const detectNodeManager = async (
 
   const confirmed = await Promise.all(
     NODE_MANAGERS.map(async (manager) =>
-      (await listsWheatley(manager, input.runner)) ? manager : []
+      (await listsWheatley(manager, input)) ? manager : []
     )
   );
 
@@ -250,8 +254,8 @@ const detectNodeManager = async (
 
   return (
     hinted.find((manager) => owners.includes(manager)) ??
-    owners[0] ??
     hinted[0] ??
+    owners[0] ??
     "npm"
   );
 };
@@ -276,7 +280,7 @@ const npmFor = async (
   return [(await pathExists(node)) ? node : await realOrSelf(execPath), npm];
 };
 
-const describe = async (
+const installationFor = async (
   method: InstallMethod,
   dir: string,
   input: InstallationInput
@@ -320,7 +324,7 @@ export const resolveInstallation = async (
   const dir = await realOrSelf(input.packageDir);
 
   if (input.method !== undefined) {
-    return await describe(input.method, dir, input);
+    return await installationFor(input.method, dir, input);
   }
 
   if (isDocker(input.env)) {
@@ -330,5 +334,5 @@ export const resolveInstallation = async (
   const method =
     (await detectManaged(dir, input)) ?? (await detectNodeManager(dir, input));
 
-  return await describe(method, dir, input);
+  return await installationFor(method, dir, input);
 };

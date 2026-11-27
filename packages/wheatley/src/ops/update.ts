@@ -130,8 +130,7 @@ const notice = (...lines: string[]): NoticeAction => ({
 });
 
 /**
- * Returns what updates `installation` to `version`. `version` must be a version that `selectUpdate` returned, which
- * keeps shell metacharacters out of the `curl` installer command.
+ * Returns what updates `installation` to `version`.
  *
  * Errors: throws for a Docker install or a source checkout, which `planUpdate` handles before the registry query.
  */
@@ -175,11 +174,15 @@ export const upgradeAction = (
     }
 
     case "curl": {
+      // The script is downloaded before it runs, so that a failed download fails the command. A pipe from `curl` to
+      // `sh` would exit 0. The URL and version are arguments, not shell text.
       return command(
         false,
         "sh",
         "-c",
-        `curl -fsSL ${INSTALLER_URL} | sh -s -- --version ${version} --no-modify-path`
+        'script="$(curl -fsSL "$0")" && printf "%s\\n" "$script" | sh -s -- --version "$1" --no-modify-path',
+        INSTALLER_URL,
+        version
       );
     }
 
@@ -324,6 +327,8 @@ export interface ApplyUpgradeOptions {
   /** The real path of the package folder that runs now. */
   readonly packageDir: string;
   readonly target: string;
+  /** The working folder of the command, outside any project, for example the user home folder. */
+  readonly workDir: string;
 }
 
 /**
@@ -339,7 +344,9 @@ export const applyUpgrade = async (
 ): Promise<void> => {
   const [program, ...args] = action.command;
 
+  // Corepack shims of pnpm and yarn refuse to run inside a project whose `packageManager` names another manager.
   const result = await options.runner.run(program, args, {
+    cwd: options.workDir,
     inheritStdio: true,
   });
 
@@ -355,7 +362,7 @@ export const applyUpgrade = async (
 
   if (installed !== options.target) {
     throw new Error(
-      `${action.command.join(" ")} finished, but ${options.packageDir} still has Wheatley ${installed}, not ${options.target}. Another copy of Wheatley may be first on PATH, or pass --method to name the package manager that owns this copy.`
+      `${action.command.join(" ")} finished, but ${options.packageDir} still has Wheatley ${installed}, not ${options.target}. Another copy of Wheatley can be first on PATH, or pass --method to name the package manager that owns this copy.`
     );
   }
 };

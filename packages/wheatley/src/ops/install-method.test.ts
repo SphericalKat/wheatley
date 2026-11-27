@@ -186,14 +186,15 @@ it("detects Volta and mise packages", async () => {
 it("detects an AUR package that pacman owns in /usr/lib/node_modules", async () => {
   const dir = await folder("usr", "lib", "node_modules", ...PACKAGE);
 
-  const runner = new FakeCommandRunner((command) =>
-    command === "pacman" ? { stdout: "wheatley-cli" } : { exitCode: 1 }
+  const runner = new FakeCommandRunner((command, args) =>
+    command === "pacman" && args.at(-1) === dir
+      ? { stdout: "wheatley-cli" }
+      : { exitCode: 1 }
   );
 
   await expect(
     resolveInstallation(input(dir, { runner }))
   ).resolves.toMatchObject({ method: "aur" });
-  expect(runner.lines).toContain(`pacman -Qqo ${dir}`);
 });
 
 it("treats /usr/lib/node_modules without a pacman owner as npm", async () => {
@@ -270,6 +271,24 @@ it("detects yarn and bun from their global folders", async () => {
       input(bun, { runner: new FakeCommandRunner(owns("bun")) })
     )
   ).resolves.toMatchObject({ method: "bun" });
+});
+
+it("keeps the path hint when only another package manager lists Wheatley", async () => {
+  const dir = await folder(
+    "fnm",
+    "node-versions",
+    "v26.13.1",
+    "installation",
+    "lib",
+    "node_modules",
+    ...PACKAGE
+  );
+
+  await expect(
+    resolveInstallation(
+      input(dir, { runner: new FakeCommandRunner(owns("pnpm")) })
+    )
+  ).resolves.toMatchObject({ method: "npm" });
 });
 
 it("trusts the global package list when the path has no hint", async () => {

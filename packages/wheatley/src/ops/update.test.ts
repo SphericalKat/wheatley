@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import type { SpawnSyncReturns } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -65,6 +67,37 @@ describe("major-version guard", () => {
   });
 });
 
+/** Runs the curl `upgradeAction` with a fake `curl` program first on `PATH`. */
+const runCurlAction = async (
+  fakeCurl: string
+): Promise<{ readonly result: SpawnSyncReturns<string> }> => {
+  const bin = await mkdtemp(path.join(tmpdir(), "wheatley-curl-"));
+
+  try {
+    await writeFile(path.join(bin, "curl"), fakeCurl, { mode: 0o755 });
+
+    const action = upgradeAction(
+      at({ method: "curl", packageDir: "/app" }),
+      "1.5.0"
+    );
+
+    if (action.kind !== "command") {
+      throw new Error("The curl install has no upgrade command");
+    }
+
+    const [program, ...args] = action.command;
+
+    return {
+      result: spawnSync(program, args, {
+        encoding: "utf-8",
+        env: { PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` },
+      }),
+    };
+  } finally {
+    await rm(bin, { force: true, recursive: true });
+  }
+};
+
 describe("upgrade action", () => {
   const dir = "/x/node_modules/@wheatley-ai/cli";
 
@@ -115,7 +148,7 @@ describe("upgrade action", () => {
     });
   });
 
-  it("upgrades the Homebrew formula and re-runs the curl installer", () => {
+  it("upgrades the Homebrew formula", () => {
     expect(
       upgradeAction(
         at({
@@ -130,17 +163,25 @@ describe("upgrade action", () => {
       kind: "command",
       verify: false,
     });
-    expect(
-      upgradeAction(at({ method: "curl", packageDir: dir }), "1.5.0")
-    ).toStrictEqual({
-      command: [
-        "sh",
-        "-c",
-        "curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 1.5.0 --no-modify-path",
-      ],
-      kind: "command",
-      verify: false,
-    });
+  });
+
+  it("passes the version flags to the downloaded curl installer", async () => {
+    const { result } = await runCurlAction(
+      `#!/bin/sh\necho "$@" >&2\necho 'echo "installer $*"'\n`
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe(
+      "-fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh\n"
+    );
+    expect(result.stdout).toBe("installer --version 1.5.0 --no-modify-path\n");
+  });
+
+  it("fails the curl update if the download fails", async () => {
+    const { result } = await runCurlAction("#!/bin/sh\nexit 22\n");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe("");
   });
 
   it("prints instructions for installs that another tool owns", () => {
@@ -273,7 +314,7 @@ describe("applyUpgrade", () => {
           kind: "command",
           verify: true,
         },
-        { packageDir, runner, target: "1.5.0" }
+        { packageDir, runner, target: "1.5.0", workDir: packageDir }
       );
     });
 
@@ -295,7 +336,12 @@ describe("applyUpgrade", () => {
             kind: "command",
             verify: true,
           },
-          { packageDir, runner: new FakeCommandRunner(), target: "1.5.0" }
+          {
+            packageDir,
+            runner: new FakeCommandRunner(),
+            target: "1.5.0",
+            workDir: packageDir,
+          }
         )
       ).rejects.toThrow(`${packageDir} still has Wheatley 1.0.0`);
     });
@@ -314,7 +360,7 @@ describe("applyUpgrade", () => {
           kind: "command",
           verify: false,
         },
-        { packageDir: "/missing", runner, target: "1.5.0" }
+        { packageDir: "/missing", runner, target: "1.5.0", workDir: "/" }
       )
     ).rejects.toThrow("brew upgrade wheatley exited with code 1: EACCES");
   });

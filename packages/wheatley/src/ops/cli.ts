@@ -272,6 +272,7 @@ const updateCommand =
         packageDir: installation.packageDir,
         runner: deps.runner,
         target: plan.target,
+        workDir: deps.userHome,
       });
       io.out(
         `Updated Wheatley to ${plan.target}. If the daemon runs as a service, run: wheatley service restart`
