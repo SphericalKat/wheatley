@@ -79,6 +79,18 @@ export const coreMigrations: readonly Migration[] = [
     },
     version: 1,
   },
+  {
+    name: "create agent metadata table",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE core_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        ) STRICT;
+      `);
+    },
+    version: 2,
+  },
 ];
 
 type Row = Record<string, SQLOutputValue>;
@@ -248,6 +260,13 @@ export class AgentStore {
     return row === undefined ? undefined : textOf(row, "conversation_id");
   };
 
+  /** Every current Chat Conversation ID stored for this Agent. */
+  readonly allChatConversations = (): readonly string[] =>
+    this.#db
+      .prepare("SELECT DISTINCT conversation_id FROM core_chats")
+      .all()
+      .map((row) => textOf(row, "conversation_id"));
+
   /** Points a Chat at a new current Conversation. */
   readonly setChatConversation = (
     bindingId: string,
@@ -273,6 +292,15 @@ export class AgentStore {
     return row === undefined ? undefined : textOf(row, "conversation_id");
   };
 
+  /** Every shared Trigger Conversation ID stored for this Agent. */
+  readonly allTriggerConversations = (): readonly string[] =>
+    this.#db
+      .prepare(
+        "SELECT DISTINCT conversation_id FROM core_trigger_conversations"
+      )
+      .all()
+      .map((row) => textOf(row, "conversation_id"));
+
   readonly setTriggerConversation = (
     triggerId: string,
     conversationId: string
@@ -283,6 +311,25 @@ export class AgentStore {
          ON CONFLICT (trigger_id) DO UPDATE SET conversation_id = excluded.conversation_id`
       )
       .run(triggerId, conversationId);
+  };
+
+  /** Reads one Agent metadata value by key, or `undefined` if not set. */
+  readonly getMeta = (key: string): string | undefined => {
+    const row = this.#db
+      .prepare("SELECT value FROM core_meta WHERE key = ?")
+      .get(key);
+
+    return row === undefined ? undefined : textOf(row, "value");
+  };
+
+  /** Stores one Agent metadata value by key. */
+  readonly setMeta = (key: string, value: string): void => {
+    this.#db
+      .prepare(
+        `INSERT INTO core_meta (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      )
+      .run(key, value);
   };
 
   readonly insertRun = (run: RunInsert): void => {

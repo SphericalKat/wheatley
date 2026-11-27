@@ -282,8 +282,60 @@ export interface AgentStatus {
   readonly skillWarnings: readonly string[];
 }
 
-const parseModelArgument = (argument: string, current: ModelChoice): ModelRef =>
-  parseModelRef(argument) ?? { id: argument, provider: current.provider };
+const CONFIG_MODEL_META_KEY = "config_model";
+
+const modelSignature = (model: ModelChoice): string =>
+  JSON.stringify({
+    id: model.id,
+    provider: model.provider,
+    thinking: model.thinking ?? null,
+  });
+
+type ModelResolution =
+  | { readonly kind: "resolved"; readonly model: ModelRef }
+  | { readonly kind: "ambiguous"; readonly matches: readonly ModelRef[] };
+
+const resolveModelArgument = async (
+  argument: string,
+  preferredProviders: readonly string[],
+  models: Models
+): Promise<ModelResolution> => {
+  const explicit = parseModelRef(argument);
+
+  if (explicit !== undefined) {
+    return { kind: "resolved", model: explicit };
+  }
+
+  for (const provider of preferredProviders) {
+    if (models.getModel(provider, argument) !== undefined) {
+      return { kind: "resolved", model: { id: argument, provider } };
+    }
+  }
+
+  const available = await models.getAvailable();
+
+  const matches = available
+    .filter((candidate) => candidate.id === argument)
+    .map((candidate): ModelRef => ({
+      id: candidate.id,
+      provider: candidate.provider,
+    }));
+
+  if (matches.length === 1 && matches[0] !== undefined) {
+    return { kind: "resolved", model: matches[0] };
+  }
+
+  if (matches.length > 1) {
+    return { kind: "ambiguous", matches };
+  }
+
+  const [fallbackProvider = ""] = preferredProviders;
+
+  return {
+    kind: "resolved",
+    model: { id: argument, provider: fallbackProvider },
+  };
+};
 
 /**
  * One running Agent: its `agent.sqlite`, its pi-durable Harness over `harness.sqlite`, its extensions, and its Runs
@@ -404,6 +456,7 @@ export class Agent {
       await agent.#mountModules();
 
       harness.adapter = await agent.#openPi();
+      await agent.#syncConversationModels();
       await agent.#startModules();
       agent.#resumeRuns();
 
@@ -772,6 +825,55 @@ export class Agent {
     this.#stops.push(pi.close);
 
     return pi;
+  };
+
+  /**
+   * Keeps persisted Conversations aligned with `config.yaml` on Agent start (ADR 0004). When `config.model` changes,
+   * every current Chat and shared Trigger Conversation switches to it. When `config.model` is unchanged, a Conversation
+   * keeps its `/model` choice unless that model is now unknown or its provider is no longer configured.
+   */
+  readonly #syncConversationModels = async (): Promise<void> => {
+    const pi = this.#requirePi();
+    const { config, models } = this.#options;
+    const currentSignature = modelSignature(config.model);
+
+    const configChanged =
+      this.#store.getMeta(CONFIG_MODEL_META_KEY) !== currentSignature;
+
+    const conversationIds = new Set([
+      ...this.#store.allChatConversations(),
+      ...this.#store.allTriggerConversations(),
+    ]);
+
+    for (const conversationId of conversationIds) {
+      // oxlint-disable-next-line no-await-in-loop -- Startup sync runs sequentially against one SQLite Harness.
+      const stored = await pi.modelOf(conversationId);
+
+      if (stored === undefined) {
+        continue;
+      }
+
+      if (configChanged) {
+        // oxlint-disable-next-line no-await-in-loop -- Startup sync runs sequentially against one SQLite Harness.
+        await pi.setModel(conversationId, config.model);
+        continue;
+      }
+
+      const parsed = parseModelRef(stored);
+
+      const usable =
+        parsed !== undefined &&
+        models.getModel(parsed.provider, parsed.id) !== undefined &&
+        // oxlint-disable-next-line no-await-in-loop -- Startup sync checks each distinct Conversation's provider auth.
+        (await models.checkAuth(parsed.provider)) !== undefined;
+
+      if (!usable) {
+        // oxlint-disable-next-line no-await-in-loop -- Startup sync runs sequentially against one SQLite Harness.
+        await pi.setModel(conversationId, config.model);
+      }
+    }
+
+    this.#store.setMeta(CONFIG_MODEL_META_KEY, currentSignature);
   };
 
   readonly #requirePi = (): PiAdapter => {
@@ -1454,7 +1556,43 @@ export class Agent {
       return true;
     }
 
-    const model = parseModelArgument(args, this.#options.config.model);
+    const pi = this.#requirePi();
+    const conversationId = await this.#chatConversation(chat);
+    const currentModel = await pi.modelOf(conversationId);
+
+    const currentProvider =
+      currentModel === undefined
+        ? undefined
+        : parseModelRef(currentModel)?.provider;
+
+    const preferredProviders = [
+      ...new Set(
+        [currentProvider, this.#options.config.model.provider].filter(
+          (provider): provider is string => provider !== undefined
+        )
+      ),
+    ];
+
+    const resolution = await resolveModelArgument(
+      args,
+      preferredProviders,
+      this.#options.models
+    );
+
+    if (resolution.kind === "ambiguous") {
+      const choices = resolution.matches
+        .map((match) => `${match.provider}/${match.id}`)
+        .join(", ");
+
+      await this.#reply(
+        chat,
+        `Multiple configured providers offer ${args}: ${choices}. Specify provider/model.`
+      );
+
+      return false;
+    }
+
+    const { model } = resolution;
 
     if (this.#options.models.getModel(model.provider, model.id) === undefined) {
       await this.#reply(chat, `Unknown model: ${model.provider}/${model.id}`);
@@ -1462,9 +1600,13 @@ export class Agent {
       return false;
     }
 
-    const conversationId = await this.#chatConversation(chat);
+    if ((await this.#options.models.checkAuth(model.provider)) === undefined) {
+      await this.#reply(chat, `Provider is not configured: ${model.provider}`);
 
-    await this.#requirePi().setModel(conversationId, model);
+      return false;
+    }
+
+    await pi.setModel(conversationId, model);
     await this.#reply(
       chat,
       `This Conversation now uses ${model.provider}/${model.id}.`

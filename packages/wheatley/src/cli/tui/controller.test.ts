@@ -485,6 +485,7 @@ it("sends /model with an argument to the Agent without a picker", async () => {
   );
 
   expect(view.picker).toBeUndefined();
+  expect(view.model).toBe("zeta/z-1");
   expect(requests.map(({ method }) => method)).not.toContain("models.list");
   expect(commandsSent()).toStrictEqual([
     { agent: "home", args: "zeta/z-1", name: "model" },
