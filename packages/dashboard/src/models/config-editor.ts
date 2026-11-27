@@ -84,6 +84,10 @@ export interface ConfigEditorState {
   readonly remoteChanged: boolean;
 }
 
+interface ActiveLoad {
+  latestEventRevision: string | null;
+}
+
 /** The Config model. It follows `config.changed` and reloads after each reconnect. */
 export interface ConfigEditor {
   readonly state: Store<ConfigEditorState>;
@@ -199,11 +203,35 @@ export const createConfigEditor = (client: RpcClient): ConfigEditor => {
     state.update((current) => ({ ...current, ...change }));
   };
 
+  // The load in flight and the newest revision that a `config.changed` event reported during it.
+  let activeLoad: ActiveLoad | null = null;
+
   const load = async (keepDraft = false): Promise<void> => {
+    const thisLoad: ActiveLoad = { latestEventRevision: null };
+
+    activeLoad = thisLoad;
     patch({ loading: true });
 
     try {
       const loaded = await client.call("config.get", {});
+
+      if (activeLoad !== thisLoad) {
+        return;
+      }
+
+      activeLoad = null;
+
+      // An event with another revision means the server changed after it read the config. Load again.
+      const { latestEventRevision } = thisLoad;
+
+      if (
+        latestEventRevision !== null &&
+        latestEventRevision !== loaded.revision
+      ) {
+        await load(keepDraft);
+
+        return;
+      }
 
       state.update((current) => ({
         ...current,
@@ -323,6 +351,10 @@ export const createConfigEditor = (client: RpcClient): ConfigEditor => {
     }),
     client.on("config.changed", ({ pendingRestart, revision }) => {
       const current = state.get();
+
+      if (activeLoad !== null) {
+        activeLoad.latestEventRevision = revision;
+      }
 
       patch({ pendingRestart });
 
