@@ -1,0 +1,81 @@
+---
+title: Quick start
+description: Initialize a Wheatley Deployment, configure an API key, and start chatting.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+<Steps>
+  1. Create the Deployment home. The default home is `$WHEATLEY_HOME`, or `~/.wheatley` if unset:
+
+     ```bash
+     wheatley init
+     ```
+
+2.  Add your model provider API key to `~/.wheatley/secrets.yaml`:
+
+    ```yaml
+    ANTHROPIC_API_KEY: <your key>
+    ```
+
+3.  Start the daemon in the foreground:
+
+    ```bash
+    wheatley daemon
+    ```
+
+4.  In a second terminal, check the health of the Deployment:
+
+    ```bash
+    wheatley status
+    ```
+
+5.  Send a single prompt:
+
+    ```bash
+    wheatley ask "What can you do?"
+    ```
+
+6.  Start an interactive Chat:
+
+         ```bash
+         wheatley chat
+         ```
+
+    </Steps>
+
+## What `wheatley init` creates
+
+`wheatley init` writes these files in the Deployment home:
+
+- `config.yaml`: the Deployment settings.
+- `secrets.yaml`: secret values, with file mode `0600`.
+- `agents/<name>/`: the folder of the first Agent.
+
+`wheatley init` never overwrites an existing `config.yaml`. It accepts these flags:
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--home <dir>` | `~/.wheatley` | Deployment home folder |
+| `--agent <name>` | `default` | Name of the first Agent |
+| `--provider <name>` | `anthropic` | Model provider name |
+| `--model <id>` | `claude-sonnet-5-5` | Model ID from the pi-ai model registry |
+
+The API key secret name is `<PROVIDER>_API_KEY`, for example `OPENAI_API_KEY` for `--provider openai`. Set it in `secrets.yaml` or as an environment variable. An environment variable overrides the value in `secrets.yaml`.
+
+:::note If the API key secret is missing, the daemon still starts, but the Agent enters the `degraded` state and `wheatley status` reports the missing secret. :::
+
+## Daemon listeners
+
+`wheatley daemon` listens on two endpoints:
+
+- A Unix socket at `<home>/daemon.sock`. The CLI connects to this socket by default.
+- A TCP listener on `127.0.0.1:7420`. This listener serves the web dashboard on `/` and JSON-RPC on `/ws`.
+
+To change the TCP address, set `daemon.host` and `daemon.port` in `config.yaml`, or pass `--host` and `--port`. To connect the CLI over TCP, pass `--url ws://127.0.0.1:7420/ws`.
+
+## Next steps
+
+- Configure additional models or Agents in [Models and agents](/wheatley/guides/models-and-agents/).
+- Connect Telegram, Slack, or Discord in [Chat frontends](/wheatley/guides/frontends/).
+- Run the daemon as a background service in [Operations](/wheatley/reference/operations/).

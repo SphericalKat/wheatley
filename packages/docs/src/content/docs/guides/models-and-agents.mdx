@@ -1,0 +1,156 @@
+---
+title: Models and agents
+description: Configure model providers, proxies, thinking levels, and multiple isolated Agents in Wheatley.
+---
+
+import { TabItem, Tabs } from "@astrojs/starlight/components";
+
+One Wheatley Deployment can host one or more isolated Agents. Each Agent has its own model, instructions, Permission Policy, Memory, Triggers, Frontends, and Conversations.
+
+After you edit `config.yaml`, restart the changed Agent. Wheatley does not restart an Agent automatically.
+
+## Configure a model provider
+
+Wheatley uses the built-in providers of `pi-ai`, including `anthropic`, `openai`, `google`, `openrouter`, `groq`, `mistral`, `xai`, and `deepseek`. The model ID must exist in the `pi-ai` model registry.
+
+<Tabs syncKey="provider">
+  <TabItem label="Anthropic">
+    Add `ANTHROPIC_API_KEY` to `secrets.yaml`, then configure `config.yaml`:
+
+    ```yaml
+    version: 1
+
+    providers:
+      anthropic:
+        apiKey:
+          secret: ANTHROPIC_API_KEY
+
+    agents:
+      default:
+        model:
+          provider: anthropic
+          id: claude-sonnet-5-5
+    ```
+
+  </TabItem>
+
+  <TabItem label="OpenAI">
+    Add `OPENAI_API_KEY` to `secrets.yaml`, then configure `config.yaml`:
+
+    ```yaml
+    version: 1
+
+    providers:
+      openai:
+        apiKey:
+          secret: OPENAI_API_KEY
+
+    agents:
+      default:
+        model:
+          provider: openai
+          id: gpt-5.4-mini
+    ```
+
+  </TabItem>
+
+  <TabItem label="Google">
+    Add `GOOGLE_API_KEY` to `secrets.yaml`, then configure `config.yaml`:
+
+    ```yaml
+    version: 1
+
+    providers:
+      google:
+        apiKey:
+          secret: GOOGLE_API_KEY
+
+    agents:
+      default:
+        model:
+          provider: google
+          id: gemini-2.5-pro
+    ```
+
+  </TabItem>
+
+  <TabItem label="OpenAI-compatible proxy">
+    Set `baseUrl` on the `openai` provider and choose an OpenAI model ID that `pi-ai` recognizes:
+
+    ```yaml
+    version: 1
+
+    providers:
+      openai:
+        baseUrl: https://<host>/v1
+        apiKey:
+          secret: OPENAI_API_KEY
+
+    agents:
+      default:
+        model:
+          provider: openai
+          id: gpt-5.4-mini
+    ```
+
+  </TabItem>
+</Tabs>
+
+### Provider concurrency limits
+
+Each provider entry acts as one concurrency gate. Set `maxConcurrent` on a provider to cap simultaneous model requests across Agents that share that provider:
+
+```yaml
+providers:
+  anthropic:
+    apiKey:
+      secret: ANTHROPIC_API_KEY
+    maxConcurrent: 4
+```
+
+### Reasoning effort (`thinking`)
+
+Set `model.thinking` on an Agent to control reasoning effort for models that support it. Accepted values are `off`, `low`, `medium`, and `high`.
+
+```yaml
+agents:
+  default:
+    model:
+      provider: anthropic
+      id: claude-sonnet-5-5
+      thinking: medium
+```
+
+## Run multiple Agents
+
+Define multiple keys under `agents` in `config.yaml` to run isolated Agents side by side in one Deployment:
+
+```yaml
+version: 1
+
+providers:
+  anthropic:
+    apiKey:
+      secret: ANTHROPIC_API_KEY
+  openai:
+    apiKey:
+      secret: OPENAI_API_KEY
+
+agents:
+  personal:
+    instructions: Keep replies short and direct.
+    maxConcurrentRuns: 2
+    model:
+      provider: anthropic
+      id: claude-sonnet-5-5
+
+  research:
+    instructions: Cite primary sources when you summarize findings.
+    model:
+      provider: openai
+      id: gpt-5.4-mini
+```
+
+If a Deployment has more than one Agent and none is named `default`, pass `--agent <name>` to CLI commands such as `wheatley chat --agent personal` or `wheatley ask --agent research "..."`.
+
+To switch models temporarily inside an active CLI Chat without editing `config.yaml`, run `/model <model-id>`.

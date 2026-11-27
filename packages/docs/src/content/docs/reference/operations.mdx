@@ -1,0 +1,64 @@
+---
+title: Operations
+description: Manage Wheatley as a background service, update releases, and restore Agent backups.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+## Run as a background service
+
+`wheatley service` manages a user-level background service using `systemd --user` on Linux and `launchd` on macOS:
+
+```bash
+wheatley service install
+wheatley service start
+wheatley service stop
+wheatley service restart
+wheatley service status
+```
+
+## Update Wheatley
+
+```bash
+wheatley update --check
+wheatley update
+wheatley update --method pnpm
+```
+
+`wheatley update` checks the npm registry over HTTP (respecting `npm_config_registry` if set), detects how Wheatley was installed, and upgrades to the newest release in your current major version. Pass `--method` (`npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`) to override detection.
+
+| Install method | Behavior |
+| --- | --- |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the active `--prefix` when installed through a Node.js version manager) |
+| pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
+| yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
+| bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
+| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley` (or `brew upgrade wheatley` for a core formula) |
+| Install script (`curl`) | Re-runs `scripts/install.sh --version <version> --no-modify-path` |
+| Volta / mise / AUR / Docker | Prints the native update command without modifying files |
+| Source checkout | Exits with an error. Update with `git` or pass `--method` |
+
+For `npm`, `yarn`, and `bun`, `wheatley update` verifies the installed `package.json` afterward and fails if the version did not change.
+
+Major version upgrades are never installed automatically. Instead, `wheatley update` prints the upgrade command for your install method. After updating, restart the daemon (for example `wheatley service restart`).
+
+## Restore an Agent database
+
+Wheatley backs up `agents/<name>/agent.sqlite` before each database migration and before each restore. Each Agent keeps its five newest backups in `agents/<name>/backups/`.
+
+<Steps>
+  1. List the available backups for an Agent:
+
+     ```bash
+     wheatley restore <agent>
+     ```
+
+2.  Stop the daemon. `wheatley restore` refuses to run while the daemon is active.
+
+3.  Restore a backup:
+
+         ```bash
+         wheatley restore <agent> <backup>
+         ```
+
+    </Steps>

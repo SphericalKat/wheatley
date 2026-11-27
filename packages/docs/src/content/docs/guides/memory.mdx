@@ -1,0 +1,32 @@
+---
+title: Memory
+description: Configure durable per-Agent Memory and daily consolidation.
+---
+
+Each Agent stores durable Memory in `agents/<name>/memory/`. The primary file is `MEMORY.md`.
+
+At the start of every new Conversation, the Agent reads `MEMORY.md`. During a Run, the Agent updates Memory with the `memory_search`, `memory_read`, `memory_write`, and `memory_delete` Tools.
+
+You can inspect an Agent's Memory at any time in the **Memory** view of the web dashboard.
+
+## Configure Memory limits and consolidation
+
+By default, `MEMORY.md` has a cap of 4,000 characters, and Wheatley consolidates Memory every day at `03:00`.
+
+Customize these settings under `agents.<name>.memory` in `config.yaml`:
+
+```yaml
+agents:
+  default:
+    memory:
+      maxChars: 8000
+      consolidation:
+        enabled: true
+        schedule: "0 3 * * *"
+        timezone: "UTC"
+        model:
+          provider: anthropic
+          id: claude-sonnet-5-5
+```
+
+To disable automatic consolidation, set `memory.consolidation.enabled` to `false`.
