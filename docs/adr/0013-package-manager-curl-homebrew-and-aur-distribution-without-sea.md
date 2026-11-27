@@ -7,6 +7,8 @@ This decision supersedes ADR 0008. Wheatley still ships `@wheatley-ai/cli` as on
 - A Homebrew tap (`sphericalkat/tap/wheatley`).
 - An AUR package (`wheatley-cli`).
 
+The release workflow attaches `wheatley-ai-cli-<version>.tgz` to each GitHub release. Homebrew and AUR download that GitHub release asset instead of fetching the tarball from `registry.npmjs.org`.
+
 The `curl` installer uses XDG folders and leaves `~/.wheatley` for the Deployment home:
 
 - It installs the package with `npm` in `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app`.
@@ -21,6 +23,7 @@ The `curl` installer uses XDG folders and leaves `~/.wheatley` for the Deploymen
 - Require a host Node.js 26 for every host install: rejected. Many systems ship an older Node.js, and a version manager is an extra step for users who only want Wheatley.
 - Download Node.js into `~/.wheatley`: rejected. `~/.wheatley` holds the Deployment home (configuration and data), and XDG folders keep replaceable program files out of it.
 - Support musl (Alpine Linux) in the `curl` installer: rejected. Node.js publishes no official musl builds. The installer stops with a message that recommends the system `nodejs` package or Docker.
+- Download the CLI tarball from `registry.npmjs.org` in Homebrew and AUR: rejected. The npm registry can return `404` for several minutes after `npm publish` returns, which breaks automated release updates and couples Homebrew and AUR to npm availability.
 
 ## Consequences
 
