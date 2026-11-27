@@ -13,13 +13,54 @@ MIN_NODE_VERSION="26.13.1"
 # The Node.js release that the installer downloads if the host Node.js is missing or too old.
 MANAGED_NODE_VERSION="26.13.1"
 
+DOCS_URL="https://sphericalkat.github.io/wheatley/"
+
+MUTED=""
+CYAN_BRIGHT=""
+CYAN=""
+BLUE=""
+NC=""
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+  ESC=$(printf '\033')
+  MUTED="${ESC}[0;2m"
+  CYAN_BRIGHT="${ESC}[0;96m"
+  CYAN="${ESC}[0;36m"
+  BLUE="${ESC}[0;34m"
+  NC="${ESC}[0m"
+fi
+
+ERR_RED=""
+ERR_NC=""
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+  ESC=$(printf '\033')
+  ERR_RED="${ESC}[0;31m"
+  ERR_NC="${ESC}[0m"
+fi
+
 say() {
-  printf 'wheatley-install: %s\n' "$*"
+  printf '%s\n' "$*"
 }
 
 fail() {
-  printf 'wheatley-install: error: %s\n' "$*" >&2
+  printf '%sError: %s%s\n' "$ERR_RED" "$*" "$ERR_NC" >&2
   exit 1
+}
+
+print_banner() {
+  printf '\n'
+  printf '%s█   █ █   █ █████  ███  █████ █     █████ █   █%s\n' "$CYAN_BRIGHT" "$NC"
+  printf '%s█   █ █   █ █     █   █   █   █     █      █ █ %s\n' "$CYAN_BRIGHT" "$NC"
+  printf '%s█ █ █ █████ ████  █████   █   █     ████    █  %s\n' "$CYAN" "$NC"
+  printf '%s██ ██ █   █ █     █   █   █   █     █       █  %s\n' "$CYAN" "$NC"
+  printf '%s█   █ █   █ █████ █   █   █   █████ █████   █  %s\n' "$BLUE" "$NC"
+  printf '\n'
+  printf '%sTo start:%s\n' "$MUTED" "$NC"
+  printf '\n'
+  printf 'wheatley init  %s# Configure your model and provider%s\n' "$MUTED" "$NC"
+  printf 'wheatley       %s# Start chatting%s\n' "$MUTED" "$NC"
+  printf '\n'
+  printf '%sFor more information visit %s%s\n' "$MUTED" "$NC" "$DOCS_URL"
+  printf '\n'
 }
 
 usage() {
@@ -147,7 +188,7 @@ npm_bin=""
 # Selects the host Node.js and its npm if Node.js is new enough. Prints the reason and fails otherwise.
 use_host_node() {
   if ! command -v node >/dev/null 2>&1; then
-    say "Node.js is not installed. The installer downloads Node.js $MANAGED_NODE_VERSION for Wheatley."
+    say "${MUTED}Node.js is not installed. Downloading Node.js ${NC}${MANAGED_NODE_VERSION}${MUTED}...${NC}"
     return 1
   fi
 
@@ -155,7 +196,7 @@ use_host_node() {
   host_version=${host_version#v}
 
   if ! version_at_least "$host_version" "$MIN_NODE_VERSION"; then
-    say "Host Node.js ${host_version:-of unknown version} is older than $MIN_NODE_VERSION. The installer downloads Node.js $MANAGED_NODE_VERSION for Wheatley."
+    say "${MUTED}Host Node.js ${NC}${host_version:-unknown}${MUTED} is older than ${MIN_NODE_VERSION}. Downloading Node.js ${NC}${MANAGED_NODE_VERSION}${MUTED}...${NC}"
     return 1
   fi
 
@@ -168,12 +209,12 @@ use_host_node() {
   elif command -v npm >/dev/null 2>&1; then
     npm_bin=$(command -v npm)
   else
-    say "Host Node.js $host_version has no npm. The installer downloads Node.js $MANAGED_NODE_VERSION for Wheatley."
+    say "${MUTED}Host Node.js ${NC}${host_version}${MUTED} has no npm. Downloading Node.js ${NC}${MANAGED_NODE_VERSION}${MUTED}...${NC}"
     return 1
   fi
 
   node_bin=$resolved_node
-  say "Using host Node.js $host_version at $node_bin"
+  say "${MUTED}Using host Node.js ${NC}${host_version} ${MUTED}(${node_bin})${NC}"
 }
 
 is_musl() {
@@ -212,12 +253,12 @@ use_managed_node() {
   target=$runtime_dir/node-v$MANAGED_NODE_VERSION
 
   if [ -x "$target/bin/node" ]; then
-    say "Using Node.js $MANAGED_NODE_VERSION at $target"
+    say "${MUTED}Using Node.js ${NC}${MANAGED_NODE_VERSION} ${MUTED}(${target})${NC}"
   else
     mkdir -p "$runtime_dir"
     # The download and extraction stay in a temporary folder next to the target, so the final rename is atomic.
     scratch=$(mktemp -d "$runtime_dir/.download.XXXXXX")
-    say "Downloading Node.js $MANAGED_NODE_VERSION ($node_os-$node_arch) from $node_mirror"
+    say "${MUTED}Downloading Node.js ${NC}${MANAGED_NODE_VERSION} ${MUTED}(${node_os}-${node_arch})...${NC}"
     fetch "$node_mirror/v$MANAGED_NODE_VERSION/$archive" "$scratch/$archive"
     fetch "$node_mirror/v$MANAGED_NODE_VERSION/SHASUMS256.txt" "$scratch/SHASUMS256.txt"
 
@@ -241,7 +282,7 @@ use_managed_node() {
     mv "$scratch/$name" "$target"
     rm -rf "$scratch"
     scratch=""
-    say "Installed Node.js $MANAGED_NODE_VERSION in $target"
+    say "${MUTED}Installed Node.js ${NC}${MANAGED_NODE_VERSION} ${MUTED}in ${target}${NC}"
   fi
 
   node_bin=$target/bin/node
@@ -280,7 +321,11 @@ else
   spec=$PACKAGE@$version
 fi
 
-say "Installing $spec in $app_dir"
+if [ -n "$version" ]; then
+  say "${MUTED}Installing ${NC}wheatley ${MUTED}version: ${NC}${version}"
+else
+  say "${MUTED}Installing ${NC}wheatley ${MUTED}from: ${NC}${spec}"
+fi
 mkdir -p "$app_dir"
 
 # The app folder is its own npm project, so npm ignores package.json files (and their devEngines) of the caller.
@@ -288,11 +333,17 @@ if [ ! -f "$app_dir/package.json" ]; then
   printf '{\n  "private": true\n}\n' >"$app_dir/package.json"
 fi
 
-(
+scratch=$(mktemp "$app_dir/.npm-install.XXXXXX")
+if ! (
   cd "$app_dir"
   PATH="$node_path_dir:$PATH" "$npm_bin" install --prefix "$app_dir" --save-exact --omit=dev \
     --no-audit --no-fund --no-update-notifier --loglevel=error "$spec"
-) || fail "npm install $spec failed"
+) >"$scratch" 2>&1; then
+  cat "$scratch" >&2
+  fail "npm install $spec failed"
+fi
+rm -f "$scratch"
+scratch=""
 
 entry=$app_dir/node_modules/@wheatley-ai/cli/bin/wheatley.js
 [ -f "$entry" ] || fail "npm did not install $entry"
@@ -318,14 +369,18 @@ scratch=""
 "$shim" --help >/dev/null || fail "the installed wheatley command does not run: $shim --help"
 installed=$("$node_bin" -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).version' \
   "$app_dir/node_modules/@wheatley-ai/cli/package.json") || fail "cannot read the installed version"
-say "Installed wheatley $installed at $shim"
+say "${MUTED}Installed ${NC}wheatley ${installed} ${MUTED}at ${NC}${shim}"
 
 case ":$PATH:" in
-  *":$bin_home:"*) exit 0 ;;
+  *":$bin_home:"*)
+    print_banner
+    exit 0
+    ;;
 esac
 
 if [ "$modify_path" -eq 0 ]; then
-  say "$bin_home is not on PATH. Add it to run wheatley by name."
+  say "${MUTED}${bin_home} is not on \$PATH. Add it to run wheatley by name.${NC}"
+  print_banner
   exit 0
 fi
 
@@ -352,12 +407,13 @@ case $(basename "${SHELL:-sh}") in
 esac
 
 if [ -f "$profile" ] && grep -qxF "$path_line" "$profile"; then
-  say "$profile already adds $bin_home to PATH"
+  say "${MUTED}${profile} already adds ${bin_home} to \$PATH${NC}"
 else
   mkdir -p "$(dirname "$profile")"
   printf '\n# Added by the Wheatley installer\n%s\n' "$path_line" >>"$profile"
-  say "Added $bin_home to PATH in $profile"
+  say "${MUTED}Successfully added ${NC}wheatley ${MUTED}to \$PATH in ${NC}${profile}"
 fi
 
-say "Open a new shell, or run this line, to use wheatley now:"
+say "${MUTED}Reload your shell, or run:${NC}"
 printf '  %s\n' "$path_line"
+print_banner
