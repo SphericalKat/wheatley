@@ -1,30 +1,20 @@
 import { styleText } from "node:util";
 
+import type { Token, Tokens } from "marked";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 
-const FENCE = /^\s*(?<marker>```|~~~)\s*(?<language>[\w+-]*)\s*$/u;
-const HEADING = /^(?<hashes>#{1,6})\s+(?<text>.*)$/u;
-const BULLET = /^(?<indent>\s*)[-*+]\s+(?<text>.*)$/u;
-const NUMBERED = /^(?<indent>\s*)(?<number>\d+)[.)]\s+(?<text>.*)$/u;
-const QUOTE = /^\s*>\s?(?<text>.*)$/u;
-const RULE = /^\s*(?<mark>[-*_])(?:\s*\k<mark>){2,}\s*$/u;
-
-const INLINE_CODE = /`(?<code>[^`]+)`/gu;
-const BOLD = /\*\*(?<star>[^*]+)\*\*|__(?<under>[^_]+)__/gu;
-
-const ITALIC =
-  /(?<![\w*])\*(?<star>[^*\s][^*]*)\*(?!\*)|(?<![\w_])_(?<under>[^_\s][^_]*)_(?!\w)/gu;
-
-const STRIKE = /~~(?<text>[^~]+)~~/gu;
-const LINK = /\[(?<label>[^\]]+)\]\((?<url>[^)\s]+)\)/gu;
-
-/** Marks a code span while the emphasis rules run. U+E000 is a private-use character that real text does not use. */
-const CODE_MARK = "";
-const CODE_PLACEHOLDER = /(?<index>\d+)/gu;
+import {
+  blockTokens,
+  inlineTokens,
+  lexMarkdown,
+} from "../../core/markdown-tokens.js";
+import type { BlockToken, InlineToken } from "../../core/markdown-tokens.js";
 
 const RULE_WIDTH = 40;
 const LEADING_SPACES = /^ */u;
+const H1 = 1;
+const H2 = 2;
 
 /**
  * One rendered Markdown line, ready to wrap. Only `body` wraps. The first row starts with `lead`, for example a bullet
@@ -35,6 +25,11 @@ export interface MarkdownLine {
   readonly body: string;
   readonly hang: string;
 }
+
+type Style = Parameters<typeof styleText>[0];
+
+/** Styled inline text, split into rows at its line breaks. A row never contains a newline. */
+type Rows = readonly string[];
 
 const spaces = (text: string): string => " ".repeat(stringWidth(text));
 
@@ -48,180 +43,335 @@ const plainLine = (body: string): MarkdownLine => ({
 export const lineText = (line: MarkdownLine): string =>
   `${line.lead}${line.body}`;
 
-const H1 = 1;
-const H2 = 2;
+/** Styles each row on its own, so a style that spans a line break does not leak into the prefix of the next row. */
+const style = (format: Style, rows: Rows): string[] =>
+  rows.map((row) => (row === "" ? row : styleText(format, row)));
 
-type Groups = Readonly<Partial<Record<string, string>>>;
+const textRows = (text: string): string[] => text.split("\n");
 
-/** Replaces every match of `pattern` in `text` with `render` of its named groups. */
-const replaceMatches = (
-  text: string,
-  pattern: RegExp,
-  render: (groups: Groups) => string
-): string => {
-  let result = "";
-  let last = 0;
+/** Joins inline parts. The last row of each part continues on the first row of the next part. */
+const concatRows = (parts: readonly Rows[]): string[] => {
+  const rows = [""];
 
-  for (const match of text.matchAll(pattern)) {
-    result += `${text.slice(last, match.index)}${render(match.groups ?? {})}`;
-    last = match.index + match[0].length;
+  for (const part of parts) {
+    const [first = "", ...rest] = part;
+
+    rows[rows.length - 1] = `${rows.at(-1) ?? ""}${first}`;
+
+    for (const row of rest) {
+      rows.push(row);
+    }
   }
 
-  return `${result}${text.slice(last)}`;
+  return rows;
 };
 
-/** Styles `code`, **bold**, *italic*, ~~strike~~, and [links](url) in one line. Code spans keep their content as is. */
-export const renderInline = (text: string): string => {
-  const codeSpans: string[] = [];
+const renderLink = (token: Tokens.Link | Tokens.Image): Rows => {
+  const label = style("underline", renderInline(token.tokens));
 
-  // Code spans go out first and come back last, so emphasis rules do not touch their content.
-  const withoutCode = replaceMatches(text, INLINE_CODE, ({ code }) => {
-    codeSpans.push(styleText("yellow", code ?? ""));
+  const plainHref =
+    token.href === token.text || token.href === `mailto:${token.text}`;
 
-    return `${CODE_MARK}${codeSpans.length - 1}${CODE_MARK}`;
+  return plainHref
+    ? label
+    : concatRows([label, [` ${styleText("dim", `(${token.href})`)}`]]);
+};
+
+const renderInlineToken = (token: InlineToken): Rows => {
+  switch (token.type) {
+    case "codespan": {
+      return [styleText("yellow", token.text.replaceAll("\n", " "))];
+    }
+
+    case "strong": {
+      return style("bold", renderInline(token.tokens));
+    }
+
+    case "em": {
+      return style("italic", renderInline(token.tokens));
+    }
+
+    case "del": {
+      return style("strikethrough", renderInline(token.tokens));
+    }
+
+    case "link":
+    case "image": {
+      return renderLink(token);
+    }
+
+    case "br": {
+      return ["", ""];
+    }
+
+    case "text": {
+      return token.tokens === undefined
+        ? textRows(token.text)
+        : renderInline(token.tokens);
+    }
+
+    case "escape": {
+      return textRows(token.text);
+    }
+
+    case "html": {
+      return textRows(token.raw);
+    }
+
+    default: {
+      return [];
+    }
+  }
+};
+
+/** Styles `code`, **bold**, *italic*, ~~strike~~, and [links](url). Code spans keep their content as is. */
+const renderInline = (tokens: readonly Token[] | undefined): string[] =>
+  concatRows(inlineTokens(tokens).map(renderInlineToken));
+
+/** Puts `lead` before the first line and `hang` before every other line and every continuation row. */
+const prefix = (
+  lines: readonly MarkdownLine[],
+  lead: string,
+  hang: string
+): MarkdownLine[] =>
+  lines.map((line, index) => ({
+    body: line.body,
+    hang: `${hang}${line.hang}`,
+    lead: `${index === 0 ? lead : hang}${line.lead}`,
+  }));
+
+const renderHeading = (token: Tokens.Heading): MarkdownLine[] => {
+  const rows = renderInline(token.tokens);
+
+  if (token.depth === H1) {
+    return style(["bold", "cyan", "underline"], rows).map(plainLine);
+  }
+
+  return (
+    token.depth === H2 ? style(["bold", "cyan"], rows) : style("bold", rows)
+  ).map(plainLine);
+};
+
+const renderCode = (token: Tokens.Code): MarkdownLine[] => {
+  const language = token.lang?.split(" ")[0] ?? "";
+  const body = token.text === "" ? [] : token.text.split("\n");
+
+  const rows = body.map((line): MarkdownLine => {
+    // The indentation goes into the gutter, so it stays on every row and the color codes do not hide it.
+    const indent = LEADING_SPACES.exec(line)?.[0] ?? "";
+    const gutter = `${styleText("dim", "│")} ${indent}`;
+
+    return {
+      body: styleText("green", line.slice(indent.length)),
+      hang: gutter,
+      lead: gutter,
+    };
   });
 
-  const linked = replaceMatches(
-    withoutCode,
-    LINK,
-    ({ label, url }) =>
-      `${styleText("underline", label ?? "")} ${styleText("dim", `(${url ?? ""})`)}`
-  );
-
-  const bold = replaceMatches(linked, BOLD, ({ star, under }) =>
-    styleText("bold", star ?? under ?? "")
-  );
-
-  const italic = replaceMatches(bold, ITALIC, ({ star, under }) =>
-    styleText("italic", star ?? under ?? "")
-  );
-
-  const struck = replaceMatches(italic, STRIKE, ({ text: inner }) =>
-    styleText("strikethrough", inner ?? "")
-  );
-
-  return replaceMatches(
-    struck,
-    CODE_PLACEHOLDER,
-    ({ index }) => codeSpans[Number(index)] ?? ""
-  );
+  return [
+    plainLine(styleText("dim", language === "" ? "╭─" : `╭─ ${language}`)),
+    ...rows,
+    plainLine(styleText("dim", "╰─")),
+  ];
 };
 
-const renderHeading = (level: number, text: string): string => {
-  const content = renderInline(text);
+const alignCell = (
+  text: string,
+  width: number,
+  align: Tokens.TableCell["align"]
+): string => {
+  const gap = width - stringWidth(text);
 
-  if (level === H1) {
-    return styleText(["bold", "cyan", "underline"], content);
+  if (align === "right") {
+    return `${" ".repeat(gap)}${text}`;
   }
 
-  return level === H2
-    ? styleText(["bold", "cyan"], content)
-    : styleText("bold", content);
+  if (align === "center") {
+    const left = Math.floor(gap / 2);
+
+    return `${" ".repeat(left)}${text}${" ".repeat(gap - left)}`;
+  }
+
+  return `${text}${" ".repeat(gap)}`;
+};
+
+const cellText = (cell: Tokens.TableCell): string =>
+  renderInline(cell.tokens).join(" ");
+
+const renderTable = (token: Tokens.Table): MarkdownLine[] => {
+  const header = token.header.map(cellText);
+  const rows = token.rows.map((row) => row.map(cellText));
+
+  const widths = header.map((text, column) =>
+    Math.max(
+      stringWidth(text),
+      ...rows.map((row) => stringWidth(row[column] ?? ""))
+    )
+  );
+
+  const line = (cells: readonly string[]): string =>
+    widths
+      .map((width, column) =>
+        alignCell(cells[column] ?? "", width, token.align[column] ?? null)
+      )
+      .join(styleText("dim", " │ "));
+
+  const rule = widths.map((width) => "─".repeat(width)).join("─┼─");
+
+  return [
+    plainLine(styleText("bold", line(header))),
+    plainLine(styleText("dim", rule)),
+    ...rows.map((row) => plainLine(line(row))),
+  ];
 };
 
 const renderListItem = (
-  indent: string,
-  marker: string,
-  text: string
-): MarkdownLine => {
-  const lead = `${indent}${styleText("cyan", marker)} `;
+  item: Tokens.ListItem,
+  marker: string
+): MarkdownLine[] => {
+  const box = item.checked === true ? "[x] " : "[ ] ";
+  const check = item.task ? box : "";
+  const lead = `${styleText("cyan", marker)} ${check}`;
+  const lines = renderBlocks(item.tokens);
 
-  return {
-    body: renderInline(text),
-    hang: spaces(`${indent}${marker} `),
+  return prefix(
+    lines.length === 0 ? [plainLine("")] : lines,
     lead,
-  };
+    spaces(`${marker} ${check}`)
+  );
 };
 
-/** Renders one line outside a code block, or returns `undefined` if the line is plain text. */
-const renderBlock = (line: string): MarkdownLine | undefined => {
-  const heading = HEADING.exec(line)?.groups;
+const renderList = (token: Tokens.List): MarkdownLine[] => {
+  const start = token.start === "" ? 1 : token.start;
 
-  if (heading !== undefined) {
-    return plainLine(
-      renderHeading(heading.hashes?.length ?? 1, heading.text ?? "")
-    );
-  }
+  return token.items.flatMap((item, index) => {
+    const marker = token.ordered ? `${start + index}.` : "•";
+    const gap = token.loose && index > 0 ? [plainLine("")] : [];
 
-  if (RULE.test(line)) {
-    return plainLine(styleText("dim", "─".repeat(RULE_WIDTH)));
-  }
+    return [...gap, ...renderListItem(item, marker)];
+  });
+};
 
-  const bullet = BULLET.exec(line)?.groups;
-
-  if (bullet !== undefined) {
-    return renderListItem(bullet.indent ?? "", "•", bullet.text ?? "");
-  }
-
-  const numbered = NUMBERED.exec(line)?.groups;
-
-  if (numbered !== undefined) {
-    return renderListItem(
-      numbered.indent ?? "",
-      `${numbered.number ?? ""}.`,
-      numbered.text ?? ""
-    );
-  }
-
-  const quote = QUOTE.exec(line)?.groups;
+const renderBlockquote = (token: Tokens.Blockquote): MarkdownLine[] => {
   const bar = `${styleText("dim", "▎")} `;
 
-  return quote === undefined
-    ? undefined
-    : {
-        body: styleText("italic", renderInline(quote.text ?? "")),
-        hang: bar,
-        lead: bar,
-      };
+  const inner = renderBlocks(token.tokens).map((line) => ({
+    ...line,
+    body: line.body === "" ? "" : styleText("italic", line.body),
+  }));
+
+  return prefix(inner, bar, bar);
 };
 
-/**
- * Renders Markdown one line at a time, as a streamed reply arrives. The renderer keeps the code-fence state between
- * lines, so a code block that arrives over many deltas renders as one block.
- */
-export const createMarkdownRenderer = (): ((line: string) => MarkdownLine) => {
-  let fence: string | undefined;
-
-  return (line) => {
-    const opening = FENCE.exec(line)?.groups;
-
-    if (fence !== undefined) {
-      if (opening?.marker === fence) {
-        fence = undefined;
-
-        return plainLine(styleText("dim", "╰─"));
-      }
-
-      // The indentation goes into the gutter, so it stays on every row and the color codes do not hide it.
-      const indent = LEADING_SPACES.exec(line)?.[0] ?? "";
-      const gutter = `${styleText("dim", "│")} ${indent}`;
-
-      return {
-        body: styleText("green", line.slice(indent.length)),
-        hang: gutter,
-        lead: gutter,
-      };
+const renderBlock = (token: BlockToken): MarkdownLine[] => {
+  switch (token.type) {
+    case "heading": {
+      return renderHeading(token);
     }
 
-    if (opening !== undefined) {
-      fence = opening.marker;
-
-      const language = opening.language ?? "";
-
-      return plainLine(
-        styleText("dim", language === "" ? "╭─" : `╭─ ${language}`)
-      );
+    case "paragraph":
+    case "text": {
+      return (
+        token.tokens === undefined
+          ? textRows(token.text)
+          : renderInline(token.tokens)
+      ).map(plainLine);
     }
 
-    return renderBlock(line) ?? plainLine(renderInline(line));
-  };
+    case "code": {
+      return renderCode(token);
+    }
+
+    case "table": {
+      return renderTable(token);
+    }
+
+    case "list": {
+      return renderList(token);
+    }
+
+    case "blockquote": {
+      return renderBlockquote(token);
+    }
+
+    case "hr": {
+      return [plainLine(styleText("dim", "─".repeat(RULE_WIDTH)))];
+    }
+
+    case "space": {
+      return [plainLine("")];
+    }
+
+    case "def":
+    case "checkbox":
+    case "list_item": {
+      return [];
+    }
+
+    case "html": {
+      return textRows(token.raw.trimEnd()).map(plainLine);
+    }
+
+    default: {
+      return [];
+    }
+  }
 };
+
+const renderBlocks = (tokens: readonly Token[]): MarkdownLine[] =>
+  blockTokens(tokens).flatMap(renderBlock);
 
 /** Renders a whole Markdown text for the terminal. */
-export const renderMarkdown = (text: string): MarkdownLine[] => {
-  const render = createMarkdownRenderer();
+export const renderMarkdown = (text: string): MarkdownLine[] =>
+  renderBlocks(lexMarkdown(text));
 
-  return text.split("\n").map((line) => render(line));
+/** A reply that arrives in deltas. Text of complete blocks moves to the transcript, the last block stays live. */
+export interface MarkdownStream {
+  /**
+   * Adds a delta and returns the lines of the blocks that the delta completed. A block is complete when another block
+   * follows it, so later text cannot change it.
+   */
+  readonly write: (delta: string) => readonly MarkdownLine[];
+  /** The lines of the unfinished last block, rendered again from all of its text. */
+  readonly live: () => readonly MarkdownLine[];
+  /** Ends the stream and returns the lines of the unfinished last block. */
+  readonly end: () => readonly MarkdownLine[];
+}
+
+const isSpace = (token: BlockToken): boolean => token.type === "space";
+
+/** Renders a streamed reply block by block, so tables, lists, quotes, and code fences render as whole blocks. */
+export const createMarkdownStream = (): MarkdownStream => {
+  let pending = "";
+
+  return {
+    end: () => {
+      const lines = renderMarkdown(pending);
+
+      pending = "";
+
+      return lines;
+    },
+    live: () => (pending === "" ? [] : renderMarkdown(pending)),
+    write: (delta) => {
+      pending += delta;
+
+      const tokens = lexMarkdown(pending);
+      // Blank lines after the last block do not complete it. More list items or quote lines can still follow them.
+      const last = tokens.findLastIndex((token) => !isSpace(token));
+
+      if (last <= 0) {
+        return [];
+      }
+
+      pending = tokens
+        .slice(last)
+        .map((token) => token.raw)
+        .join("");
+
+      return tokens.slice(0, last).flatMap(renderBlock);
+    },
+  };
 };
 
 /** Wraps one line. Leading spaces of the body, for example code indentation, stay on every row. */
