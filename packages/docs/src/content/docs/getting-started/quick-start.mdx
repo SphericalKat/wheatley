@@ -31,9 +31,25 @@ In a few minutes, you will have Wheatley running locally with both a terminal ch
 
    See [Configuration](/wheatley/reference/configuration/) for environment variable overrides and secret handling.
 
-3. **Start Wheatley**
+3. **Start chatting**
 
-   Start the daemon in your terminal so you can see its logs while testing:
+   Open the interactive terminal chat:
+
+   ```bash
+   wheatley
+   ```
+
+   Or send a one-off question from your shell:
+
+   ```bash
+   wheatley ask "What can you help me with?"
+   ```
+
+   If no daemon is running, `wheatley` (or `wheatley chat`) and `wheatley ask` start a temporary in-process daemon for that session and stop it when you exit.
+
+4. **Run the persistent daemon (optional)**
+
+   To keep Wheatley running for the web dashboard, scheduled triggers, and chat apps (Telegram, Slack, Discord), start the daemon in your terminal:
 
    ```bash
    wheatley daemon
@@ -43,31 +59,13 @@ In a few minutes, you will have Wheatley running locally with both a terminal ch
      If you start the daemon before adding an API key, Wheatley still runs, but marks your assistant as `degraded` until the key is added.
    </Aside>
 
-4. **Check status**
+5. **Check status and open the web dashboard**
 
-   In a second terminal, confirm your assistant is healthy:
+   While the daemon runs, check assistant health in another terminal with `wheatley status`, or open `http://127.0.0.1:7420/` in your browser to chat, approve tool calls, view memory, and edit settings visually.
 
    ```bash
    wheatley status
    ```
-
-5. **Start chatting**
-
-   Send a one-off question from your shell:
-
-   ```bash
-   wheatley ask "What can you help me with?"
-   ```
-
-   Or open the interactive terminal chat:
-
-   ```bash
-   wheatley chat
-   ```
-
-6. **Open the web dashboard**
-
-   Visit `http://127.0.0.1:7420/` in your browser to chat, approve tool calls, view memory, and edit settings visually.
 
 </Steps>
 

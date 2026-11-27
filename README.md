@@ -253,28 +253,28 @@ The examples below use `wheatley`. In a source checkout, use `node packages/whea
    ANTHROPIC_API_KEY: <your key>
    ```
 
-3. Start the daemon in the foreground:
+3. Start an interactive Chat (starts a temporary in-process daemon if none listens):
 
    ```bash
-   wheatley daemon
+   wheatley
    ```
 
-4. In a second terminal, check the health of the Deployment:
-
-   ```bash
-   wheatley status
-   ```
-
-5. Send one prompt:
+4. Or send one prompt:
 
    ```bash
    wheatley ask "What can you do?"
    ```
 
-6. Start an interactive Chat:
+5. To keep a persistent daemon running for the web dashboard, Triggers, and messaging frontends, run `wheatley daemon` in the foreground (or install it with `wheatley service install`):
 
    ```bash
-   wheatley chat
+   wheatley daemon
+   ```
+
+6. In a second terminal, check the health of the running daemon:
+
+   ```bash
+   wheatley status
    ```
 
 ### What `wheatley init` creates
@@ -388,9 +388,11 @@ The default host is `127.0.0.1`, and the default port is `8788`.
 
 `wheatley ask "<prompt>"` sends one prompt and prints the reply. `ask` also reads the prompt from standard input. If standard input is not a terminal, `ask` denies each Tool call that needs an Approval.
 
-`wheatley chat` opens the CLI Chat of an Agent. The dashboard shows the same Chat. If the Deployment has more than one Agent and none has the name `default`, pass `--agent <name>`. Type `/exit` or press `Ctrl+D` to end the Chat.
+`wheatley` (or `wheatley chat`) opens the CLI Chat of an Agent. The dashboard shows the same Chat. If the Deployment has more than one Agent and none has the name `default`, pass `--agent <name>`. Type `/exit` or press `Ctrl+D` to end the Chat.
 
-In a terminal, `wheatley chat` opens a full-screen chat:
+When no local daemon listens on the Unix socket and `--url` is not set, `wheatley`, `wheatley chat`, and `wheatley ask` start a temporary in-process daemon for that session and stop it on exit. When a daemon already runs, they attach to it and leave it running on exit. `wheatley status` stays read-only.
+
+In a terminal, `wheatley` opens a full-screen chat:
 
 - A welcome card shows the version, the Agent, its model, its skills, plugins, and MCP servers, the folder, and a tip.
 - Replies stream as they arrive and show as formatted Markdown: headings, lists, quotes, links, inline code, and code blocks. Long lines wrap at word boundaries.

@@ -111,6 +111,37 @@ const readPrompt = async (
   }
 };
 
+const CHAT_VALUE_OPTIONS = new Set(["--home", "--agent", "--url"]);
+const CHAT_OPTION_PREFIXES = ["--home=", "--agent=", "--url="];
+
+/**
+ * Routes bare `wheatley` (and `wheatley` with only chat or global options) to `chat`.
+ * Leaves `--help`, `--version`, explicit subcommands, and unknown options untouched.
+ */
+const defaultToChat = (argv: readonly string[]): readonly string[] => {
+  let expectValue = false;
+
+  for (const arg of argv) {
+    if (expectValue) {
+      expectValue = false;
+      continue;
+    }
+
+    if (CHAT_VALUE_OPTIONS.has(arg)) {
+      expectValue = true;
+      continue;
+    }
+
+    if (CHAT_OPTION_PREFIXES.some((prefix) => arg.startsWith(prefix))) {
+      continue;
+    }
+
+    return argv;
+  }
+
+  return ["chat", ...argv];
+};
+
 /**
  * Creates the command tree of one `runCli` call. Its actions pass their exit code to `exit`. Commander writes help,
  * version, and usage errors to `io` and throws a `CommanderError` in place of `process.exit()`.
@@ -122,7 +153,7 @@ const createProgram = (
   exit: (code: number) => void
 ): Command => {
   const program = new Command("wheatley")
-    .usage("<command> [options]")
+    .usage("[command] [options]")
     .helpOption("-h, --help", "Show this help")
     // The CLI has no `help` command. Commander adds one by default.
     .helpCommand(false)
@@ -180,9 +211,13 @@ const createProgram = (
     });
 
   addClientOptions(
-    program.command("chat").description("Chat with an Agent in its CLI Chat")
+    program
+      .command("chat")
+      .description("Chat with an Agent in its CLI Chat (default)")
   ).action(async (options: ClientOptions, command: Command) => {
-    exit(await runChat(io, clientOf(command, options), version));
+    exit(
+      await runChat(io, clientOf(command, options), version, overrides.daemon)
+    );
   });
 
   addClientOptions(
@@ -204,7 +239,15 @@ const createProgram = (
         return;
       }
 
-      exit(await runAsk(io, clientOf(command, options), prompt, version));
+      exit(
+        await runAsk(
+          io,
+          clientOf(command, options),
+          prompt,
+          version,
+          overrides.daemon
+        )
+      );
     }
   );
 
@@ -260,7 +303,7 @@ export const runCli = async (
   );
 
   try {
-    await program.parseAsync([...argv], { from: "user" });
+    await program.parseAsync([...defaultToChat(argv)], { from: "user" });
   } catch (error) {
     if (!(error instanceof CommanderError)) {
       throw error;

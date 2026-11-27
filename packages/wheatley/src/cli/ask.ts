@@ -5,6 +5,7 @@ import type {
 } from "@wheatley-ai/protocol";
 
 import { errorMessage } from "../core/error-message.js";
+import type { WheatleyOptions } from "../wiring/daemon.js";
 import type { CliIo } from "./io.js";
 import { nextLine } from "./io.js";
 import {
@@ -36,13 +37,19 @@ export const runAsk = async (
   io: CliIo,
   flags: ClientFlags,
   prompt: string,
-  version: string
+  version: string,
+  daemonOverrides?: Partial<WheatleyOptions>
 ): Promise<number> => {
-  const client = await connect(io, flags, version);
+  const session = await connect(io, flags, version, {
+    autoStart: true,
+    daemonOverrides,
+  });
 
-  if (client === undefined) {
+  if (session === undefined) {
     return 1;
   }
+
+  const { client } = session;
 
   try {
     const agent = await chooseAgent(client, flags.agent);
@@ -141,6 +148,6 @@ export const runAsk = async (
 
     return 1;
   } finally {
-    await client.close();
+    await session.close();
   }
 };
