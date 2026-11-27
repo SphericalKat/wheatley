@@ -32,6 +32,8 @@ Wheatley is a self-hosted, always-on personal assistant that hosts one or more i
 
 **Plugin**: An extension configured on an **Agent** that provides **Tools** or **Frontends**. _Avoid_: Addon, mod, module
 
+**Bundled Plugin**: A **Plugin** that ships with Wheatley. An **Agent** enables it by its bare name without separate package installation. _Avoid_: Built-in plugin, core plugin, default plugin
+
 **Tool**: One callable action that an **Agent** runs during a **Run**, provided by Wheatley, a **Plugin**, or an **MCP Server**, and governed by the **Permission Policy**. _Avoid_: Action, function, command
 
 **MCP Server**: An external tool provider connected to one **Agent** over the Model Context Protocol. _Avoid_: Integration, connector, tool host
