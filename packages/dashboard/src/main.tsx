@@ -1,3 +1,4 @@
+import { createBrowserHistory, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -9,8 +10,8 @@ import { createDeployment } from "./models/deployment.js";
 import { createInbox } from "./models/inbox.js";
 import { createLogTail } from "./models/logs.js";
 import { createSecrets } from "./models/secrets.js";
+import { createDashboardRouter } from "./router.js";
 import { createRpcClient, dashboardSocketUrl } from "./rpc/client.js";
-import { App } from "./views/app.js";
 
 import "./styles.css";
 
@@ -40,7 +41,7 @@ if (root === null) {
 createRoot(root).render(
   <StrictMode>
     <ServicesContext value={services}>
-      <App />
+      <RouterProvider router={createDashboardRouter(createBrowserHistory())} />
     </ServicesContext>
   </StrictMode>
 );

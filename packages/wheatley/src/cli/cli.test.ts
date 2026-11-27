@@ -359,6 +359,76 @@ describe("wheatley status and init", () => {
     expect(terminal.stderr()).toBe("");
   });
 
+  it("reads --home before or after a core command", async () => {
+    for (const argv of [
+      ["--home", home.dir, "status"],
+      [`--home=${home.dir}`, "status"],
+      ["status", "--home", home.dir],
+      ["status", `--home=${home.dir}`],
+    ]) {
+      const terminal = scriptedIo([]);
+
+      // oxlint-disable-next-line no-await-in-loop -- Each spelling of --home runs on its own.
+      await expect(runCli(argv, terminal.io)).resolves.toBe(0);
+      expect(terminal.stdout()).toContain("  home: running (0 active Runs)");
+    }
+  });
+
+  it("rejects an option of another command with exit code 2", async () => {
+    for (const [argv, option] of [
+      [["status", "--home", home.dir, "--provider", "x"], "--provider"],
+      [["init", "--home", home.dir, "--port", "1"], "--port"],
+      [["ask", "--home", home.dir, "--model", "m", "hi"], "--model"],
+      [["chat", "--home", home.dir, "--host", "h"], "--host"],
+      [["daemon", "--home", home.dir, "--agent", "home"], "--agent"],
+      [["update", "--home", home.dir, "--url", "ws://x"], "--url"],
+      [["restore", "home", "--home", home.dir, "--check"], "--check"],
+    ] as const) {
+      const terminal = scriptedIo([]);
+
+      // oxlint-disable-next-line no-await-in-loop -- Each command runs on its own.
+      await expect(runCli(argv, terminal.io)).resolves.toBe(2);
+      expect(terminal.stderr()).toContain(`error: unknown option '${option}'`);
+      expect(terminal.stdout()).toBe("");
+    }
+  });
+
+  it("prints the help of each command on stdout and exits 0", async () => {
+    for (const [command, option] of [
+      ["init", "--provider <name>"],
+      ["daemon", "--port <port>"],
+      ["chat", "--agent <name>"],
+      ["ask", "--url <ws-url>"],
+      ["status", "--url <ws-url>"],
+      ["service", "<action>"],
+      ["update", "--method <method>"],
+      ["restore", "<agent> [backup]"],
+    ] as const) {
+      const terminal = scriptedIo([]);
+
+      // oxlint-disable-next-line no-await-in-loop -- Each command runs on its own.
+      await expect(runCli([command, "--help"], terminal.io)).resolves.toBe(0);
+      expect(terminal.stdout()).toContain(`Usage: wheatley ${command}`);
+      expect(terminal.stdout()).toContain(option);
+      expect(terminal.stdout()).toContain("--home <dir>");
+      expect(terminal.stderr()).toBe("");
+    }
+  });
+
+  it("exits 2 for an unknown command, a missing --home value, and an invalid port", async () => {
+    for (const [argv, message] of [
+      [["launch"], "error: unknown command 'launch'"],
+      [["status", "--home"], "error: option '--home <dir>' argument missing"],
+      [["daemon", "--port", "eighty"], "Invalid port: eighty"],
+    ] as const) {
+      const terminal = scriptedIo([]);
+
+      // oxlint-disable-next-line no-await-in-loop -- Each command runs on its own.
+      await expect(runCli(argv, terminal.io)).resolves.toBe(2);
+      expect(terminal.stderr()).toContain(message);
+    }
+  });
+
   it("reads the backups of restore from the --home folder", async () => {
     const backup = "agent-20260101T000000000Z-pre-migration.sqlite";
     const backupsDir = path.join(home.dir, "agents", "home", "backups");

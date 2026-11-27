@@ -134,6 +134,7 @@ it("answers 413 for a declared body over 256 KiB", async () => {
   );
 
   expect(response.status).toBe(413);
+  expect(response.headers.get("connection")).toBe("close");
   expect(runtime.webhookEvents).toHaveLength(0);
 });
 
@@ -171,6 +172,7 @@ it("answers 413 for a streamed body that passes 256 KiB without a declared lengt
   const { status } = response;
 
   expect(status).toBe(413);
+  expect(response.headers.get("connection")).toBe("close");
   expect(runtime.webhookEvents).toHaveLength(0);
 });
 
