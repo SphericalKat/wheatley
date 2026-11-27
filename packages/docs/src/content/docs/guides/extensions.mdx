@@ -159,3 +159,5 @@ To build custom tools or a custom chat frontend in TypeScript, use `@wheatley-ai
 </Steps>
 
 `source` also accepts a local folder path (`./` or `../` resolves relative to `~/.wheatley`; `~/` resolves relative to your home directory). Plugin tools appear to the assistant as `<plugin>:<tool>` (for example `hello:greet`).
+
+For a complete example built with `@wheatley-ai/sdk`, read the bundled [`web-search` plugin](https://github.com/SphericalKat/wheatley/tree/main/packages/plugins/web-search). It demonstrates `configSchema` validation, optional API keys from `ctx.secrets`, multiple tools (`search` and `fetch`), `AbortSignal` time-outs, and `isError` responses.
