@@ -279,6 +279,9 @@ importers:
       '@earendil-works/pi-schema':
         specifier: 1.6.1
         version: 1.6.1
+      '@hono/node-server':
+        specifier: 2.1.11
+        version: 2.1.11(hono@4.13.23)
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
@@ -297,6 +300,9 @@ importers:
       grammy:
         specifier: 1.48.0
         version: 1.48.0
+      hono:
+        specifier: 4.13.23
+        version: 4.13.23
       import-meta-resolve:
         specifier: 4.2.0
         version: 4.2.0
@@ -621,6 +627,12 @@ packages:
 
   '@grammyjs/types@5.2.0':
     resolution: {integrity: sha512-URnzUV3rBEkEtsHz/+/na8uDJS45eD0vXGM73Ucps2nKpdVfhT4+EyYV8lDftazVRoWN2mT2hjMzMEbSPURBhA==}
+
+  '@hono/node-server@2.1.11':
+    resolution: {integrity: sha512-KzKz9vl4vvr1vgLHamj+g5uonbrj5NwAdO3yzOS6cd2HjALVeOgTgeZOyAzNxejbkfOOPIcvuf/Tg8l1pEFLog==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4 || ^5.0.0-0
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1730,6 +1742,10 @@ packages:
   grammy@1.48.0:
     resolution: {integrity: sha512-/QMphprJxroslpNCFR3SFQwOobjf6uCAmz+OzK94FAVvhQxG/NmKqnkLVhnKkcZ6hruwAFKka6+34Zzg5CjAiQ==}
     engines: {node: ^12.20.0 || >=14.13.1}
+
+  hono@4.13.23:
+    resolution: {integrity: sha512-OS90dj7dcsftEEWCOef8jRbnHE5lbrOq0hNRqjSyPsOnaGZvvfof1KS05hQNb4kUOCfDq1mG3PmHoX37DMnHQg==}
+    engines: {node: '>=16.9.0'}
 
   http-proxy-agent@9.1.0:
     resolution: {integrity: sha512-2NxoveTT58mjYT4n3RPTEfCZGLMbidoO8XEieXfpSYxu+PQJ1qpx4ypwH6N+uF9twBPIvRRgvkvW5HUTYWENig==}
@@ -2913,6 +2929,10 @@ snapshots:
 
   '@grammyjs/types@5.2.0': {}
 
+  '@hono/node-server@2.1.11(hono@4.13.23)':
+    dependencies:
+      hono: 4.13.23
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -3720,6 +3740,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  hono@4.13.23: {}
 
   http-proxy-agent@9.1.0:
     dependencies:
