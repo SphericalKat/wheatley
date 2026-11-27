@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 
 import type {
   ApprovalDecision,
+  ChatMessage,
   PendingApproval,
   RpcEvent,
   RunSummary,
@@ -114,6 +115,9 @@ export interface ChatControllerOptions {
 
 const MS_PER_SECOND = 1000;
 
+/** The number of earlier messages that the chat shows when it opens. */
+const INITIAL_HISTORY_LIMIT = 50;
+
 /** A Run that takes at least this long rings the bell when it ends. */
 const NOTIFY_AFTER_MS = 10_000;
 const SHELL_PREFIX = "!";
@@ -163,6 +167,8 @@ export class ChatController {
   #tools = 0;
   #lastReply = "";
   #shell: ChildProcess | undefined;
+  /** IDs of messages that arrived as events before the history loaded. The history skips them. */
+  #liveMessages: Set<string> | undefined = new Set();
 
   constructor(options: ChatControllerOptions) {
     this.#options = options;
@@ -202,7 +208,10 @@ export class ChatController {
     return this.#state.idle;
   }
 
-  /** Subscribes to the daemon events and loads the model and extension counts for the banner. */
+  /**
+   * Subscribes to the daemon events, loads the model and extension counts for the banner, and shows the recent
+   * messages of the current CLI Conversation after the banner.
+   */
   readonly start = async (): Promise<void> => {
     const { agent, client } = this.#options;
 
@@ -230,6 +239,19 @@ export class ChatController {
       });
     } catch {
       // The banner works without these details.
+    }
+
+    try {
+      const { hasMore, messages } = await client.request("chat.history", {
+        agent,
+        limit: INITIAL_HISTORY_LIMIT,
+      });
+
+      this.#showHistory(messages, hasMore);
+    } catch {
+      // The chat works without the earlier messages.
+    } finally {
+      this.#liveMessages = undefined;
     }
   };
 
@@ -383,6 +405,59 @@ export class ChatController {
       });
 
     return true;
+  };
+
+  /**
+   * Puts the earlier messages between the banner and the entries of the events that arrived during `start`. The
+   * terminal prints the transcript only after `start`, so the insertion never reorders printed entries.
+   */
+  readonly #showHistory = (
+    messages: readonly ChatMessage[],
+    hasMore: boolean
+  ): void => {
+    const earlier = messages.filter(
+      ({ messageId }) => this.#liveMessages?.has(messageId) !== true
+    );
+
+    if (earlier.length === 0) {
+      return;
+    }
+
+    const history: Entry[] = [];
+
+    if (hasMore) {
+      history.push({
+        id: this.#id(),
+        kind: "notice",
+        text: `Showing the last ${messages.length} messages. Earlier messages remain in this Conversation.`,
+        tone: "dim",
+      });
+    }
+
+    for (const message of earlier) {
+      history.push(
+        message.role === "user"
+          ? { id: this.#id(), kind: "user", text: message.text }
+          : {
+              first: true,
+              id: this.#id(),
+              kind: "reply",
+              lines: renderMarkdown(message.text),
+            }
+      );
+    }
+
+    const lastReply = earlier.findLast(({ role }) => role === "assistant");
+
+    if (this.#lastReply === "" && lastReply !== undefined) {
+      this.#lastReply = lastReply.text;
+    }
+
+    const [banner, ...live] = this.#view.entries;
+
+    this.#update({
+      entries: [...(banner === undefined ? [] : [banner]), ...history, ...live],
+    });
   };
 
   readonly #dispatch = async (line: string): Promise<void> => {
@@ -662,6 +737,8 @@ export class ChatController {
     readonly source?: string;
     readonly text: string;
   }): void => {
+    this.#liveMessages?.add(message.messageId);
+
     if (message.role === "user") {
       // Messages that the dashboard sends to the same Chat show up here too.
       if (this.#sent.delete(message.messageId)) {
