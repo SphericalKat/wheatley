@@ -12,6 +12,8 @@ export interface CliIo {
   readonly lines: AsyncIterator<string>;
   /** True if standard input is a terminal. `ask` without a terminal denies every `ask` Tool (ADR 0011). */
   readonly isTTY: boolean;
+  /** True if standard error is a terminal, so diagnostics can use ANSI colors. */
+  readonly stderrIsTTY?: boolean;
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Aborts when the process receives `SIGINT` or `SIGTERM`. */
   readonly shutdown: AbortSignal;
@@ -53,6 +55,7 @@ export const processIo = (): CliIo => {
       },
     },
     shutdown: shutdown.signal,
+    stderrIsTTY: isatty(process.stderr.fd),
     stderr: (text) => {
       process.stderr.write(text);
     },
