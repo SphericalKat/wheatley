@@ -3,7 +3,7 @@ title: Schedules and webhooks
 description: Have your Wheatley assistant wake up on a schedule or respond to incoming HTTP webhooks.
 ---
 
-import { Steps } from "@astrojs/starlight/components";
+import { Aside, Steps } from "@astrojs/starlight/components";
 
 Your assistant does not have to wait for you to message it. With **triggers**, it can wake up on its own and send you a message in your chosen chat when something needs attention.
 
@@ -21,44 +21,47 @@ The easiest way is to just ask your assistant in chat:
 
 Your assistant can create, list, and cancel its own scheduled triggers. You can also create and inspect them visually in the web dashboard under **Triggers and Extensions** -> **New Trigger**.
 
-:::note For security, an assistant cannot create or delete `webhook` triggers on its own — only you can manage those in the dashboard. :::
+<Aside type="note">
+  For security, an assistant cannot create or delete `webhook` triggers on its own — only you can manage those in the dashboard.
+</Aside>
 
 ## Trigger your assistant with a webhook
 
 Wheatley's built-in webhook listener is turned off by default. When enabled, it listens on `127.0.0.1:8788` (put a reverse proxy like Caddy or Nginx in front if you want to expose it over HTTPS).
 
 <Steps>
-  1. **Turn on the webhook listener in `config.yaml`** and restart the daemon:
 
-     ```yaml
-     webhooks:
-       enabled: true
-       port: 8788
-     ```
+1. **Turn on the webhook listener in `config.yaml`** and restart the daemon:
 
-2.  **Create a secret bearer token in `secrets.yaml`**
+   ```yaml
+   webhooks:
+     enabled: true
+     port: 8788
+   ```
 
-    ```yaml
-    MY_HOOK_TOKEN: <long-random-token>
-    ```
+2. **Create a secret bearer token in `secrets.yaml`**
 
-3.  **Create the webhook trigger in the dashboard**
+   ```yaml
+   MY_HOOK_TOKEN: <long-random-token>
+   ```
 
-    Open **Triggers and Extensions**, click **New Trigger**, choose the **Webhook** schedule, and set **Token secret** to `MY_HOOK_TOKEN`.
+3. **Create the webhook trigger in the dashboard**
 
-4.  **Copy the trigger ID**
+   Open **Triggers and Extensions**, click **New Trigger**, choose the **Webhook** schedule, and set **Token secret** to `MY_HOOK_TOKEN`.
 
-    Ask your assistant to list its triggers, or copy the `id` from the trigger you just created.
+4. **Copy the trigger ID**
 
-5.  **Send a test `POST` request**
+   Ask your assistant to list its triggers, or copy the `id` from the trigger you just created.
 
-         ```bash
-         curl -X POST \
-           -H "Authorization: Bearer <long-random-token>" \
-           --data 'Build 42 failed on main' \
-           http://127.0.0.1:8788/webhooks/<agent>/<triggerId>
-         ```
+5. **Send a test `POST` request**
 
-    </Steps>
+   ```bash
+   curl -X POST \
+     -H "Authorization: Bearer <long-random-token>" \
+     --data 'Build 42 failed on main' \
+     http://127.0.0.1:8788/webhooks/<agent>/<triggerId>
+   ```
+
+</Steps>
 
 Wheatley replies immediately with `202 Accepted` and appends your request body (up to 256 KiB) to the trigger prompt before starting the run.
