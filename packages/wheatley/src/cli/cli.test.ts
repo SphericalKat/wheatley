@@ -19,7 +19,7 @@ import {
 } from "../core/test-support.js";
 import type { FakeLlm } from "../core/test-support.js";
 import type { CliIo } from "./io.js";
-import { runCli } from "./main.js";
+import { isDaemonRunning, runCli } from "./main.js";
 
 let home: Awaited<ReturnType<typeof temporaryDir>>;
 let llm: FakeLlm;
@@ -267,6 +267,100 @@ describe("wheatley chat", () => {
       "Started a new Conversation.",
     ]);
   });
+
+  it("runs chat by default when invoked without a subcommand and leaves a running daemon up", async () => {
+    llm.faux.setResponses([fauxAssistantMessage("hello from bare wheatley")]);
+    const terminal = scriptedIo(["hi"]);
+
+    const code = await runCli(
+      ["--home", home.dir, "--agent", "home"],
+      terminal.io
+    );
+
+    expect(code).toBe(0);
+    expect(terminal.stderr()).toBe("");
+    expect(terminal.stdout()).toContain("home> hello from bare wheatley");
+    await expect(isDaemonRunning(home.dir)).resolves.toBe(true);
+  });
+
+  it("starts an in-process daemon for bare wheatley when none listens and stops it on exit", async () => {
+    const standalone = path.join(home.dir, "standalone-chat");
+    await mkdir(standalone, { recursive: true });
+    await writeConfig(standalone);
+    llm.faux.setResponses([fauxAssistantMessage("from ephemeral daemon")]);
+
+    const terminal = scriptedIo(["hello"]);
+
+    const code = await runCli(["--home", standalone], terminal.io, {
+      daemon: {
+        models: async () => {
+          await Promise.resolve();
+
+          return llm.models;
+        },
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(terminal.stderr()).toBe("");
+    expect(terminal.stdout()).toContain("home> from ephemeral daemon");
+    await expect(isDaemonRunning(standalone)).resolves.toBe(false);
+  });
+
+  it("starts an in-process daemon for ask when none listens and stops it on exit", async () => {
+    const standalone = path.join(home.dir, "standalone-ask");
+    await mkdir(standalone, { recursive: true });
+    await writeConfig(standalone);
+    llm.faux.setResponses([fauxAssistantMessage("one-shot reply")]);
+
+    const terminal = scriptedIo([]);
+
+    const code = await runCli(
+      ["ask", "--home", standalone, "ping"],
+      terminal.io,
+      {
+        daemon: {
+          models: async () => {
+            await Promise.resolve();
+
+            return llm.models;
+          },
+        },
+      }
+    );
+
+    expect(code).toBe(0);
+    expect(terminal.stderr()).toBe("");
+    expect(terminal.stdout()).toBe("one-shot reply\n");
+    await expect(isDaemonRunning(standalone)).resolves.toBe(false);
+  });
+
+  it("does not auto-start a local daemon when --url is unreachable", async () => {
+    const standalone = path.join(home.dir, "unreachable-url");
+    await mkdir(standalone, { recursive: true });
+    await writeConfig(standalone);
+
+    const terminal = scriptedIo([]);
+
+    const code = await runCli(
+      ["ask", "--home", standalone, "--url", "ws://127.0.0.1:1/ws", "ping"],
+      terminal.io
+    );
+
+    expect(code).toBe(1);
+    expect(terminal.stderr()).toContain("Cannot reach the Wheatley daemon");
+    await expect(isDaemonRunning(standalone)).resolves.toBe(false);
+  });
+
+  it("reports a startup failure when no daemon listens and the home has no config", async () => {
+    const emptyHome = path.join(home.dir, "uninitialized");
+    const terminal = scriptedIo(["hello"]);
+
+    const code = await runCli(["--home", emptyHome], terminal.io);
+
+    expect(code).toBe(1);
+    expect(terminal.stderr()).toContain("Cannot start the Wheatley daemon:");
+  });
 });
 
 describe("wheatley status and init", () => {
@@ -342,7 +436,7 @@ describe("wheatley status and init", () => {
     const terminal = scriptedIo([]);
 
     await expect(runCli(["--help"], terminal.io)).resolves.toBe(0);
-    expect(terminal.stdout()).toContain("Usage: wheatley <command> [options]");
+    expect(terminal.stdout()).toContain("Usage: wheatley [command] [options]");
     expect(terminal.stderr()).toBe("");
   });
 

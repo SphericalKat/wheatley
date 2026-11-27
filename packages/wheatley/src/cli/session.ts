@@ -1,7 +1,10 @@
+import { RpcError } from "@wheatley-ai/protocol";
 import type { ApprovalDecision, PendingApproval } from "@wheatley-ai/protocol";
 
 import { daemonSocket } from "../core/daemon-socket.js";
 import { errorMessage } from "../core/error-message.js";
+import { startWheatley } from "../wiring/daemon.js";
+import type { WheatleyDaemon, WheatleyOptions } from "../wiring/daemon.js";
 import { DaemonClient } from "./client.js";
 import type { DaemonTarget } from "./client.js";
 import type { CliIo } from "./io.js";
@@ -124,15 +127,106 @@ export const decideApproval = async (
   return true;
 };
 
-/** Connects to the daemon, or explains how to start it. */
+/** Options for `connect`. */
+export interface ConnectOptions {
+  /** Starts an in-process daemon for this session when no local daemon listens. */
+  readonly autoStart?: boolean;
+  /** Overrides for the in-process daemon, for example a fake model provider in tests. */
+  readonly daemonOverrides?: Partial<WheatleyOptions>;
+}
+
+/** An active daemon connection and the cleanup that ends it. */
+export interface ConnectedSession {
+  readonly client: DaemonClient;
+  /** Closes the client connection and stops any in-process daemon started for this session. */
+  readonly close: () => Promise<void>;
+}
+
+const ignoreLog = (): void => {
+  // Ephemeral in-process daemons keep stdout and stderr clean for interactive chat and piped ask output.
+};
+
+const startEphemeralSession = async (
+  io: CliIo,
+  flags: ClientFlags,
+  version: string,
+  daemonOverrides: Partial<WheatleyOptions> | undefined
+): Promise<ConnectedSession | undefined> => {
+  let daemon: WheatleyDaemon;
+
+  try {
+    daemon = await startWheatley({
+      env: io.env,
+      homeDir: flags.home,
+      port: 0,
+      version,
+      writeLog: ignoreLog,
+      ...daemonOverrides,
+    });
+  } catch (error) {
+    io.stderr(`Cannot start the Wheatley daemon: ${errorMessage(error)}\n`);
+
+    return undefined;
+  }
+
+  try {
+    const client = await DaemonClient.connect(
+      { url: daemon.server.url },
+      version
+    );
+
+    return {
+      client,
+      close: async () => {
+        try {
+          await client.close();
+        } finally {
+          await daemon.close();
+        }
+      },
+    };
+  } catch (error) {
+    await daemon.close();
+    io.stderr(`Cannot reach the Wheatley daemon (${errorMessage(error)}).\n`);
+
+    return undefined;
+  }
+};
+
+/**
+ * Connects to the daemon. With `autoStart` and no `--url`, starts an in-process daemon for this session when no local
+ * daemon listens, and stops it when `close` runs. Otherwise reports how to start the daemon.
+ */
 export const connect = async (
   io: CliIo,
   flags: ClientFlags,
-  version: string
-): Promise<DaemonClient | undefined> => {
+  version: string,
+  options: ConnectOptions = {}
+): Promise<ConnectedSession | undefined> => {
   try {
-    return await DaemonClient.connect(targetOf(flags), version);
+    const client = await DaemonClient.connect(targetOf(flags), version);
+
+    return {
+      client,
+      close: async () => {
+        await client.close();
+      },
+    };
   } catch (error) {
+    const canAutoStart =
+      options.autoStart === true &&
+      flags.url === undefined &&
+      !(error instanceof RpcError);
+
+    if (canAutoStart) {
+      return await startEphemeralSession(
+        io,
+        flags,
+        version,
+        options.daemonOverrides
+      );
+    }
+
     io.stderr(
       `Cannot reach the Wheatley daemon (${errorMessage(error)}). Start it with "wheatley daemon".\n`
     );

@@ -49,14 +49,14 @@ export const runStatus = async (
   flags: ClientFlags,
   version: string
 ): Promise<number> => {
-  const client = await connect(io, flags, version);
+  const session = await connect(io, flags, version);
 
-  if (client === undefined) {
+  if (session === undefined) {
     return 1;
   }
 
   try {
-    io.stdout(formatStatus(await client.request("system.status", {})));
+    io.stdout(formatStatus(await session.client.request("system.status", {})));
 
     return 0;
   } catch (error) {
@@ -64,6 +64,6 @@ export const runStatus = async (
 
     return 1;
   } finally {
-    await client.close();
+    await session.close();
   }
 };

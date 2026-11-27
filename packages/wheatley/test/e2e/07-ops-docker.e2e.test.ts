@@ -455,7 +455,7 @@ it(
       const help = await dockerRun(image, ["wheatley", "--help"]);
 
       expect(help.code).toBe(0);
-      expect(help.stdout).toContain("Usage: wheatley <command> [options]");
+      expect(help.stdout).toContain("Usage: wheatley [command] [options]");
 
       // Inside the image, `update` prints the Docker Compose commands instead of an npm update.
       const update = await dockerRun(image, ["wheatley", "update", "--check"]);
