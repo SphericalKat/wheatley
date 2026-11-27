@@ -38,10 +38,32 @@ const withHeaders =
     return response;
   };
 
+const passOn: MiddlewareHandler = async (_c, proceed) => {
+  await proceed();
+};
+
+/**
+ * Runs the handler that `create` builds while `root` exists, and passes the request on while it does not. It checks on
+ * each request, so a dashboard built after the daemon starts is served without a restart. `serveStatic` logs an error
+ * for a missing root when it is built, so `create` runs on the first request that finds the folder.
+ */
+const whileRootExists = (
+  root: string,
+  create: () => MiddlewareHandler
+): MiddlewareHandler => {
+  let created: MiddlewareHandler | undefined;
+
+  return async (c, next) => {
+    const handler = existsSync(root) ? (created ??= create()) : passOn;
+
+    return await handler(c, next);
+  };
+};
+
 /**
  * Serves `GET` and `HEAD` requests from the bundled dashboard folder on `app`. A path without a file extension that
- * matches no file serves the SPA entry. Requests that match no file fall through to the next handler. A missing folder
- * mounts nothing, for example in a source checkout without a built dashboard.
+ * matches no file serves the SPA entry. Requests that match no file fall through to the next handler, and so do all
+ * requests while the folder is missing, for example in a source checkout without a built dashboard.
  *
  * The dashboard is static and holds no data. It reads everything over `/ws`, where the Control Server checks the
  * browser `Origin`.
@@ -49,18 +71,18 @@ const withHeaders =
 export const mountStaticFiles = (app: Hono, root: string): void => {
   const absolute = path.resolve(root);
 
-  if (!existsSync(absolute)) {
-    return;
-  }
-
   app.get(
     "*",
-    withHeaders(serveStatic({ onFound: recordFile, root: absolute }))
+    whileRootExists(absolute, () =>
+      withHeaders(serveStatic({ onFound: recordFile, root: absolute }))
+    )
   );
-
-  const entry = withHeaders(
-    serveStatic({ onFound: recordFile, path: INDEX_FILE, root: absolute })
+  app.get(
+    SPA_ROUTE,
+    whileRootExists(absolute, () =>
+      withHeaders(
+        serveStatic({ onFound: recordFile, path: INDEX_FILE, root: absolute })
+      )
+    )
   );
-
-  app.get(SPA_ROUTE, entry);
 };
