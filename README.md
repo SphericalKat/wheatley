@@ -6,7 +6,7 @@ Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript
 
 ## Requirements
 
-- Node.js `26.13.1` or newer (`.node-version`). The install script downloads Node.js automatically if your machine does not have a compatible version.
+- Node.js `26.13.1` or newer. The install script downloads Node.js automatically if your machine does not have a compatible version.
 - `pnpm` `12.23.0` when building from source.
 - An API key for a model provider (for example Anthropic or OpenAI).
 - Docker and Docker Compose if you run the container image.
@@ -44,7 +44,7 @@ The script installs files under XDG directories and leaves `~/.wheatley` untouch
 Notes:
 
 - If your machine already has Node.js `26.13.1+` and `npm`, the script reuses them. Otherwise it downloads Node.js `26.13.1` from `https://nodejs.org/dist`, verifies it against `SHASUMS256.txt`, and supports overriding the mirror with `WHEATLEY_NODE_MIRROR`.
-- On Linux, the managed Node.js binary needs `libatomic` (`apt-get install libatomic1` on Debian or Ubuntu).
+- On Linux, the managed Node.js binary needs `libatomic` (for example, package `libatomic1` on Debian or Ubuntu).
 - On musl systems such as Alpine Linux, install Node.js `26.13.1+` through the system package manager first, or use Docker.
 
 ### npm, pnpm, yarn, or bun
@@ -529,7 +529,7 @@ wheatley update --method pnpm
 
 | Install method | Behavior |
 | --- | --- |
-| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the owning `--prefix` for `fnm`/`nvm` installs) |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the active `--prefix` when installed through a Node.js version manager) |
 | pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
 | yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
 | bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
@@ -624,7 +624,7 @@ Run these commands from the repository root:
 | `pnpm typecheck` | Check the TypeScript types of every package. |
 | `pnpm test`      | Run the Vitest test suite.                   |
 
-If your shell uses an older Node.js version, run `eval "$(fnm env)" && fnm use` first.
+If your shell defaults to an older Node.js version, switch to the version in `.node-version` first.
 
 ## Known limitations
 
