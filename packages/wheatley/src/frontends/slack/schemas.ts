@@ -90,12 +90,19 @@ export const SlashCommandSchema = Type.Object({
 /** A `block_actions` interactivity payload. */
 export const BlockActionsSchema = Type.Object({
   actions: Type.Array(
-    Type.Object({ action_id: NonEmpty, value: Type.Optional(NonEmpty) }),
+    Type.Object({
+      action_id: NonEmpty,
+      selected_option: Type.Optional(Type.Object({ value: NonEmpty })),
+      value: Type.Optional(NonEmpty),
+    }),
     { minItems: 1 }
   ),
   channel: Type.Optional(Type.Object({ id: NonEmpty })),
   container: Type.Optional(
-    Type.Object({ channel_id: Type.Optional(NonEmpty) })
+    Type.Object({
+      channel_id: Type.Optional(NonEmpty),
+      message_ts: Type.Optional(NonEmpty),
+    })
   ),
   message: Type.Optional(
     Type.Object({
@@ -110,6 +117,8 @@ export const BlockActionsSchema = Type.Object({
     username: Type.Optional(Type.String()),
   }),
 });
+
+export type BlockActions = Static<typeof BlockActionsSchema>;
 
 /** The Slack message that shows one Approval prompt. */
 export const ApprovalRecordSchema = Type.Object({

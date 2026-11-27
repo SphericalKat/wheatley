@@ -1,6 +1,8 @@
 import type { ApprovalDecision, JsonValue } from "@wheatley-ai/sdk";
 
 import { decisionOfAction } from "./approval-blocks.js";
+import { MODEL_ACTION_PREFIX } from "./model-picker-blocks.js";
+import type { BlockActions } from "./schemas.js";
 import {
   BlockActionsSchema,
   decodeOptional,
@@ -46,6 +48,7 @@ export interface SlackSlashCommand {
 
 /** A click on an Approval button. */
 export interface SlackApprovalAction {
+  readonly kind: "approval";
   readonly approvalId: string;
   readonly decision: ApprovalDecision;
   readonly channel: string;
@@ -53,6 +56,22 @@ export interface SlackApprovalAction {
   readonly user: string;
   readonly userName: string | undefined;
 }
+
+/** A selection in a model picker menu. */
+export interface SlackModelSelection {
+  readonly kind: "model";
+  /** The `/model` argument: `<provider>/<id>`. */
+  readonly model: string;
+  readonly channel: string;
+  readonly threadTs: string | undefined;
+  /** The `ts` of the picker message, for the update after the selection. */
+  readonly messageTs: string | undefined;
+  readonly user: string;
+  readonly userName: string | undefined;
+}
+
+/** A Block Kit interaction that the binding handles. */
+export type SlackInteraction = SlackApprovalAction | SlackModelSelection;
 
 /** Message subtypes that carry a Sender message. Other subtypes are edits, joins, bot posts, and similar. */
 const USER_SUBTYPES: ReadonlySet<string | undefined> = new Set([
@@ -118,34 +137,59 @@ export const parseSlashCommand = (
       };
 };
 
-/** Parses a `block_actions` payload. Returns `undefined` unless the first action is an Approval button. */
-export const parseInteraction = (
-  payload: JsonValue | undefined
-): SlackApprovalAction | undefined => {
-  const decoded = decodeOptional(BlockActionsSchema, payload);
-  const [action] = decoded?.actions ?? [];
+type BlockAction = BlockActions["actions"][number];
 
-  if (decoded === undefined || action === undefined) {
-    return undefined;
+/** Who acted, and in which Chat, for an interaction. */
+type InteractionSender = Omit<
+  SlackApprovalAction,
+  "kind" | "approvalId" | "decision"
+>;
+
+/** Returns the model selection or Approval click of one action, or `undefined` for another action. */
+const interactionOf = (
+  action: BlockAction,
+  sender: InteractionSender,
+  messageTs: string | undefined
+): SlackInteraction | undefined => {
+  const model = action.selected_option?.value;
+
+  if (action.action_id.startsWith(MODEL_ACTION_PREFIX) && model !== undefined) {
+    return { ...sender, kind: "model", messageTs, model };
   }
 
   const decision = decisionOfAction(action.action_id);
   const approvalId = action.value;
-  const channel = decoded.channel?.id ?? decoded.container?.channel_id;
 
-  const isApprovalClick =
-    decision !== undefined && approvalId !== undefined && channel !== undefined;
+  return decision === undefined || approvalId === undefined
+    ? undefined
+    : { ...sender, approvalId, decision, kind: "approval" };
+};
 
-  if (!isApprovalClick) {
+/**
+ * Parses a `block_actions` payload. Returns `undefined` unless the first action is an Approval button or a model picker
+ * selection.
+ */
+export const parseInteraction = (
+  payload: JsonValue | undefined
+): SlackInteraction | undefined => {
+  const decoded = decodeOptional(BlockActionsSchema, payload);
+  const [action] = decoded?.actions ?? [];
+  const channel = decoded?.channel?.id ?? decoded?.container?.channel_id;
+
+  if (decoded === undefined || action === undefined || channel === undefined) {
     return undefined;
   }
 
-  return {
-    approvalId,
+  const sender = {
     channel,
-    decision,
     threadTs: decoded.message?.thread_ts,
     user: decoded.user.id,
     userName: decoded.user.name ?? decoded.user.username,
   };
+
+  return interactionOf(
+    action,
+    sender,
+    decoded.message?.ts ?? decoded.container?.message_ts
+  );
 };

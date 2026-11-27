@@ -982,6 +982,247 @@ describe("Slack Approvals", () => {
   });
 });
 
+/** One `static_select` menu of a posted model picker. */
+interface PickerSelect {
+  readonly actionId: string;
+  readonly placeholder: string;
+  readonly initialValue: string | undefined;
+  readonly values: readonly string[];
+  readonly texts: readonly string[];
+}
+
+/** The model select menus of a posted message, one array per `actions` block. */
+const selectsOf = (
+  args: ChatPostMessageArguments | undefined
+): PickerSelect[][] => {
+  const blocks = args !== undefined && "blocks" in args ? args.blocks : [];
+
+  return blocks.flatMap((block) =>
+    block.type === "actions" && "elements" in block
+      ? [
+          block.elements.flatMap((element) =>
+            element.type === "static_select"
+              ? [
+                  {
+                    actionId: element.action_id ?? "",
+                    initialValue: element.initial_option?.value,
+                    placeholder: element.placeholder?.text ?? "",
+                    texts: (element.options ?? []).map(
+                      (option) => option.text.text
+                    ),
+                    values: (element.options ?? []).map(
+                      (option) => option.value ?? ""
+                    ),
+                  },
+                ]
+              : []
+          ),
+        ]
+      : []
+  );
+};
+
+const model = (provider: string, id: string, name = id) => ({
+  id,
+  name,
+  provider,
+});
+
+const pickerMessage = (
+  models: readonly ReturnType<typeof model>[],
+  fields: Partial<MessageDelivery> = {}
+): MessageDelivery =>
+  message({
+    chatId: "C1:1699.000006",
+    messageId: "m-picker",
+    modelPicker: {
+      current: { id: "gpt-5", provider: "openai" },
+      models,
+    },
+    text: "Available models: ...",
+    ...fields,
+  });
+
+const selection = (value: string, channel = "C1"): JsonObject => ({
+  actions: [
+    {
+      action_id: "wheatley_model:0:0",
+      selected_option: { text: { text: value, type: "plain_text" }, value },
+      type: "static_select",
+    },
+  ],
+  channel: { id: channel },
+  message: { thread_ts: "1699.000006", ts: FIRST_TS },
+  type: "block_actions",
+  user: { id: "U1", username: "alice" },
+});
+
+describe("Slack model picker", () => {
+  it("posts one select menu per provider with the current model selected, once per messageId", async () => {
+    const { binding, web } = await setup();
+
+    const delivery = pickerMessage([
+      model("anthropic", "claude-x", "Claude X"),
+      model("openai", "gpt-5", "GPT-5"),
+      model("openai", "o9"),
+    ]);
+
+    await binding.deliver(delivery);
+    await binding.deliver(delivery);
+
+    const posts = web.posts();
+    const [picker] = posts;
+
+    expect(posts).toHaveLength(1);
+    expect(picker && threadOf(picker)).toBe("1699.000006");
+    expect(picker && markdownOf(picker)).toBe("");
+    expect(JSON.stringify(picker)).toContain("Current model: `openai/gpt-5`");
+    expect(selectsOf(picker)).toEqual([
+      [
+        {
+          actionId: "wheatley_model:0:0",
+          initialValue: undefined,
+          placeholder: "anthropic",
+          texts: ["Claude X"],
+          values: ["anthropic/claude-x"],
+        },
+      ],
+      [
+        {
+          actionId: "wheatley_model:1:0",
+          initialValue: "openai/gpt-5",
+          placeholder: "openai",
+          texts: ["GPT-5", "o9"],
+          values: ["openai/gpt-5", "openai/o9"],
+        },
+      ],
+    ]);
+  });
+
+  it("posts the text when no model is available", async () => {
+    const { binding, web } = await setup();
+
+    await binding.deliver(
+      pickerMessage([], { text: "No models are available." })
+    );
+
+    expect(web.posts().map(markdownOf)).toEqual(["No models are available."]);
+  });
+
+  it("splits a provider into menus of 100, truncates long names, and skips values over 150 characters", async () => {
+    const { binding, web } = await setup();
+
+    const many = Array.from({ length: 150 }, (_, index) =>
+      model("openrouter", `vendor/model-${String(index).padStart(3, "0")}`)
+    );
+
+    await binding.deliver(
+      pickerMessage([
+        model("anthropic", "long", "😀".repeat(50)),
+        model("anthropic", "x".repeat(150)),
+        ...many,
+      ])
+    );
+
+    const [picker] = web.posts();
+    const [anthropic, openrouter] = selectsOf(picker);
+    const [longName] = anthropic?.[0]?.texts ?? [];
+
+    expect(anthropic?.map((select) => select.values)).toEqual([
+      ["anthropic/long"],
+    ]);
+    expect(longName?.length).toBeLessThanOrEqual(75);
+    expect(longName?.endsWith("😀…")).toBe(true);
+    expect(
+      openrouter?.map((select) => [select.placeholder, select.values.length])
+    ).toEqual([
+      ["openrouter (1/2)", 100],
+      ["openrouter (2/2)", 50],
+    ]);
+    expect(JSON.stringify(picker)).toContain(
+      "1 model has an ID too long for this menu."
+    );
+  });
+
+  it("posts the text when the picker needs more than 50 blocks", async () => {
+    const { binding, web } = await setup();
+
+    const models = Array.from({ length: 50 }, (_, index) =>
+      model(`provider-${String(index).padStart(2, "0")}`, "m")
+    );
+
+    await binding.deliver(pickerMessage(models));
+
+    const [posted] = web.posts();
+
+    expect(posted && markdownOf(posted)).toBe("Available models: ...");
+    expect(selectsOf(posted)).toEqual([]);
+  });
+
+  it("runs /model for the thread Chat of the picker and replaces the menus with the selection", async () => {
+    const { binding, sink, socket, web } = await setup();
+
+    await binding.deliver(pickerMessage([model("openai", "gpt-5")]));
+    socket.emit("interactive", selection("openrouter/vendor/model-a"));
+
+    await vi.waitFor(() => {
+      expect(web.updates()).toHaveLength(1);
+    });
+
+    const [update] = web.updates();
+
+    expect(sink.commandCalls).toEqual([
+      {
+        args: "openrouter/vendor/model-a",
+        chatId: "C1:1699.000006",
+        name: "model",
+        senderDisplayName: "Alice",
+      },
+    ]);
+    expect(update?.ts).toBe(FIRST_TS);
+    expect(update?.channel).toBe("C1");
+    expect(JSON.stringify(update)).toContain(
+      "*Model selected:* `openrouter/vendor/model-a` by Alice"
+    );
+    expect(JSON.stringify(update)).not.toContain("static_select");
+  });
+
+  it("ignores a selection from a Chat that is not allowed", async () => {
+    const { binding, sink, socket, web } = await setup();
+
+    socket.emit("interactive", selection("openai/gpt-5", "C9"));
+    await binding.stop();
+
+    expect(sink.commandCalls).toEqual([]);
+    expect(web.updates()).toEqual([]);
+  });
+
+  it("runs a signed webhook selection and rejects an unsigned one", async () => {
+    const { binding, ingress, sink } = await webhookSetup();
+    const form = "application/x-www-form-urlencoded";
+
+    const body = new URLSearchParams({
+      payload: JSON.stringify(selection("openai/gpt-5")),
+    }).toString();
+
+    const unsigned = await ingress.handle(
+      signedRequest(body, form, { secret: "other" })
+    );
+
+    const signed = await ingress.handle(signedRequest(body, form));
+
+    await vi.waitFor(() => {
+      expect(sink.commandCalls).toHaveLength(1);
+    });
+    await binding.stop();
+
+    expect([unsigned.status, signed.status]).toEqual([401, 200]);
+    expect(sink.commandCalls.map((call) => call.args)).toEqual([
+      "openai/gpt-5",
+    ]);
+  });
+});
+
 describe("Slack Events API webhook", () => {
   it("does not open Socket Mode", async () => {
     const { socket } = await webhookSetup();

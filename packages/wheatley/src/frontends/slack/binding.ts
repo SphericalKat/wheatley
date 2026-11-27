@@ -27,12 +27,18 @@ import {
 } from "./inbound.js";
 import type {
   SlackApprovalAction,
+  SlackInteraction,
   SlackMessage,
+  SlackModelSelection,
   SlackSlashCommand,
 } from "./inbound.js";
 import { LiveProgress } from "./live-progress.js";
 import type { PostedMessage } from "./live-progress.js";
 import { WEBHOOK_PATH_SUFFIX } from "./manifest.js";
+import {
+  modelSelectedBlocks,
+  modelSelectedText,
+} from "./model-picker-blocks.js";
 import { SlackOutbound } from "./outbound.js";
 import {
   decodeOptional,
@@ -127,7 +133,8 @@ const nameOf = async (
  * calls for allowed Chats. The binding acknowledges each envelope or request before it processes it, so Slack does not
  * retry while attachments download. `stop` waits for inbound work in progress.
  *
- * Outbound: `deliver` posts Markdown chunks, uploads attachments, and posts and updates Block Kit Approval prompts.
+ * Outbound: `deliver` posts Markdown chunks, uploads attachments, posts Block Kit model pickers, and posts and updates
+ * Block Kit Approval prompts.
  */
 export class SlackBinding implements FrontendBinding {
   readonly #config: SlackBindingConfig;
@@ -562,14 +569,59 @@ export class SlackBinding implements FrontendBinding {
   };
 
   readonly #handleAction = async (
-    action: SlackApprovalAction | undefined
+    interaction: SlackInteraction | undefined
   ): Promise<void> => {
     const connection = this.#connection;
 
-    if (connection === undefined || action === undefined) {
+    if (connection === undefined || interaction === undefined) {
       return;
     }
 
+    await (interaction.kind === "approval"
+      ? this.#handleApproval(connection, interaction)
+      : this.#handleModelSelection(connection, interaction));
+  };
+
+  /** Runs `/model <provider>/<id>` in the Chat of the picker, then replaces the picker with the selected model. */
+  readonly #handleModelSelection = async (
+    connection: Connection,
+    selection: SlackModelSelection
+  ): Promise<void> => {
+    const chatId = toChatId(selection.channel, selection.threadTs);
+
+    if (!this.#allowed(chatId)) {
+      return;
+    }
+
+    const senderDisplayName = await this.#displayName(
+      connection,
+      selection.user,
+      selection.userName
+    );
+
+    await connection.sink.command({
+      args: selection.model,
+      chatId,
+      name: "model",
+      senderDisplayName,
+    });
+
+    if (selection.messageTs === undefined) {
+      return;
+    }
+
+    await connection.web.chat.update({
+      blocks: modelSelectedBlocks(selection.model, senderDisplayName),
+      channel: selection.channel,
+      text: modelSelectedText(selection.model),
+      ts: selection.messageTs,
+    });
+  };
+
+  readonly #handleApproval = async (
+    connection: Connection,
+    action: SlackApprovalAction
+  ): Promise<void> => {
     const chatId =
       connection.store.approval(action.approvalId)?.chatId ??
       toChatId(action.channel, action.threadTs);
