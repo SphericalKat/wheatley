@@ -634,9 +634,10 @@ The `Release` workflow in `.github/workflows/release.yml` uses [release-please](
 2. release-please opens or updates a release pull request. The pull request changes the version in the root `package.json`, `packages/wheatley/package.json`, and `packages/sdk/package.json`.
 3. Merge the release pull request.
 4. The workflow creates the `v<version>` tag and the GitHub release.
-5. The workflow publishes `@wheatley-ai/sdk` and `@wheatley-ai/cli` to npm.
-6. The workflow pushes the `linux/amd64` and `linux/arm64` image to `ghcr.io/sphericalkat/wheatley`.
-7. After the npm publish, the workflow sets the version and checksum in `packaging/aur/PKGBUILD`, builds the package, and pushes `PKGBUILD` and `.SRCINFO` to the AUR package `wheatley-cli`.
+5. The workflow packs `@wheatley-ai/sdk` and `@wheatley-ai/cli` and uploads `wheatley-ai-cli-<version>.tgz` to the GitHub release.
+6. The workflow publishes `@wheatley-ai/sdk` and `@wheatley-ai/cli` to npm.
+7. The workflow pushes the `linux/amd64` and `linux/arm64` image to `ghcr.io/sphericalkat/wheatley`.
+8. The workflow updates `packaging/aur/PKGBUILD` and `.SRCINFO` for the AUR package `wheatley-cli` and renders `Formula/wheatley.rb` in `SphericalKat/homebrew-tap` using the GitHub release tarball and checksum.
 
 Before version `1.0.0`, a `feat` commit raises the minor version, and a `fix` commit raises the patch version.
 
