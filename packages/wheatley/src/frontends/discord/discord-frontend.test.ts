@@ -26,6 +26,8 @@ import {
 import type {
   ChatInputApplicationCommandData,
   ClientOptions,
+  InteractionButtonComponentData,
+  StringSelectMenuComponentData,
 } from "discord.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -38,10 +40,12 @@ import type {
   DiscordMessage,
   DiscordRuntime,
   InteractionReceipt,
+  MessageRow,
   OutboundMessage,
   SendableChannel,
   SentMessage,
   SlashCommandInteraction,
+  StringSelectInteraction,
 } from "./discord-runtime.js";
 import { createDiscordFrontend } from "./module.js";
 
@@ -418,6 +422,9 @@ const slashCommand = (
     isChatInputCommand(): this is SlashCommandInteraction {
       return true;
     },
+    isStringSelectMenu(): this is StringSelectInteraction {
+      return false;
+    },
     options: { getString: (name: string) => args[name] ?? null },
     user: { displayName: "Ada" },
   };
@@ -425,26 +432,53 @@ const slashCommand = (
   return interaction satisfies SlashCommandInteraction;
 };
 
+const componentFields = (channelId: string, customId: string) => ({
+  channel: channel(channelId),
+  channelId,
+  customId,
+  deferUpdate: vi.fn(receipt),
+  editReply: vi.fn(async (_message: OutboundMessage) => await receipt()),
+  followUp: vi.fn(receipt),
+  isChatInputCommand(): this is SlashCommandInteraction {
+    return false;
+  },
+  message: { content: "prompt" },
+  reply: vi.fn(receipt),
+  update: vi.fn(async (_message: OutboundMessage) => await receipt()),
+  user: { displayName: "Ada" },
+});
+
 const buttonPress = (channelId: string, customId: string) => {
   const interaction = {
-    channel: channel(channelId),
-    channelId,
-    customId,
-    deferUpdate: vi.fn(receipt),
-    editReply: vi.fn(async (_message: OutboundMessage) => await receipt()),
-    followUp: vi.fn(receipt),
+    ...componentFields(channelId, customId),
     isButton(): this is ButtonInteraction {
       return true;
     },
-    isChatInputCommand(): this is SlashCommandInteraction {
+    isStringSelectMenu(): this is StringSelectInteraction {
       return false;
     },
-    message: { content: "prompt" },
-    reply: vi.fn(receipt),
-    user: { displayName: "Ada" },
   };
 
   return interaction satisfies ButtonInteraction;
+};
+
+const selectChoice = (
+  channelId: string,
+  customId: string,
+  values: readonly string[]
+) => {
+  const interaction = {
+    ...componentFields(channelId, customId),
+    isButton(): this is ButtonInteraction {
+      return false;
+    },
+    isStringSelectMenu(): this is StringSelectInteraction {
+      return true;
+    },
+    values,
+  };
+
+  return interaction satisfies StringSelectInteraction;
 };
 
 const approvalRequest = (approvalId: string): Delivery => ({
@@ -458,8 +492,32 @@ const approvalRequest = (approvalId: string): Delivery => ({
   toolName: "shell",
 });
 
+const buttonsIn = (
+  row: MessageRow | undefined
+): InteractionButtonComponentData[] =>
+  (row?.components ?? []).filter(
+    (component) => component.type === ComponentType.Button
+  );
+
 const buttonsOf = (message: FakeMessage | undefined) =>
-  message?.payload.components?.[0]?.components ?? [];
+  buttonsIn(message?.payload.components?.[0]);
+
+const selectIn = (
+  row: MessageRow | undefined
+): StringSelectMenuComponentData | undefined =>
+  row?.components.find(
+    (component) => component.type === ComponentType.StringSelect
+  );
+
+/** The option labels of the select in a row, with a `*` suffix on default options. */
+const optionLabels = (row: MessageRow | undefined): string[] =>
+  (selectIn(row)?.options ?? []).map(
+    (option) => `${option.label}${option.default === true ? "*" : ""}`
+  );
+
+const lastUpdate = (interaction: {
+  readonly update: { readonly mock: { readonly calls: [OutboundMessage][] } };
+}): OutboundMessage | undefined => interaction.update.mock.calls.at(-1)?.[0];
 
 const reply = (messageId: string, chatId: string): Delivery => ({
   chatId,
@@ -1056,4 +1114,300 @@ it("maps Discord failures to permanent and retryable delivery errors", async () 
   await expect(binding?.deliver(reply("flaky", CHANNEL))).rejects.toMatchObject(
     { kind: "retryable" }
   );
+});
+
+const pickerDelivery = (
+  messageId: string,
+  models: readonly { provider: string; id: string; name?: string }[],
+  current?: { provider: string; id: string }
+): Delivery => ({
+  chatId: CHANNEL,
+  kind: "message",
+  messageId,
+  modelPicker: {
+    current,
+    models: models.map((model) => ({ ...model, name: model.name ?? model.id })),
+  },
+  source: "command",
+  text: "**anthropic**\n- claude-x",
+});
+
+const SMALL_CATALOG = [
+  { id: "claude-x", name: "Claude X", provider: "anthropic" },
+  { id: "claude-y", name: "Claude Y", provider: "anthropic" },
+  { id: "gpt-5", provider: "openai" },
+] as const;
+
+const pickerOf = (chatId: string = CHANNEL): FakeMessage => {
+  const message = channel(chatId).sent.at(-1);
+
+  if (message === undefined) {
+    throw new Error("The binding sent no picker message");
+  }
+
+  return message;
+};
+
+/** Chooses `value` in the select of `row` and resolves with the interaction once the binding answered it. */
+const choose = async (
+  client: FakeClient,
+  row: MessageRow | undefined,
+  value: string
+) => {
+  const interaction = selectChoice(CHANNEL, selectIn(row)?.customId ?? "", [
+    value,
+  ]);
+
+  client.emitInteraction(interaction);
+  await settle();
+
+  return interaction;
+};
+
+/** Presses the button at `index` of `row` and resolves with the interaction once the binding answered it. */
+const press = async (
+  client: FakeClient,
+  row: MessageRow | undefined,
+  index: number
+) => {
+  const interaction = buttonPress(
+    CHANNEL,
+    buttonsIn(row)[index]?.customId ?? ""
+  );
+
+  client.emitInteraction(interaction);
+  await settle();
+
+  return interaction;
+};
+
+/** The texts that Discord limits to 100 characters: each `custom_id` and each option label, value, and description. */
+const limitedTexts = (messages: readonly (OutboundMessage | undefined)[]) =>
+  messages
+    .flatMap((message) => message?.components ?? [])
+    .flatMap((row) =>
+      row.components.flatMap((component) => [
+        component.customId,
+        ...(component.type === ComponentType.StringSelect
+          ? component.options.flatMap((option) => [
+              option.label,
+              option.value,
+              option.description ?? "",
+            ])
+          : []),
+      ])
+    );
+
+it("sends a model picker that opens on the page of the current model", async () => {
+  await startBinding();
+
+  const delivery = pickerDelivery("pick-1", SMALL_CATALOG, {
+    id: "claude-y",
+    provider: "anthropic",
+  });
+
+  await binding?.deliver(delivery);
+  await binding?.deliver(delivery);
+
+  const target = channel(CHANNEL);
+  const { payload } = pickerOf();
+  const [providers, models, nav] = payload.components ?? [];
+
+  expect(target.sent).toHaveLength(1);
+  expect(payload.content).toBe("Current model: `anthropic/claude-y`");
+  expect(optionLabels(providers)).toStrictEqual(["anthropic*", "openai"]);
+  expect(optionLabels(models)).toStrictEqual(["Claude X", "Claude Y*"]);
+  expect(
+    selectIn(models)?.options.map((option) => option.description)
+  ).toStrictEqual(["claude-x", "claude-y"]);
+  expect(nav).toBeUndefined();
+});
+
+it("switches the model from the picker and removes its components", async () => {
+  const client = await startBinding();
+  await binding?.deliver(pickerDelivery("pick-2", SMALL_CATALOG));
+  const [providers] = pickerOf().payload.components ?? [];
+
+  expect(pickerOf().payload.content).toBe("Choose a model.");
+  expect(pickerOf().payload.components).toHaveLength(1);
+
+  const providerChoice = selectChoice(
+    CHANNEL,
+    selectIn(providers)?.customId ?? "",
+    ["1"]
+  );
+
+  client.emitInteraction(providerChoice);
+  await settle();
+
+  const shown = lastUpdate(providerChoice);
+  const models = shown?.components?.[1];
+
+  expect(optionLabels(shown?.components?.[0])).toStrictEqual([
+    "anthropic",
+    "openai*",
+  ]);
+  expect(optionLabels(models)).toStrictEqual(["gpt-5"]);
+  expect(selectIn(models)?.options[0]?.description).toBeUndefined();
+
+  const modelChoice = selectChoice(CHANNEL, selectIn(models)?.customId ?? "", [
+    selectIn(models)?.options[0]?.value ?? "",
+  ]);
+
+  client.emitInteraction(modelChoice);
+  await settle();
+
+  expect(commands).toStrictEqual([
+    {
+      args: "openai/gpt-5",
+      chatId: CHANNEL,
+      name: "model",
+      senderDisplayName: "Ada",
+    },
+  ]);
+  expect(modelChoice.deferUpdate).toHaveBeenCalledOnce();
+  expect(modelChoice.editReply).toHaveBeenCalledWith({
+    components: [],
+    content: "Selected `openai/gpt-5`.",
+  });
+
+  const again = selectChoice(CHANNEL, selectIn(models)?.customId ?? "", ["2"]);
+  client.emitInteraction(again);
+  await settle();
+
+  expect(commands).toHaveLength(1);
+  expect(again.reply).toHaveBeenCalledWith({
+    content: "This model picker is no longer available. Run `/model` again.",
+    flags: MessageFlags.Ephemeral,
+  });
+});
+
+it("pages providers and models past 25 options and keeps every component within Discord limits", async () => {
+  const client = await startBinding();
+  const longId = `org/${"m".repeat(150)}`;
+
+  const catalog = [
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: index === 29 ? longId : `model-${String(index).padStart(2, "0")}`,
+      provider: "big",
+    })),
+    ...Array.from({ length: 26 }, (_, index) => ({
+      id: "only",
+      provider: `p${String(index).padStart(2, "0")}`,
+    })),
+  ];
+
+  await binding?.deliver(pickerDelivery("pick-3", catalog));
+
+  const first = pickerOf().payload;
+  const [providers, nav] = first.components ?? [];
+
+  expect(first.components).toHaveLength(2);
+  expect(selectIn(providers)?.options).toHaveLength(25);
+  expect(selectIn(providers)?.placeholder).toBe(
+    "Choose a provider (page 1 of 2)"
+  );
+  expect(
+    buttonsIn(nav).map((button) => [button.label, button.disabled])
+  ).toStrictEqual([
+    ["Previous providers", true],
+    ["Next providers", false],
+  ]);
+
+  const nextProviders = await press(client, nav, 1);
+
+  expect(
+    optionLabels(lastUpdate(nextProviders)?.components?.[0])
+  ).toStrictEqual(["p24", "p25"]);
+
+  const bigView = lastUpdate(await choose(client, providers, "0"));
+  const [, bigModels, bigNav] = bigView?.components ?? [];
+
+  expect(selectIn(bigModels)?.options).toHaveLength(25);
+  expect(buttonsIn(bigNav).map((button) => button.label)).toStrictEqual([
+    "Previous providers",
+    "Next providers",
+    "Previous models",
+    "Next models",
+  ]);
+
+  const lastPage = lastUpdate(await press(client, bigNav, 3));
+  const pageModels = lastPage?.components?.[1];
+  const longOption = selectIn(pageModels)?.options.at(-1);
+
+  expect(selectIn(pageModels)?.options).toHaveLength(5);
+  expect(selectIn(pageModels)?.placeholder).toBe(
+    "Choose a model (page 2 of 2)"
+  );
+  expect(longOption?.label).toHaveLength(100);
+  expect(
+    Math.max(
+      ...limitedTexts([first, bigView, lastPage]).map((text) => text.length)
+    )
+  ).toBe(100);
+
+  await choose(client, pageModels, longOption?.value ?? "");
+
+  expect(commands.map((command) => command.args)).toStrictEqual([
+    `big/${longId}`,
+  ]);
+});
+
+it("sends the text of a model picker without models", async () => {
+  await startBinding();
+
+  await binding?.deliver(pickerDelivery("pick-4", []));
+
+  expect(pickerOf().payload).toStrictEqual({
+    allowedMentions: { parse: [] },
+    content: "**anthropic**\n- claude-x",
+    files: undefined,
+  });
+});
+
+it("keeps a model picker across a restart and does not send it twice", async () => {
+  await startBinding();
+  await binding?.deliver(pickerDelivery("pick-5", SMALL_CATALOG));
+  await binding?.stop();
+
+  const client = await startBinding();
+  await binding?.deliver(pickerDelivery("pick-5", SMALL_CATALOG));
+  const [providers] = pickerOf().payload.components ?? [];
+
+  const choice = selectChoice(CHANNEL, selectIn(providers)?.customId ?? "", [
+    "0",
+  ]);
+
+  client.emitInteraction(choice);
+  await settle();
+
+  expect(channel(CHANNEL).sent).toHaveLength(1);
+  expect(optionLabels(lastUpdate(choice)?.components?.[1])).toStrictEqual([
+    "Claude X",
+    "Claude Y",
+  ]);
+});
+
+it("answers a picker interaction with an unknown token ephemerally and ignores other Chats", async () => {
+  const client = await startBinding();
+  await binding?.deliver(pickerDelivery("pick-6", SMALL_CATALOG));
+  const [providers] = pickerOf().payload.components ?? [];
+  const customId = selectIn(providers)?.customId ?? "";
+
+  const unknown = buttonPress(CHANNEL, "wheatley-model:unknown:v:p:0");
+  const outside = selectChoice(OTHER_CHANNEL, customId, ["0"]);
+  const otherChat = selectChoice(DM, customId, ["0"]);
+  client.emitInteraction(unknown);
+  client.emitInteraction(outside);
+  client.emitInteraction(otherChat);
+  await settle();
+
+  expect(unknown.reply).toHaveBeenCalledWith({
+    content: "This model picker is no longer available. Run `/model` again.",
+    flags: MessageFlags.Ephemeral,
+  });
+  expect(outside.reply).not.toHaveBeenCalled();
+  expect(outside.update).not.toHaveBeenCalled();
+  expect(otherChat.update).not.toHaveBeenCalled();
+  expect(otherChat.reply).toHaveBeenCalledOnce();
 });

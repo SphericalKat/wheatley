@@ -8,6 +8,7 @@ import type {
   FrontendContext,
   FrontendSink,
   MessageDelivery,
+  ModelPicker,
   RunEvent,
 } from "@wheatley-ai/sdk";
 import {
@@ -34,6 +35,7 @@ import type { DiscordConfig } from "./config.js";
 import { loadDiscordRuntime, NO_MENTIONS } from "./discord-runtime.js";
 import type {
   ButtonInteraction,
+  ComponentInteraction,
   DiscordChannel,
   DiscordClient,
   DiscordInteraction,
@@ -50,6 +52,16 @@ import {
   UNKNOWN_MESSAGE_CODE,
 } from "./errors.js";
 import { DISCORD_MESSAGE_MAX_LENGTH, LiveRuns } from "./live-runs.js";
+import {
+  initialView,
+  modelRefText,
+  parsePickerCustomId,
+  pickerMessage,
+  pickerStep,
+  PickerStore,
+  pickerToken,
+  STALE_PICKER_TEXT,
+} from "./model-picker.js";
 import { RecentIds } from "./recent-ids.js";
 
 /** Third-party seams of the Discord Frontend. Production code uses the defaults. */
@@ -198,6 +210,7 @@ export class DiscordBinding implements FrontendBinding {
   readonly #loadDiscord: () => Promise<DiscordRuntime>;
   readonly #allowed: ReadonlySet<string>;
   readonly #prompts: PromptStore;
+  readonly #pickers: PickerStore;
   readonly #delivered = new RecentIds(RECENT_DELIVERY_LIMIT);
   readonly #live: LiveRuns;
   #client: DiscordClient | undefined;
@@ -216,6 +229,7 @@ export class DiscordBinding implements FrontendBinding {
     this.#loadDiscord = options.loadDiscord ?? loadDiscordRuntime;
     this.#allowed = new Set(config.allowedChatIds);
     this.#prompts = new PromptStore(ctx.dataDir);
+    this.#pickers = new PickerStore(ctx.dataDir);
     this.#live = new LiveRuns({
       editIntervalMs: config.editIntervalMs,
       log: ctx.log,
@@ -228,11 +242,12 @@ export class DiscordBinding implements FrontendBinding {
    * Loads `discord.js`, logs in, waits for the Gateway `clientReady` event, and registers the built-in commands as
    * Slash Commands: in each `commandGuildIds` guild, or globally if the list is empty.
    *
-   * Rejects if the stored Approval prompts cannot load or the login fails. A failed command registration only logs an
-   * error, because text commands still work.
+   * Rejects if the stored Approval prompts or model pickers cannot load or the login fails. A failed command
+   * registration only logs an error, because text commands still work.
    */
   readonly start = async (sink: FrontendSink): Promise<void> => {
     await this.#prompts.load();
+    await this.#pickers.load();
     const discord = await this.#loadDiscord();
 
     const client = discord.createClient({
@@ -291,7 +306,8 @@ export class DiscordBinding implements FrontendBinding {
   /**
    * Delivers durable outbound work. Drops a `messageId` that this binding delivered before.
    *
-   * A `message` with a `runId` replaces the draft message of that Run with its first chunk. Rejects with a
+   * A `message` with a `runId` replaces the draft message of that Run with its first chunk. A `message` with a
+   * `modelPicker` that lists models becomes one picker message with select menus instead of its text. Rejects with a
    * `DeliveryError`: `permanent` for an unknown, non-text, or not-allowed Chat, a file over the limit, or a Discord
    * 4xx answer such as Missing Access; `retryable` before `start` finishes and for rate limits, 5xx, and network
    * errors.
@@ -495,10 +511,15 @@ export class DiscordBinding implements FrontendBinding {
       return;
     }
 
-    const isOwn =
-      interaction.isChatInputCommand() ||
-      (interaction.isButton() &&
-        parseApprovalCustomId(interaction.customId) !== undefined);
+    const isComponent =
+      interaction.isButton() || interaction.isStringSelectMenu();
+
+    const isOwnComponent =
+      isComponent &&
+      (parseApprovalCustomId(interaction.customId) !== undefined ||
+        parsePickerCustomId(interaction.customId) !== undefined);
+
+    const isOwn = interaction.isChatInputCommand() || isOwnComponent;
 
     if (!isOwn) {
       return;
@@ -518,9 +539,76 @@ export class DiscordBinding implements FrontendBinding {
 
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction, channel.id, connection);
+    } else if (interaction.isStringSelectMenu()) {
+      await this.#onModelPicker(
+        interaction,
+        interaction.values,
+        channel.id,
+        connection
+      );
     } else if (interaction.isButton()) {
-      await this.#onApprovalButton(interaction, channel.id, connection);
+      await (parseApprovalCustomId(interaction.customId) === undefined
+        ? this.#onModelPicker(interaction, [], channel.id, connection)
+        : this.#onApprovalButton(interaction, channel.id, connection));
     }
+  }
+
+  /** Shows another picker page, or switches the Chat to the chosen model and removes the picker components. */
+  async #onModelPicker(
+    interaction: ComponentInteraction,
+    values: readonly string[],
+    chatId: string,
+    { discord, sink }: Connection
+  ): Promise<void> {
+    const press = parsePickerCustomId(interaction.customId);
+
+    const state =
+      press === undefined ? undefined : this.#pickers.get(press.token);
+
+    const step =
+      press !== undefined && state?.chatId === chatId
+        ? pickerStep(state, press, values)
+        : undefined;
+
+    if (state === undefined || step === undefined) {
+      await interaction.reply({
+        content: STALE_PICKER_TEXT,
+        flags: discord.MessageFlags.Ephemeral,
+      });
+
+      return;
+    }
+
+    if (step.kind === "show") {
+      await interaction.update(pickerMessage(discord, state, step.view));
+
+      return;
+    }
+
+    await interaction.deferUpdate();
+    const args = modelRefText(step.model);
+
+    try {
+      await sink.command({
+        args,
+        chatId,
+        name: "model",
+        senderDisplayName: displayName(interaction.user.displayName),
+      });
+    } catch (error) {
+      await interaction.followUp({
+        content: "Wheatley could not run `/model`.",
+        flags: discord.MessageFlags.Ephemeral,
+      });
+
+      throw error;
+    }
+
+    await interaction.editReply({
+      components: [],
+      content: `Selected \`${args}\`.`,
+    });
+    await this.#pickers.delete(state.token);
   }
 
   async #onApprovalButton(
@@ -605,7 +693,11 @@ export class DiscordBinding implements FrontendBinding {
   async #deliver(delivery: Delivery): Promise<void> {
     switch (delivery.kind) {
       case "message": {
-        await this.#deliverMessage(delivery);
+        const picker = delivery.modelPicker;
+
+        await (picker !== undefined && picker.models.length > 0
+          ? this.#deliverModelPicker(delivery, picker)
+          : this.#deliverMessage(delivery));
         break;
       }
 
@@ -662,6 +754,30 @@ export class DiscordBinding implements FrontendBinding {
       // oxlint-disable-next-line no-await-in-loop -- Chunks must arrive in order.
       await channel.send(payload);
     }
+  }
+
+  /** Sends one picker message per `messageId`, also across restarts, because the token derives from it. */
+  async #deliverModelPicker(
+    delivery: MessageDelivery,
+    picker: ModelPicker
+  ): Promise<void> {
+    const { discord } = this.#requireConnection();
+    const channel = await this.#resolveChannel(delivery.chatId);
+    const token = pickerToken(delivery.messageId);
+
+    if (this.#pickers.get(token) !== undefined) {
+      return;
+    }
+
+    const state = {
+      chatId: channel.id,
+      current: picker.current,
+      models: picker.models,
+      token,
+    };
+
+    await channel.send(pickerMessage(discord, state, initialView(state)));
+    await this.#pickers.put(state);
   }
 
   async #deliverApprovalRequest(

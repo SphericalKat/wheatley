@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
 
 import type {
   ApprovalDecision,
@@ -10,6 +8,7 @@ import type {
 import type * as DiscordJs from "discord.js";
 
 import type { DiscordRuntime } from "./discord-runtime.js";
+import { JsonFile } from "./json-file.js";
 
 /** Discord limits a component `custom_id` to this many characters. */
 const MAX_CUSTOM_ID_LENGTH = 100;
@@ -170,59 +169,41 @@ const isPromptRecord = (value: unknown): value is PromptRecord =>
   "content" in value &&
   typeof value.content === "string";
 
-const isStoreFile = (
-  value: unknown
-): value is { readonly prompts: readonly unknown[] } =>
+/** The stored file. `load` keeps only the entries that are valid records. */
+interface PromptFile {
+  readonly prompts: readonly unknown[];
+  readonly version?: unknown;
+}
+
+const isStoreFile = (value: unknown): value is PromptFile =>
   typeof value === "object" &&
   value !== null &&
   "prompts" in value &&
   Array.isArray(value.prompts);
-
-const isMissingFile = (cause: unknown): boolean =>
-  cause instanceof Error && "code" in cause && cause.code === "ENOENT";
-
-const parseStore = (text: string): PromptRecord[] => {
-  const parsed: unknown = JSON.parse(text);
-
-  if (!isStoreFile(parsed)) {
-    throw new Error("The Approval prompt file has an unknown format");
-  }
-
-  return parsed.prompts.filter(isPromptRecord);
-};
 
 /**
  * Keeps the platform message of each pending Approval prompt in the binding's `dataDir`, so that an
  * `approval_resolved` delivery after a daemon restart can still disable the buttons.
  */
 export class PromptStore {
-  readonly #path: string;
-  readonly #dataDir: string;
+  readonly #file: JsonFile<PromptFile>;
   readonly #records = new Map<string, PromptRecord>();
-  #writes: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
-    this.#dataDir = dataDir;
-    this.#path = path.join(dataDir, STORE_FILE);
+    this.#file = new JsonFile(dataDir, STORE_FILE, isStoreFile);
   }
 
   /** Reads the file. A missing file means no pending prompts. Throws for an unreadable or malformed file. */
   async load(): Promise<void> {
-    let text: string;
+    const parsed = await this.#file.read();
 
-    try {
-      text = await readFile(this.#path, "utf-8");
-    } catch (error) {
-      if (isMissingFile(error)) {
-        return;
-      }
-
-      throw error;
+    if (parsed === undefined) {
+      return;
     }
 
     this.#records.clear();
 
-    for (const record of parseStore(text)) {
+    for (const record of parsed.prompts.filter(isPromptRecord)) {
       this.#records.set(record.approvalId, record);
     }
   }
@@ -265,29 +246,9 @@ export class PromptStore {
   }
 
   async #persist(): Promise<void> {
-    const snapshot = JSON.stringify({
+    await this.#file.write({
       prompts: [...this.#records.values()],
       version: STORE_VERSION,
     });
-
-    const previous = this.#writes;
-
-    const write = async (): Promise<void> => {
-      try {
-        await previous;
-      } catch {
-        // The earlier write already rejected to its own caller. This write replaces the whole file anyway.
-      }
-
-      await mkdir(this.#dataDir, { recursive: true });
-      const temporary = `${this.#path}.tmp`;
-      await writeFile(temporary, snapshot);
-      await rename(temporary, this.#path);
-    };
-
-    // Writes run one at a time, so a slow earlier write cannot replace a newer snapshot.
-    const next = write();
-    this.#writes = next;
-    await next;
   }
 }

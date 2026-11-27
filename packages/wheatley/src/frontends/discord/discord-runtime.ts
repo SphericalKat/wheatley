@@ -7,11 +7,18 @@ import type { InboundFile } from "./attachments.js";
  * type checker proves that the real `discord.js` objects satisfy these interfaces. Tests provide a fake client.
  */
 
+/** One action row of a message: up to five buttons, or one string select. */
+export type MessageRow = DiscordJs.ActionRowData<
+  | DiscordJs.InteractionButtonComponentData
+  | DiscordJs.StringSelectMenuComponentData
+>;
+
 /** The content of one message that the binding sends or edits. Agent text never pings anyone. */
 export interface OutboundMessage {
   readonly content?: string;
   readonly files?: readonly DiscordJs.AttachmentPayload[];
-  readonly components?: readonly DiscordJs.ActionRowData<DiscordJs.InteractionButtonComponentData>[];
+  /** An empty list removes all components of an edited message. */
+  readonly components?: readonly MessageRow[];
   readonly allowedMentions?: { readonly parse: readonly [] };
 }
 
@@ -107,7 +114,7 @@ export interface EphemeralReply {
   readonly flags: DiscordJs.MessageFlags.Ephemeral;
 }
 
-/** A Slash Command or a button press. */
+/** A Slash Command, a button press, or a string select choice. */
 export interface DiscordInteraction {
   /** The channel, or `null` if discord.js has not cached it. */
   readonly channel: DiscordChannel | null;
@@ -115,6 +122,7 @@ export interface DiscordInteraction {
   readonly user: { readonly displayName: string };
   readonly isChatInputCommand: () => this is SlashCommandInteraction;
   readonly isButton: () => this is ButtonInteraction;
+  readonly isStringSelectMenu: () => this is StringSelectInteraction;
 }
 
 /** A Slash Command. */
@@ -129,16 +137,30 @@ export interface SlashCommandInteraction extends DiscordInteraction {
   readonly editReply: (content: string) => Promise<InteractionReceipt>;
 }
 
-/** A press of a message button. */
-export interface ButtonInteraction extends DiscordInteraction {
+/**
+ * A use of a message component. Answer it once, within 3 seconds: `reply`, `update`, or `deferUpdate`. After
+ * `deferUpdate`, `editReply` and `followUp` can follow.
+ */
+export interface ComponentInteraction extends DiscordInteraction {
   readonly customId: string;
-  /** The message that holds the button. */
+  /** The message that holds the component. */
   readonly message: { readonly content: string };
   readonly reply: (reply: EphemeralReply) => Promise<InteractionReceipt>;
+  /** Edits the message that holds the component, as the answer to the interaction. */
+  readonly update: (message: OutboundMessage) => Promise<InteractionReceipt>;
   readonly deferUpdate: () => Promise<InteractionReceipt>;
-  /** Edits the message that holds the button, after `deferUpdate`. */
+  /** Edits the message that holds the component, after `deferUpdate`. */
   readonly editReply: (message: OutboundMessage) => Promise<InteractionReceipt>;
   readonly followUp: (reply: EphemeralReply) => Promise<InteractionReceipt>;
+}
+
+/** A press of a message button. */
+export type ButtonInteraction = ComponentInteraction;
+
+/** A choice in a string select. */
+export interface StringSelectInteraction extends ComponentInteraction {
+  /** The values of the chosen options. */
+  readonly values: readonly string[];
 }
 
 /** A Discord Gateway client. */
