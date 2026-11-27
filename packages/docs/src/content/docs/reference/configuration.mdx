@@ -1,15 +1,18 @@
 ---
 title: Configuration
-description: Reference for config.yaml, secrets.yaml, Permission Policy, and daemon settings.
+description: Reference for config.yaml, secrets.yaml, permission rules, and network settings.
 ---
 
-`config.yaml` stores Deployment settings. `secrets.yaml` stores secret values with file mode `0600`. `config.yaml` refers to secrets by name only (`{ secret: "<NAME>" }`).
+Wheatley splits its configuration into two files inside your home folder (`~/.wheatley` by default):
 
-An environment variable with the same name overrides the value in `secrets.yaml`.
+- **`config.yaml`**: Settings for providers, assistants, chat apps, permissions, and extensions. Safe to back up or version-control because it never contains raw keys.
+- **`secrets.yaml`**: API keys and bot tokens, stored with owner-only file permissions (`0600`).
 
-:::note After you edit `config.yaml`, restart the changed Agent (or restart the daemon for `daemon` and `webhooks` changes). Wheatley does not restart Agents automatically. :::
+Inside `config.yaml`, secrets are always referenced by name (`{ secret: "ANTHROPIC_API_KEY" }`). If an environment variable with the same name is set, it overrides `secrets.yaml`.
 
-## Top-level structure
+:::note After editing `config.yaml`, restart the changed assistant (or restart the daemon if you changed `daemon` or `webhooks`). :::
+
+## Full example `config.yaml`
 
 ```yaml
 version: 1
@@ -34,14 +37,24 @@ providers:
 
 agents:
   default:
+    instructions: Keep replies concise and helpful.
+    approvalTimeout: 15m
     model:
       provider: anthropic
       id: claude-sonnet-5-5
+      thinking: medium
+    permissionPolicy:
+      - tool: read_file
+        action: allow
+      - tool: shell
+        action: ask
 ```
 
-## Permission Policy
+## Controlling what your assistant can do (`permissionPolicy`)
 
-`agents.<name>.permissionPolicy` is an ordered list of rules. Each rule specifies a `tool` pattern and an `action`: `allow`, `ask`, or `deny`. The first matching rule wins. A `*` wildcard matches any text.
+Every assistant has a `permissionPolicy` list that decides which tools run automatically (`allow`), ask you first (`ask`), or are blocked (`deny`).
+
+Rules are checked from top to bottom, and the **first match wins**. Use `*` as a wildcard (for example `mcp:filesystem:*`).
 
 ```yaml
 agents:
@@ -55,19 +68,26 @@ agents:
         action: ask
 ```
 
-When no rule matches, a Tool uses its default action:
+### Default actions when no rule matches
 
-| Tool | Default action |
+| Tool | Default behavior |
 | --- | --- |
-| `read_file` | `allow` |
-| `write_file`, `shell` | `ask` |
+| `read_file` | `allow` (runs inside `agents/<name>/workspace`) |
+| `write_file`, `shell` | `ask` (runs inside `agents/<name>/workspace`) |
 | `memory_search`, `memory_read`, `memory_write`, `memory_delete` | `allow` |
 | `schedule_trigger`, `list_triggers`, `cancel_trigger` | `allow` |
-| Plugin Tools (`<plugin>:<tool>`) | `ask` |
-| MCP Server Tools (`mcp:<server>:<tool>`) | `ask` |
-
-Built-in file and shell Tools operate inside `agents/<name>/workspace`.
+| Plugin tools (`<plugin>:<tool>`) | `ask` |
+| MCP server tools (`mcp:<server>:<tool>`) | `ask` |
 
 ### Approval timeout
 
-An Approval waits 15 minutes (`15m`) by default. Set `approvalTimeout` on an Agent to change the wait time (for example `30m`), or set `approvalTimeout: null` to wait without a limit.
+When your assistant asks for permission to run a tool, it waits **15 minutes** (`15m`) by default before timing out. Set `approvalTimeout` on an assistant to change that window (for example `30m`), or set `approvalTimeout: null` to wait indefinitely.
+
+## Network listeners
+
+When `wheatley daemon` runs, it listens on two local endpoints:
+
+- **Unix socket** (`~/.wheatley/daemon.sock`): Used automatically by CLI commands on the same machine.
+- **Local HTTP/WebSocket listener** (`127.0.0.1:7420`): Serves the web dashboard on `/` and the JSON-RPC WebSocket API on `/ws`.
+
+You can override the TCP address in `config.yaml` (`daemon.host` and `daemon.port`) or on the command line (`wheatley daemon --host ... --port ...`). To point the CLI at a TCP address instead of the Unix socket, pass `--url ws://127.0.0.1:7420/ws`.

@@ -1,64 +1,82 @@
 ---
-title: Operations
-description: Manage Wheatley as a background service, update releases, and restore Agent backups.
+title: Day-to-day operations
+description: Run Wheatley automatically on login, upgrade to new releases, and restore from automatic backups.
 ---
 
 import { Steps } from "@astrojs/starlight/components";
 
-## Run as a background service
+## Run Wheatley as a background service
 
-`wheatley service` manages a user-level background service using `systemd --user` on Linux and `launchd` on macOS:
+`wheatley service` sets up a user-level background service using `systemd --user` on Linux and `launchd` on macOS, so Wheatley starts automatically when you log in:
 
 ```bash
 wheatley service install
 wheatley service start
-wheatley service stop
-wheatley service restart
 wheatley service status
 ```
 
-## Update Wheatley
+To stop or restart the service (for example, after upgrading or editing `config.yaml`):
+
+```bash
+wheatley service restart
+wheatley service stop
+```
+
+## Check for updates and upgrade
+
+Check whether a newer version is available without changing anything:
 
 ```bash
 wheatley update --check
-wheatley update
-wheatley update --method pnpm
 ```
 
-`wheatley update` checks the npm registry over HTTP (respecting `npm_config_registry` if set), detects how Wheatley was installed, and upgrades to the newest release in your current major version. Pass `--method` (`npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`) to override detection.
+Install the newest release in your current major version:
 
-| Install method | Behavior |
+```bash
+wheatley update
+```
+
+`wheatley update` detects how you originally installed Wheatley and runs the right upgrade command for you. You can override auto-detection with `--method` (`npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`).
+
+| Install method | What `wheatley update` does |
 | --- | --- |
-| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the active `--prefix` when installed through a Node.js version manager) |
-| pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
-| yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
-| bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
-| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley` (or `brew upgrade wheatley` for a core formula) |
-| Install script (`curl`) | Re-runs `scripts/install.sh --version <version> --no-modify-path` |
-| Volta / mise / AUR / Docker | Prints the native update command without modifying files |
-| Source checkout | Exits with an error. Update with `git` or pass `--method` |
+| Install script (`curl`) | Re-runs `install.sh` pinned to the new version |
+| `npm`, `pnpm`, `yarn`, `bun` | Installs `@wheatley-ai/cli@<version>` globally and verifies the updated version |
+| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley` |
+| Volta / mise / AUR / Docker | Prints the native upgrade command for you to run |
+| Source checkout | Stops and reminds you to update via `git` (or pass `--method`) |
 
-For `npm`, `yarn`, and `bun`, `wheatley update` verifies the installed `package.json` afterward and fails if the version did not change.
+:::note Major version upgrades (for example `0.x` to `1.0`) are never installed automatically — Wheatley prints the upgrade command so you can review breaking changes first. After upgrading, restart the daemon (`wheatley service restart`). :::
 
-Major version upgrades are never installed automatically. Instead, `wheatley update` prints the upgrade command for your install method. After updating, restart the daemon (for example `wheatley service restart`).
+## Restore an assistant backup
 
-## Restore an Agent database
-
-Wheatley backs up `agents/<name>/agent.sqlite` before each database migration and before each restore. Each Agent keeps its five newest backups in `agents/<name>/backups/`.
+Wheatley automatically backs up each assistant's SQLite database (`agents/<name>/agent.sqlite`) before every database migration and before every restore, keeping the five newest backups in `agents/<name>/backups/`.
 
 <Steps>
-  1. List the available backups for an Agent:
+  1. **List available backups**
 
      ```bash
-     wheatley restore <agent>
+     wheatley restore default
      ```
 
-2.  Stop the daemon. `wheatley restore` refuses to run while the daemon is active.
+2.  **Stop the daemon**
 
-3.  Restore a backup:
+    `wheatley restore` refuses to run while Wheatley is active:
+
+    ```bash
+    wheatley service stop
+    ```
+
+3.  **Restore the backup you want**
+
+    ```bash
+    wheatley restore default <backup-file>
+    ```
+
+4.  **Start the daemon again**
 
          ```bash
-         wheatley restore <agent> <backup>
+         wheatley service start
          ```
 
     </Steps>

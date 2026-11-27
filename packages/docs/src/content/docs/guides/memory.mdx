@@ -1,19 +1,24 @@
 ---
 title: Memory
-description: Configure durable per-Agent Memory and daily consolidation.
+description: How Wheatley remembers preferences and facts across conversations, and how to inspect or tune it.
 ---
 
-Each Agent stores durable Memory in `agents/<name>/memory/`. The primary file is `MEMORY.md`.
+Each assistant keeps its own long-term memory in plain Markdown files under `~/.wheatley/agents/<name>/memory/`.
 
-At the start of every new Conversation, the Agent reads `MEMORY.md`. During a Run, the Agent updates Memory with the `memory_search`, `memory_read`, `memory_write`, and `memory_delete` Tools.
+The main file is `MEMORY.md`. Whenever you start a new conversation, your assistant reads `MEMORY.md` automatically so you do not have to repeat your preferences, ongoing projects, or personal context. During a conversation, your assistant can search, read, update, or remove memory entries on its own.
 
-You can inspect an Agent's Memory at any time in the **Memory** view of the web dashboard.
+## Inspect or edit memory
 
-## Configure Memory limits and consolidation
+Because memory is stored as plain Markdown, you can inspect or edit it in two ways:
 
-By default, `MEMORY.md` has a cap of 4,000 characters, and Wheatley consolidates Memory every day at `03:00`.
+- Open the **Memory** view for your assistant in the web dashboard (`http://127.0.0.1:7420/`).
+- Open `~/.wheatley/agents/<name>/memory/MEMORY.md` directly in any text editor.
 
-Customize these settings under `agents.<name>.memory` in `config.yaml`:
+## Tune memory size and daily cleanup
+
+By default, `MEMORY.md` is capped at `4,000` characters, and Wheatley runs a daily cleanup job at `03:00` to keep memory concise and remove stale notes.
+
+You can customize these settings under `agents.<name>.memory` in `config.yaml`:
 
 ```yaml
 agents:
@@ -23,10 +28,18 @@ agents:
       consolidation:
         enabled: true
         schedule: "0 3 * * *"
-        timezone: "UTC"
+        timezone: "America/New_York"
         model:
           provider: anthropic
           id: claude-sonnet-5-5
 ```
 
-To disable automatic consolidation, set `memory.consolidation.enabled` to `false`.
+If you prefer to manage `MEMORY.md` entirely by hand, disable automatic consolidation:
+
+```yaml
+agents:
+  default:
+    memory:
+      consolidation:
+        enabled: false
+```
