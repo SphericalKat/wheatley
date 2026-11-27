@@ -16,6 +16,7 @@ Each release publishes these artifacts:
 - The npm package [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli). It contains the daemon, the CLI, and the dashboard.
 - The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
 - The Docker image `ghcr.io/sphericalkat/wheatley`.
+- The Homebrew formula `wheatley` in the tap [`SphericalKat/homebrew-tap`](https://github.com/SphericalKat/homebrew-tap).
 - A GitHub release with a `v<version>` tag and the changelog.
 
 ### Install with the `curl` installer
@@ -82,6 +83,24 @@ The installer works like this:
 3. Continue with the [Quick start](#quick-start).
 
 The package puts the `wheatley` command on your `PATH`. To install one version, add it to the package name, for example `@wheatley-ai/cli@0.1.0`.
+
+### Install with Homebrew
+
+1. Install the latest release:
+
+   ```bash
+   brew install sphericalkat/tap/wheatley
+   ```
+
+2. Check the installed version:
+
+   ```bash
+   wheatley --version
+   ```
+
+3. Continue with the [Quick start](#quick-start).
+
+The formula installs the Homebrew `node` formula as a dependency. To update a Homebrew install, run `brew upgrade sphericalkat/tap/wheatley`.
 
 ### Run with Docker
 
@@ -521,17 +540,35 @@ wheatley service status
 
 ### Update
 
-`wheatley update` updates an npm or pnpm install of `@wheatley-ai/cli` within its major version:
+`wheatley update` updates Wheatley to the newest release of its major version:
 
 ```bash
 wheatley update --check
 wheatley update
-wheatley update --manager pnpm
+wheatley update --method pnpm
 ```
 
-`wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
+`wheatley update` reads the published versions from the npm registry over HTTP. If `npm_config_registry` is set, it uses that registry.
 
-`wheatley update` refuses to run in a source checkout. Use `git` there. In Docker, `wheatley update` prints the Docker Compose commands.
+`wheatley update` finds out how you installed Wheatley. `--method` overrides the detection. It accepts `npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`.
+
+| Install method | What `wheatley update` does |
+| --- | --- |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>`. For an npm prefix from `fnm` or `nvm`, it uses the `npm` and `--prefix` of that prefix. |
+| pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
+| yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
+| bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
+| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley`, or `brew upgrade wheatley` for a core formula |
+| `curl` installer | Runs the installer again with `--version <version> --no-modify-path` |
+| Volta | Prints `volta install @wheatley-ai/cli@<version>` |
+| mise | Prints `mise use -g npm:@wheatley-ai/cli@<version>` |
+| AUR | Prints an instruction to update `wheatley-cli` with your AUR helper, for example `paru -Syu` |
+| Docker | Prints the Docker Compose commands |
+| Source checkout | Fails. Use `git`, or pass `--method`. |
+
+After an npm, yarn, or bun update, `wheatley update` reads the version of the running copy again. If the running copy still has the old version, the command fails.
+
+`wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
 
 After an update, restart the daemon, for example with `wheatley service restart`.
 

@@ -347,15 +347,15 @@ describe("wheatley status and init", () => {
   });
 
   it("prints the package version on stdout and exits 0 for --version", async () => {
-    const terminal = scriptedIo([]);
-
     const manifest: unknown = JSON.parse(
       await readFile(new URL("../../package.json", import.meta.url), "utf-8")
     );
 
+    const terminal = scriptedIo([]);
+
     await expect(runCli(["--version"], terminal.io)).resolves.toBe(0);
-    expect(terminal.stdout()).toMatch(/^\S+\n$/u);
     expect(manifest).toMatchObject({ version: terminal.stdout().trim() });
+    expect(terminal.stdout()).toMatch(/^\S+\n$/u);
     expect(terminal.stderr()).toBe("");
   });
 

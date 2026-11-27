@@ -5,7 +5,10 @@ import { systemClock } from "../contracts/module.js";
 import type { Clock } from "../contracts/module.js";
 import { listBackups, restoreAgentBackup } from "./backup.js";
 import { processRunner } from "./command-runner.js";
+import { resolveInstallation, UPDATE_METHODS } from "./install-method.js";
+import type { UpdateMethod } from "./install-method.js";
 import { agentDirFor, resolveHomeDir } from "./paths.js";
+import type { FetchFn } from "./registry.js";
 import {
   createServiceManager,
   packageBinScript,
@@ -13,14 +16,12 @@ import {
 } from "./service.js";
 import type { ServiceManagerOptions } from "./service.js";
 import {
-  applyUpdate,
-  detectInstallMethod,
-  installCommand,
+  applyUpgrade,
   packageDir,
   planUpdate,
   readPackageVersion,
 } from "./update.js";
-import type { PackageManager } from "./update.js";
+import type { NewerMajor } from "./update.js";
 
 /** Output streams of one CLI command. */
 export interface CliIo {
@@ -45,6 +46,10 @@ export interface OpsCliDeps extends ServiceManagerOptions {
   readonly homeDir: string;
   /** The Node.js binary that runs the CLI. */
   readonly execPath: string;
+  /** The package folder of the running Wheatley, which `wheatley update` inspects and checks. */
+  readonly packageDir: string;
+  /** Queries the npm registry for `wheatley update`. */
+  readonly fetch: FetchFn;
   readonly clock: Clock;
   /**
    * Resolves `true` if a daemon runs for the Wheatley home folder. `wheatley restore` refuses to replace
@@ -63,8 +68,10 @@ export const hostCliDeps = (
   clock: systemClock,
   env: process.env,
   execPath: process.execPath,
+  fetch: globalThis.fetch,
   homeDir: resolveHomeDir(),
   isDaemonRunning,
+  packageDir: packageDir(),
   platform: process.platform,
   runner: processRunner,
   uid: process.getuid?.() ?? 0,
@@ -79,7 +86,7 @@ const EXIT_USAGE = 2;
 const SERVICE_USAGE =
   "Usage: wheatley service <install|start|stop|restart|status>";
 
-const UPDATE_USAGE = "Usage: wheatley update [--check] [--manager npm|pnpm]";
+const UPDATE_USAGE = `Usage: wheatley update [--check] [--method ${UPDATE_METHODS.join("|")}]`;
 const RESTORE_USAGE = "Usage: wheatley restore <agent> [backup]";
 
 class UsageError extends Error {
@@ -183,11 +190,16 @@ const serviceCommand =
     }
   };
 
-const isPackageManager = (value: string): value is PackageManager =>
-  value === "npm" || value === "pnpm";
+const isUpdateMethod = (value: string): value is UpdateMethod =>
+  UPDATE_METHODS.some((method) => method === value);
 
-const newerMajorNote = (version: string, manager: PackageManager): string =>
-  `Wheatley ${version} is a new major version. wheatley update stays within the current major version. Read the release notes, then run: ${installCommand(manager, version).join(" ")}`;
+const newerMajorLines = (major: NewerMajor): string[] => {
+  const intro = `Wheatley ${major.version} is a new major version. wheatley update stays within the current major version. Read the release notes, then`;
+
+  return major.action.kind === "command"
+    ? [`${intro} run: ${major.action.command.join(" ")}`]
+    : [`${intro}:`, ...major.action.lines];
+};
 
 const updateCommand =
   (deps: OpsCliDeps): CliCommand =>
@@ -196,22 +208,29 @@ const updateCommand =
       args: [...args],
       options: {
         check: { type: "boolean" },
-        manager: { type: "string" },
+        method: { type: "string" },
       },
     });
 
-    if (values.manager !== undefined && !isPackageManager(values.manager)) {
-      throw new UsageError(`Unknown package manager: ${values.manager}`);
+    if (values.method !== undefined && !isUpdateMethod(values.method)) {
+      throw new UsageError(`Unknown install method: ${values.method}`);
     }
 
-    const dir = packageDir();
-    const method = detectInstallMethod(deps.env, dir);
+    const installation = await resolveInstallation({
+      env: deps.env,
+      execPath: deps.execPath,
+      method: values.method,
+      packageDir: deps.packageDir,
+      platform: deps.platform,
+      runner: deps.runner,
+      userHome: deps.userHome,
+    });
 
     const plan = await planUpdate({
-      current: await readPackageVersion(dir),
-      method,
-      runner: deps.runner,
-      manager: values.manager,
+      current: await readPackageVersion(installation.packageDir),
+      env: deps.env,
+      fetch: deps.fetch,
+      installation,
     });
 
     if (plan.kind === "docker") {
@@ -226,34 +245,35 @@ const updateCommand =
       return EXIT_OK;
     }
 
-    const manager = values.manager ?? (method === "pnpm" ? "pnpm" : "npm");
-
     const newerMajor =
-      plan.newerMajor === undefined
-        ? []
-        : [newerMajorNote(plan.newerMajor, manager)];
+      plan.newerMajor === undefined ? [] : newerMajorLines(plan.newerMajor);
 
     if (plan.kind === "up_to_date") {
       io.out(
         `Wheatley ${plan.current} is the newest release of its major version.`
       );
+    } else if (plan.action.kind === "notice") {
+      io.out(
+        `Wheatley ${plan.target} is available. This Wheatley runs ${plan.current}.`
+      );
 
-      for (const line of newerMajor) {
+      for (const line of plan.action.lines) {
         io.out(line);
       }
-
-      return EXIT_OK;
-    }
-
-    if (values.check === true) {
+    } else if (values.check === true) {
       io.out(
         `Update available: ${plan.current} -> ${plan.target}. Run: wheatley update`
       );
     } else {
       io.out(
-        `Updating Wheatley ${plan.current} -> ${plan.target}: ${plan.command.join(" ")}`
+        `Updating Wheatley ${plan.current} -> ${plan.target}: ${plan.action.command.join(" ")}`
       );
-      await applyUpdate(plan, deps.runner);
+      await applyUpgrade(plan.action, {
+        packageDir: installation.packageDir,
+        runner: deps.runner,
+        target: plan.target,
+        workDir: deps.userHome,
+      });
       io.out(
         `Updated Wheatley to ${plan.target}. If the daemon runs as a service, run: wheatley service restart`
       );
@@ -326,7 +346,7 @@ const restoreCommand =
 export interface OpsCommands {
   /** `wheatley service <install|start|stop|restart|status>` */
   readonly service: CliCommand;
-  /** `wheatley update [--check] [--manager npm|pnpm]` */
+  /** `wheatley update [--check] [--method npm|pnpm|yarn|bun|brew|curl]` */
   readonly update: CliCommand;
   /**
    * `wheatley restore <agent> [backup]`
