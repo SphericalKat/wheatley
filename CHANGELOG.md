@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/SphericalKat/wheatley/compare/v0.4.0...v0.5.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **config:** adopt OpenCode provider/model schema and models.dev catalog
+
+### Features
+
+* **config:** adopt OpenCode provider/model schema and models.dev catalog ([547003b](https://github.com/SphericalKat/wheatley/commit/547003b78d5acfca593d88b37c6f2a17469ceec3))
+
+
+### Bug Fixes
+
+* **agent:** sync conversation models with config and validate /model changes ([4079858](https://github.com/SphericalKat/wheatley/commit/40798586862e38245b27064bee98ff2e75b2e4ba))
+* **agent:** sync conversation models with config and validate /model changes ([09f29ba](https://github.com/SphericalKat/wheatley/commit/09f29ba6c3fc91cb95fb53152ee24ccc0d051c8b))
+
 ## [0.4.0](https://github.com/SphericalKat/wheatley/compare/v0.3.0...v0.4.0) (2026-11-27)
 
 
