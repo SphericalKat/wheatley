@@ -5,6 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Activity, ChatController, ChatView } from "./controller.js";
 import { formatCost, formatCount, formatSeconds } from "./format.js";
 import { wrapLines } from "./markdown.js";
+import { PickerPanel } from "./picker-panel.js";
 import { Prompt } from "./prompt.js";
 import { EntryView, LOGO_WIDTH } from "./transcript.js";
 
@@ -276,9 +277,17 @@ export const ChatApp = ({
 }: ChatAppProps) => {
   const view = useSyncExternalStore(controller.subscribe, controller.view);
   const { exit } = useApp();
-  const { columns: terminalColumns } = useWindowSize();
+  const { columns: terminalColumns, rows } = useWindowSize();
   const columns = Math.max(MIN_WIDTH, terminalColumns - RIGHT_MARGIN);
   const { busy } = controller;
+
+  // The Prompt unmounts while a panel replaces it. It reads this history again when it mounts.
+  const [latestHistory, setLatestHistory] = useState(history);
+
+  const onPromptHistory = (next: readonly string[]): void => {
+    setLatestHistory(next);
+    onHistory(next);
+  };
 
   const onSubmit = (text: string): void => {
     controller
@@ -298,6 +307,12 @@ export const ChatApp = ({
   const onDecide = (decision: ApprovalDecision, reason?: string): void => {
     controller.decide(decision, reason).catch(() => {
       // `decide` reports its own errors as transcript entries.
+    });
+  };
+
+  const onChoose = (): void => {
+    controller.choosePicker().catch(() => {
+      // `choosePicker` reports its own errors as transcript entries.
     });
   };
 
@@ -329,15 +344,26 @@ export const ChatApp = ({
       )}
       {view.approval === undefined ? (
         <Box flexDirection="column" marginTop={1}>
-          <Prompt
-            busy={busy}
-            columns={columns}
-            history={history}
-            onExit={exit}
-            onHistory={onHistory}
-            onInterrupt={controller.interrupt}
-            onSubmit={onSubmit}
-          />
+          {view.picker === undefined ? (
+            <Prompt
+              busy={busy}
+              columns={columns}
+              history={latestHistory}
+              onExit={exit}
+              onHistory={onPromptHistory}
+              onInterrupt={controller.interrupt}
+              onSubmit={onSubmit}
+            />
+          ) : (
+            <PickerPanel
+              columns={columns}
+              onCancel={controller.cancelPicker}
+              onChoose={onChoose}
+              onEdit={controller.editPicker}
+              picker={view.picker}
+              rows={rows}
+            />
+          )}
           <StatusBar busy={busy} columns={columns} view={view} />
         </Box>
       ) : (
