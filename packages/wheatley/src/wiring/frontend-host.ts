@@ -129,9 +129,14 @@ const runEventOf = (
     return { chatId, delta: payload.delta, kind: "text_delta", runId };
   }
 
-  if (name === "run.toolStarted" && "toolCallId" in payload) {
+  if (
+    name === "run.toolStarted" &&
+    "toolCallId" in payload &&
+    "inputPreview" in payload
+  ) {
     return {
       chatId,
+      inputPreview: payload.inputPreview,
       kind: "tool_started",
       runId,
       toolCallId: payload.toolCallId,

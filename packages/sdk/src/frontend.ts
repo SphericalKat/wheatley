@@ -145,6 +145,7 @@ export type RunEvent =
       readonly chatId: string;
       readonly toolCallId: string;
       readonly toolName: string;
+      readonly inputPreview?: string;
     }
   | {
       readonly kind: "tool_finished";

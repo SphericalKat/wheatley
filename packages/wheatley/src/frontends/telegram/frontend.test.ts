@@ -463,6 +463,120 @@ it("shows typing and throttles draft edits to one per interval", async () => {
   });
 });
 
+it("shows an accumulated tool progress bubble and starts a fresh message after tool calls", async () => {
+  vi.useFakeTimers();
+  const { binding, client } = await harness();
+  const chatId = String(DM_CHAT);
+  const runId = "run-tools";
+
+  binding.onEvent?.({ chatId, kind: "run_started", runId });
+  binding.onEvent?.({
+    chatId,
+    delta: "I'll have a look.",
+    kind: "text_delta",
+    runId,
+  });
+  await vi.advanceTimersByTimeAsync(1200);
+
+  expect(client.sent.map((sent) => sent.text)).toStrictEqual([
+    "I'll have a look.",
+  ]);
+
+  binding.onEvent?.({
+    chatId,
+    inputPreview: JSON.stringify({ command: "ls -la ~/.wheatley" }),
+    kind: "tool_started",
+    runId,
+    toolCallId: "t1",
+    toolName: "shell",
+  });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.sent.map((sent) => sent.text)).toStrictEqual([
+    "I'll have a look.",
+    "⏳ shell: ls -la ~/.wheatley",
+  ]);
+
+  binding.onEvent?.({
+    chatId,
+    inputPreview: JSON.stringify({ path: "missing.txt" }),
+    kind: "tool_started",
+    runId,
+    toolCallId: "t2",
+    toolName: "read_file",
+  });
+  binding.onEvent?.({
+    chatId,
+    isError: false,
+    kind: "tool_finished",
+    runId,
+    toolCallId: "t1",
+    toolName: "shell",
+  });
+  binding.onEvent?.({
+    chatId,
+    isError: true,
+    kind: "tool_finished",
+    runId,
+    toolCallId: "t2",
+    toolName: "read_file",
+  });
+  await vi.advanceTimersByTimeAsync(0);
+
+  const toolBubbleId = client.sent[1]?.messageId;
+
+  expect(client.edits.at(-1)).toStrictEqual({
+    chatId: DM_CHAT,
+    messageId: toolBubbleId,
+    options: undefined,
+    text: "✓ shell: ls -la ~/.wheatley\n✗ read_file: missing.txt",
+  });
+
+  binding.onEvent?.({
+    chatId,
+    kind: "run_finished",
+    runId,
+    status: "completed",
+  });
+  await binding.deliver(
+    message({ chatId, runId, text: "Found it in **config.yaml**." })
+  );
+
+  // The pre-tool draft stays untouched, and the final answer arrives as a new message below the tool bubble.
+  expect(client.sent).toHaveLength(3);
+  expect(client.sent[2]?.text).toBe("Found it in <b>config.yaml</b>.");
+  expect(
+    client.edits.some((edit) => edit.messageId === client.sent[0]?.messageId)
+  ).toBe(false);
+});
+
+it("sends the final reply as a fresh message when a draft is stale", async () => {
+  vi.useFakeTimers();
+  const { binding, client } = await harness();
+  const chatId = String(DM_CHAT);
+  const runId = "run-stale";
+
+  binding.onEvent?.({ chatId, kind: "run_started", runId });
+  binding.onEvent?.({ chatId, delta: "Working", kind: "text_delta", runId });
+  await vi.advanceTimersByTimeAsync(1200);
+
+  expect(client.sent.map((sent) => sent.text)).toStrictEqual(["Working"]);
+
+  await vi.advanceTimersByTimeAsync(31_000);
+  binding.onEvent?.({
+    chatId,
+    kind: "run_finished",
+    runId,
+    status: "completed",
+  });
+  await binding.deliver(message({ chatId, runId, text: "Done." }));
+
+  expect(client.sent.map((sent) => sent.text)).toStrictEqual([
+    "Working",
+    "Done.",
+  ]);
+});
+
 it("shows only the typing indicator in typing mode", async () => {
   vi.useFakeTimers();
 
