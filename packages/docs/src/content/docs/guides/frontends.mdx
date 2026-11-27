@@ -60,7 +60,7 @@ For safety, every chat connection requires an explicit `allowedChatIds` allowlis
     | `mode` | No | `polling` | `polling` (works behind NAT/firewalls) or `webhook` (requires a public HTTPS URL) |
     | `webhookUrl` | If `webhook` | — | Public HTTPS URL forwarded to `/frontends/<agent>/<binding-id>/updates` |
     | `groupActivation` | No | `mention` | `mention` (reply only when mentioned or replied to in groups) or `always` |
-    | `streaming` | No | `draft` | `draft` (streams live edits) or `typing` (shows typing indicator until done) |
+    | `streaming` | No | `draft` | `draft` (streams live edits and shows a progress message that lists each tool call as it runs) or `typing` (shows typing indicator until done) |
     | `draftIntervalMs` | No | `1200` | Minimum milliseconds between streamed message edits (minimum `500`) |
 
   </TabItem>
