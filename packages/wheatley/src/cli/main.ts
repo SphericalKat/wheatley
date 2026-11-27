@@ -124,7 +124,8 @@ const createProgram = (
   const program = new Command("wheatley")
     .usage("<command> [options]")
     .helpOption("-h, --help", "Show this help")
-    .helpCommand("help [command]", "Show the help of a command")
+    // The CLI has no `help` command. Commander adds one by default.
+    .helpCommand(false)
     .version(version, "--version", "Show the Wheatley version")
     .option(
       "--home <dir>",
