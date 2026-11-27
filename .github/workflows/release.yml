@@ -66,6 +66,56 @@ jobs:
             npm publish "$tarball"
           done
 
+  homebrew:
+    name: Update the Homebrew formula
+    # The formula downloads the npm tarball, so the job waits until npm publishes it.
+    needs: [release-please, npm]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SphericalKat/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Render Formula/wheatley.rb
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          version="${TAG_NAME#v}"
+          tarball="$RUNNER_TEMP/wheatley-ai-cli-${version}.tgz"
+          # The registry can serve a new tarball some time after npm publish returns.
+          curl --fail --silent --show-error --location \
+            --retry 10 --retry-delay 15 --retry-all-errors \
+            --output "$tarball" \
+            "https://registry.npmjs.org/@wheatley-ai/cli/-/cli-${version}.tgz"
+          sha256="$(sha256sum "$tarball" | cut -d ' ' -f 1)"
+          mkdir -p homebrew-tap/Formula
+          sed -e "s/@VERSION@/${version}/g" -e "s/@SHA256@/${sha256}/g" \
+            packaging/homebrew/wheatley.rb > homebrew-tap/Formula/wheatley.rb
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Push the formula to SphericalKat/homebrew-tap
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/wheatley.rb
+          if git diff --cached --quiet; then
+            echo "Formula/wheatley.rb already describes ${VERSION}."
+            exit 0
+          fi
+          git commit --message "feat: update wheatley to ${VERSION}"
+          git push
+
   docker:
     name: Publish to GitHub Container Registry
     needs: release-please

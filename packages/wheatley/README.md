@@ -16,6 +16,14 @@ npm install -g @wheatley-ai/cli
 
 pnpm works too: `pnpm add -g @wheatley-ai/cli`.
 
+With Homebrew, Node.js comes with the formula:
+
+```sh
+brew install sphericalkat/tap/wheatley
+```
+
+To update a Homebrew install, run `brew upgrade sphericalkat/tap/wheatley`.
+
 ## Quick start
 
 Create the config files. By default they go in `~/.wheatley`. Set `WHEATLEY_HOME` or pass `--home` to put them somewhere else.

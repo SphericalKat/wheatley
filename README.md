@@ -16,6 +16,7 @@ Each release publishes these artifacts:
 - The npm package [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli). It contains the daemon, the CLI, and the dashboard.
 - The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
 - The Docker image `ghcr.io/sphericalkat/wheatley`.
+- The Homebrew formula `wheatley` in the tap [`SphericalKat/homebrew-tap`](https://github.com/SphericalKat/homebrew-tap).
 - A GitHub release with a `v<version>` tag and the changelog.
 
 ### Install from npm
@@ -41,6 +42,24 @@ Each release publishes these artifacts:
 3. Continue with the [Quick start](#quick-start).
 
 The package puts the `wheatley` command on your `PATH`. To install one version, add it to the package name, for example `@wheatley-ai/cli@0.1.0`.
+
+### Install with Homebrew
+
+1. Install the latest release:
+
+   ```bash
+   brew install sphericalkat/tap/wheatley
+   ```
+
+2. Check the installed version:
+
+   ```bash
+   wheatley --version
+   ```
+
+3. Continue with the [Quick start](#quick-start).
+
+The formula installs the Homebrew `node` formula as a dependency. To update a Homebrew install, run `brew upgrade sphericalkat/tap/wheatley`.
 
 ### Run with Docker
 
@@ -489,6 +508,8 @@ wheatley update --manager pnpm
 ```
 
 `wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
+
+For a Homebrew install, use `brew upgrade sphericalkat/tap/wheatley` instead of `wheatley update`.
 
 `wheatley update` refuses to run in a source checkout. Use `git` there. In Docker, `wheatley update` prints the Docker Compose commands.
 
