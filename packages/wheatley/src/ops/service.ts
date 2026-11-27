@@ -86,6 +86,13 @@ const systemdArg = (value: string): string => {
   return SYSTEMD_BARE_WORD.test(escaped) ? escaped : quoteSystemd(escaped);
 };
 
+/** Escapes a systemd path directive such as `WorkingDirectory=`, which does not strip quotes. */
+const systemdPath = (value: string): string => {
+  assertSingleLine(value);
+
+  return value.replaceAll(PERCENT, "%%");
+};
+
 const systemdValue = (value: string): string => {
   assertSingleLine(value);
 
@@ -108,7 +115,7 @@ export const renderSystemdUnit = (spec: ServiceSpec): string => {
     "[Service]",
     "Type=exec",
     `ExecStart=${spec.command.map(systemdArg).join(" ")}`,
-    `WorkingDirectory=${systemdValue(spec.workingDirectory)}`,
+    `WorkingDirectory=${systemdPath(spec.workingDirectory)}`,
     ...environment,
     "Restart=on-failure",
     `RestartSec=${RESTART_DELAY_SECONDS}`,
