@@ -285,6 +285,9 @@ importers:
       '@earendil-works/pi-schema':
         specifier: 1.6.1
         version: 1.6.1
+      '@hono/node-server':
+        specifier: 2.1.11
+        version: 2.1.11(hono@4.13.23)
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
@@ -294,6 +297,9 @@ importers:
       '@slack/web-api':
         specifier: 8.5.0
         version: 8.5.0
+      commander:
+        specifier: 15.1.0
+        version: 15.1.0
       croner:
         specifier: 11.0.1
         version: 11.0.1
@@ -303,6 +309,9 @@ importers:
       grammy:
         specifier: 1.48.0
         version: 1.48.0
+      hono:
+        specifier: 4.13.23
+        version: 4.13.23
       import-meta-resolve:
         specifier: 4.2.0
         version: 4.2.0
@@ -312,6 +321,9 @@ importers:
       react:
         specifier: 19.3.1
         version: 19.3.1
+      semver:
+        specifier: 7.8.6
+        version: 7.8.6
       string-width:
         specifier: 9.0.0
         version: 9.0.0
@@ -334,6 +346,9 @@ importers:
       '@types/react':
         specifier: 19.3.3
         version: 19.3.3
+      '@types/semver':
+        specifier: 7.8.0
+        version: 7.8.0
       '@types/ws':
         specifier: 8.18.2
         version: 8.18.2
@@ -627,6 +642,12 @@ packages:
 
   '@grammyjs/types@5.2.0':
     resolution: {integrity: sha512-URnzUV3rBEkEtsHz/+/na8uDJS45eD0vXGM73Ucps2nKpdVfhT4+EyYV8lDftazVRoWN2mT2hjMzMEbSPURBhA==}
+
+  '@hono/node-server@2.1.11':
+    resolution: {integrity: sha512-KzKz9vl4vvr1vgLHamj+g5uonbrj5NwAdO3yzOS6cd2HjALVeOgTgeZOyAzNxejbkfOOPIcvuf/Tg8l1pEFLog==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4 || ^5.0.0-0
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1305,6 +1326,9 @@ packages:
   '@types/retry@0.12.5':
     resolution: {integrity: sha512-3xSjTp3v03X/lSQLkczaN9UIEwJMoMCA1+Nb5HfbJEQWogdeQIyVtTvxPXDQjZ5zws8rFQfVfRdz03ARihPJgw==}
 
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
+
   '@types/whatwg-mimetype@3.0.2':
     resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
 
@@ -1782,6 +1806,10 @@ packages:
   happy-dom@21.0.4:
     resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
+
+  hono@4.13.23:
+    resolution: {integrity: sha512-OS90dj7dcsftEEWCOef8jRbnHE5lbrOq0hNRqjSyPsOnaGZvvfof1KS05hQNb4kUOCfDq1mG3PmHoX37DMnHQg==}
+    engines: {node: '>=16.9.0'}
 
   http-proxy-agent@9.1.0:
     resolution: {integrity: sha512-2NxoveTT58mjYT4n3RPTEfCZGLMbidoO8XEieXfpSYxu+PQJ1qpx4ypwH6N+uF9twBPIvRRgvkvW5HUTYWENig==}
@@ -2988,6 +3016,10 @@ snapshots:
 
   '@grammyjs/types@5.2.0': {}
 
+  '@hono/node-server@2.1.11(hono@4.13.23)':
+    dependencies:
+      hono: 4.13.23
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -3463,6 +3495,8 @@ snapshots:
 
   '@types/retry@0.12.5': {}
 
+  '@types/semver@7.8.0': {}
+
   '@types/whatwg-mimetype@3.0.2': {}
 
   '@types/ws@8.18.2':
@@ -3849,6 +3883,8 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  hono@4.13.23: {}
 
   http-proxy-agent@9.1.0:
     dependencies:
