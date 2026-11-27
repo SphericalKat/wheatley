@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Set up your Wheatley home folder, add an API key, and have your first conversation.
+description: Initialize Wheatley, add an API key, and have your first conversation.
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
@@ -9,55 +9,57 @@ In a few minutes, you will have Wheatley running locally with both a terminal ch
 
 <Steps>
 
-1. **Create your Wheatley home folder**
+1. **Initialize your Wheatley folder**
 
-   Run `wheatley init`. By default, Wheatley stores its config and data in `~/.wheatley` (or `$WHEATLEY_HOME` if you set that environment variable):
+   Run `wheatley init`. By default, this creates `~/.wheatley` (or `$WHEATLEY_HOME` if set) with `config.yaml`, `secrets.yaml`, and a workspace for your first assistant (`default`). It never overwrites an existing `config.yaml`.
 
    ```bash
    wheatley init
    ```
 
-   <Aside type="tip" title="Using another provider">
-     Want to start with a different provider right away? Pass `--provider` and `--model`, for example `wheatley init --provider openai --model gpt-5.4-mini`.
+   <Aside type="tip" title="Using another provider or folder">
+     Pass `--provider`, `--model`, `--agent`, or `--home` to customize the initial setup, for example `wheatley init --provider openai --model gpt-5.4-mini`.
    </Aside>
 
 2. **Add your API key**
 
-   Open `~/.wheatley/secrets.yaml` and add the key for your chosen provider. For the default Anthropic setup:
+   Open `~/.wheatley/secrets.yaml` and add the key for your provider (for the default Anthropic setup):
 
    ```yaml
    ANTHROPIC_API_KEY: sk-ant-...
    ```
 
-   You can also set `ANTHROPIC_API_KEY` as a regular environment variable. Environment variables always override `secrets.yaml`.
+   See [Configuration](/wheatley/reference/configuration/) for environment variable overrides and secret handling.
 
 3. **Start Wheatley**
 
-   Start the background daemon in your terminal so you can see its logs while testing:
+   Start the daemon in your terminal so you can see its logs while testing:
 
    ```bash
    wheatley daemon
    ```
 
-4. **Check that everything is healthy**
+   <Aside type="note">
+     If you start the daemon before adding an API key, Wheatley still runs, but marks your assistant as `degraded` until the key is added.
+   </Aside>
 
-   Open a second terminal and run:
+4. **Check status**
+
+   In a second terminal, confirm your assistant is healthy:
 
    ```bash
    wheatley status
    ```
 
-   You will see your assistant listed as healthy and ready.
+5. **Start chatting**
 
-5. **Send your first message**
-
-   Ask a one-off question right from the shell:
+   Send a one-off question from your shell:
 
    ```bash
    wheatley ask "What can you help me with?"
    ```
 
-   Or open the full interactive terminal chat:
+   Or open the interactive terminal chat:
 
    ```bash
    wheatley chat
@@ -65,44 +67,13 @@ In a few minutes, you will have Wheatley running locally with both a terminal ch
 
 6. **Open the web dashboard**
 
-   While `wheatley daemon` is running, visit `http://127.0.0.1:7420/` in your browser to chat, review tool approvals, inspect memory, manage secrets, and edit config visually.
+   Visit `http://127.0.0.1:7420/` in your browser to chat, approve tool calls, view memory, and edit settings visually.
 
 </Steps>
 
-## What `wheatley init` creates
+## Next steps
 
-`wheatley init` never overwrites an existing `config.yaml`. On a fresh setup, it creates:
-
-- `~/.wheatley/config.yaml`: Your main settings (models, assistants, chat apps, permissions, and extensions).
-- `~/.wheatley/secrets.yaml`: API keys and bot tokens, protected with owner-only file permissions (`0600`).
-- `~/.wheatley/agents/default/`: The private workspace, memory, and SQLite database for your first assistant.
-
-### Useful `wheatley init` options
-
-| Flag | Default | What it sets |
-| --- | --- | --- |
-| `--home <dir>` | `~/.wheatley` | Where to store Wheatley's files |
-| `--agent <name>` | `default` | Name of your first assistant |
-| `--provider <name>` | `anthropic` | AI provider (`anthropic`, `openai`, `google`, and more) |
-| `--model <id>` | `claude-sonnet-5-5` | Model ID to use |
-
-<Aside type="note">
-  If you start the daemon before adding an API key, Wheatley still starts, but marks your assistant as `degraded`. Run `wheatley status` to see which secret is missing.
-</Aside>
-
-## Keep Wheatley running in the background
-
-Once you are happy with your setup, stop the foreground daemon (`Ctrl+C`) and install it as a background service so it starts automatically on login:
-
-```bash
-wheatley service install
-wheatley service start
-```
-
-See [Day-to-day operations](/wheatley/reference/operations/) for stopping, restarting, updating, and backing up your service.
-
-## Where to go next
-
-- [Connect your AI model](/wheatley/guides/models-and-agents/) to switch providers, use an OpenAI-compatible proxy, or run multiple assistants.
-- [Connect a chat app](/wheatley/guides/frontends/) to talk to Wheatley on Telegram, Slack, or Discord.
-- [MCP servers, skills, and plugins](/wheatley/guides/extensions/) to give your assistant new tools.
+- Run Wheatley automatically on login with `wheatley service` in [Day-to-day operations](/wheatley/reference/operations/).
+- Switch providers, add a proxy, or run multiple assistants in [Connect your AI model](/wheatley/guides/models-and-agents/).
+- Link Telegram, Slack, or Discord in [Connect a chat app](/wheatley/guides/frontends/).
+- Add tools with [MCP servers, skills, and plugins](/wheatley/guides/extensions/).

@@ -5,19 +5,13 @@ description: Give your Wheatley assistant new tools with MCP servers, Markdown s
 
 import { Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
-Out of the box, each Wheatley assistant can read and write files in its workspace, run shell commands (with your approval), manage its memory, and schedule reminders. When you want it to talk to external tools or follow custom workflows, you have three ways to extend it:
+Out of the box, each Wheatley assistant can read and write files in its workspace, run shell commands, manage its memory, and schedule reminders. To add more capabilities, you can connect **MCP servers**, drop in **Markdown skills**, or write a **TypeScript plugin**.
 
-- **MCP servers**: Connect ready-made Model Context Protocol tools (databases, issue trackers, calendars, local utilities).
-- **Skills**: Drop in plain Markdown instructions (`SKILL.md`) that your assistant loads on demand.
-- **Plugins**: Write a TypeScript package with `@wheatley-ai/sdk` to add custom tools or chat frontends.
-
-Each assistant loads its own extensions independently. If one extension fails to start, the assistant keeps running and shows the error in `wheatley status` and the web dashboard.
+Each assistant loads its own extensions independently. If one extension fails to start, the assistant keeps running and reports the error in `wheatley status` and the dashboard. All MCP and plugin tools require your approval by default until you allow them in [permissionPolicy](/wheatley/reference/configuration/#controlling-what-your-assistant-can-do-permissionpolicy).
 
 ## Connect an MCP server
 
-Add MCP servers under `agents.<name>.mcpServers` in `config.yaml`. The key you choose (for example `filesystem` or `linear`) becomes part of the tool name (`mcp:<server>:<tool>`).
-
-For safety, all MCP server tools ask for your approval by default until you allow them in `permissionPolicy`.
+Add Model Context Protocol servers under `agents.<name>.mcpServers` in `config.yaml`. The key you choose (for example `filesystem` or `linear`) becomes part of the tool name (`mcp:<server>:<tool>`).
 
 <Tabs syncKey="mcp-transport">
   <TabItem label="Local command (stdio)">
@@ -57,18 +51,18 @@ For safety, all MCP server tools ask for your approval by default until you allo
   </TabItem>
 </Tabs>
 
-You can temporarily disable any server by adding `enabled: false` to its entry.
+Set `enabled: false` on any server entry to pause it without deleting its config.
 
 ## Add Markdown skills
 
-A **skill** is a folder containing a `SKILL.md` file (plus any optional reference files or scripts). Wheatley tells your assistant which skills are available and lets it read a skill on demand whenever a task matches.
+A **skill** is a folder containing a `SKILL.md` file (plus any optional reference files or scripts). Wheatley exposes a catalog of available skills and lets your assistant read one on demand whenever a task matches.
 
 Put skill folders in either location:
 
 - **Shared across all assistants**: `~/.wheatley/skills/<skill-name>/SKILL.md`
 - **Only for one assistant**: `~/.wheatley/agents/<agent-name>/skills/<skill-name>/SKILL.md`
 
-To turn off specific skills for one assistant without deleting the files:
+To disable specific skills for one assistant without deleting the files:
 
 ```yaml
 agents:
@@ -80,7 +74,7 @@ agents:
 
 ## Write a custom plugin
 
-If you want to build your own tools or a custom chat frontend in TypeScript, use `@wheatley-ai/sdk`.
+To build custom tools or a custom chat frontend in TypeScript, use `@wheatley-ai/sdk`.
 
 <Steps>
 
@@ -131,6 +125,4 @@ If you want to build your own tools or a custom chat frontend in TypeScript, use
 
 </Steps>
 
-`source` also accepts a local folder path. Paths starting with `./` or `../` resolve relative to `~/.wheatley`, and paths starting with `~/` resolve relative to your home directory.
-
-Your assistant sees plugin tools as `<plugin>:<tool>` (for example `hello:greet`). Like MCP tools, plugin tools ask for your approval by default.
+`source` also accepts a local folder path (`./` or `../` resolves relative to `~/.wheatley`; `~/` resolves relative to your home directory). Plugin tools appear to the assistant as `<plugin>:<tool>` (for example `hello:greet`).

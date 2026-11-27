@@ -3,22 +3,19 @@ title: Memory
 description: How Wheatley remembers preferences and facts across conversations, and how to inspect or tune it.
 ---
 
-Each assistant keeps its own long-term memory in plain Markdown files under `~/.wheatley/agents/<name>/memory/`.
+Each assistant keeps long-term memory in plain Markdown files under `~/.wheatley/agents/<name>/memory/`.
 
-The main file is `MEMORY.md`. Whenever you start a new conversation, your assistant reads `MEMORY.md` automatically so you do not have to repeat your preferences, ongoing projects, or personal context. During a conversation, your assistant can search, read, update, or remove memory entries on its own.
+The main file is `MEMORY.md`. Whenever you start a new conversation, your assistant reads `MEMORY.md` automatically so you do not have to repeat preferences, ongoing projects, or context. During a conversation, your assistant can search, read, update, or remove memory entries on its own.
 
 ## Inspect or edit memory
 
-Because memory is stored as plain Markdown, you can inspect or edit it in two ways:
-
-- Open the **Memory** view for your assistant in the web dashboard (`http://127.0.0.1:7420/`).
-- Open `~/.wheatley/agents/<name>/memory/MEMORY.md` directly in any text editor.
+You can view or edit an assistant's memory in the **Memory** tab of the [web dashboard](/wheatley/reference/chat-and-dashboard/#web-dashboard), or open `~/.wheatley/agents/<name>/memory/MEMORY.md` directly in any text editor.
 
 ## Tune memory size and daily cleanup
 
 By default, `MEMORY.md` is capped at `4,000` characters, and Wheatley runs a daily cleanup job at `03:00` to keep memory concise and remove stale notes.
 
-You can customize these settings under `agents.<name>.memory` in `config.yaml`:
+Customize these settings under `agents.<name>.memory` in `config.yaml` (set `enabled: false` to disable automatic cleanup and manage `MEMORY.md` yourself):
 
 ```yaml
 agents:
@@ -32,14 +29,4 @@ agents:
         model:
           provider: anthropic
           id: claude-sonnet-5-5
-```
-
-If you prefer to manage `MEMORY.md` entirely by hand, disable automatic consolidation:
-
-```yaml
-agents:
-  default:
-    memory:
-      consolidation:
-        enabled: false
 ```

@@ -10,13 +10,13 @@ Wheatley splits its configuration into two files inside your home folder (`~/.wh
 - **`config.yaml`**: Settings for providers, assistants, chat apps, permissions, and extensions. Safe to back up or version-control because it never contains raw keys.
 - **`secrets.yaml`**: API keys and bot tokens, stored with owner-only file permissions (`0600`).
 
-Inside `config.yaml`, secrets are always referenced by name (`{ secret: "ANTHROPIC_API_KEY" }`). If an environment variable with the same name is set, it overrides `secrets.yaml`.
+Inside `config.yaml`, secrets are referenced by name (`{ secret: "ANTHROPIC_API_KEY" }`). An environment variable with the same name overrides `secrets.yaml`.
 
 <Aside type="note">
-  After editing `config.yaml`, restart the changed assistant (or restart the daemon if you changed `daemon` or `webhooks`).
+  Wheatley does not reload `config.yaml` automatically on save. After editing it, restart the changed assistant (`/restart` in chat or from the dashboard), or run `wheatley service restart` after changing `daemon` or `webhooks`.
 </Aside>
 
-## Full example `config.yaml`
+## Top-level `config.yaml` structure
 
 ```yaml
 version: 1
@@ -47,16 +47,11 @@ agents:
       provider: anthropic
       id: claude-sonnet-5-5
       thinking: medium
-    permissionPolicy:
-      - tool: read_file
-        action: allow
-      - tool: shell
-        action: ask
 ```
 
 ## Controlling what your assistant can do (`permissionPolicy`)
 
-Every assistant has a `permissionPolicy` list that decides which tools run automatically (`allow`), ask you first (`ask`), or are blocked (`deny`).
+Each assistant has a `permissionPolicy` list that sets tools to `allow` (run automatically), `ask` (wait for your approval), or `deny` (block).
 
 Rules are checked from top to bottom, and the **first match wins**. Use `*` as a wildcard (for example `mcp:filesystem:*`).
 
@@ -85,7 +80,7 @@ agents:
 
 ### Approval timeout
 
-When your assistant asks for permission to run a tool, it waits **15 minutes** (`15m`) by default before timing out. Set `approvalTimeout` on an assistant to change that window (for example `30m`), or set `approvalTimeout: null` to wait indefinitely.
+When an assistant asks for permission to run a tool, it waits **15 minutes** (`15m`) by default before timing out. Set `approvalTimeout` on an assistant to change that window (for example `30m`), or `approvalTimeout: null` to wait indefinitely.
 
 ## Network listeners
 
@@ -94,4 +89,4 @@ When `wheatley daemon` runs, it listens on two local endpoints:
 - **Unix socket** (`~/.wheatley/daemon.sock`): Used automatically by CLI commands on the same machine.
 - **Local HTTP/WebSocket listener** (`127.0.0.1:7420`): Serves the web dashboard on `/` and the JSON-RPC WebSocket API on `/ws`.
 
-You can override the TCP address in `config.yaml` (`daemon.host` and `daemon.port`) or on the command line (`wheatley daemon --host ... --port ...`). To point the CLI at a TCP address instead of the Unix socket, pass `--url ws://127.0.0.1:7420/ws`.
+Override the TCP address in `config.yaml` (`daemon.host` and `daemon.port`) or via `wheatley daemon --host ... --port ...`. To connect the CLI over TCP instead of the Unix socket, pass `--url ws://127.0.0.1:7420/ws`.
