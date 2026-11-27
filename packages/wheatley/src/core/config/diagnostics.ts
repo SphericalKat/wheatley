@@ -1,3 +1,6 @@
+import { styleText } from "node:util";
+
+import { codeFrameColumns } from "@babel/code-frame";
 import type { ConfigIssue } from "@wheatley-ai/protocol";
 import {
   isMap,
@@ -31,16 +34,12 @@ export interface ConfigDiagnosticsInput {
   readonly color: boolean;
 }
 
-const ANSI = {
-  blue: "\u001B[1;34m",
-  bold: "\u001B[1m",
-  red: "\u001B[1;31m",
-  reset: "\u001B[0m",
-} as const;
-
 const LINE_BREAK = /\r?\n/u;
 const INDEX_SEGMENT = /^\d+$/u;
-const NON_TAB = /[^\t]/gu;
+const TRAILING_LINE_BREAK = /\r?\n$/u;
+
+/** The source lines that the code frame shows above and below the line of the span. */
+const CONTEXT_LINES = 1;
 
 /** Decodes a JSON Pointer such as `/agents/home/model` into its segments. */
 const pointerSegments = (pointer: string): string[] =>
@@ -136,25 +135,6 @@ const issueDiagnostics = (
     span: pointerSpan(doc, issue.path),
   }));
 
-interface Paint {
-  readonly error: (text: string) => string;
-  readonly bold: (text: string) => string;
-  readonly gutter: (text: string) => string;
-}
-
-const paint = (color: boolean): Paint => {
-  const wrap =
-    (code: string) =>
-    (text: string): string =>
-      color ? `${code}${text}${ANSI.reset}` : text;
-
-  return {
-    bold: wrap(ANSI.bold),
-    error: wrap(ANSI.red),
-    gutter: wrap(ANSI.blue),
-  };
-};
-
 /** Moves an offset at the end of the text back onto the last line, so that it points after its last character. */
 const clampOffset = (source: string, offset: number): number => {
   const last = source.endsWith("\n") ? source.length - 1 : source.length;
@@ -162,52 +142,55 @@ const clampOffset = (source: string, offset: number): number => {
   return Math.max(0, Math.min(offset, last));
 };
 
+/** Applies a `styleText` format if `color` is true. */
+const paint = (
+  color: boolean,
+  format: Parameters<typeof styleText>[0],
+  text: string
+): string =>
+  color ? styleText(format, text, { validateStream: false }) : text;
+
 const renderDiagnostic = (
   diagnostic: Diagnostic,
   input: ConfigDiagnosticsInput,
   counter: LineCounter,
   lines: readonly string[]
 ): string => {
-  const style = paint(input.color);
   const start = clampOffset(input.source, diagnostic.span[0]);
   const { line, col } = counter.linePos(start);
-  const text = lines[line - 1] ?? "";
-  const lineEnd = start - (col - 1) + text.trimEnd().length;
-  const width = Math.max(1, Math.min(diagnostic.span[1], lineEnd) - start);
+  const lineEnd = start - (col - 1) + (lines[line - 1] ?? "").trimEnd().length;
+  const width = Math.max(0, Math.min(diagnostic.span[1], lineEnd) - start);
 
-  const shown = [line - 1, line, line + 1].filter(
-    (number) => number >= 1 && number <= lines.length
+  // `codeFrameColumns` takes 0-based columns and colors only with `forceColor`, so the caller decides on color.
+  const frame = codeFrameColumns(
+    input.source.replace(TRAILING_LINE_BREAK, ""),
+    {
+      end: { column: col - 1 + width, line },
+      start: { column: col - 1, line },
+    },
+    {
+      forceColor: input.color,
+      linesAbove: CONTEXT_LINES,
+      linesBelow: CONTEXT_LINES,
+      message: diagnostic.label,
+    }
   );
 
-  const gutterWidth = String(Math.max(...shown)).length;
-  const blank = " ".repeat(gutterWidth);
-  const bar = style.gutter(`${blank} |`);
-
-  const sourceLine = (number: number): string =>
-    `${style.gutter(`${String(number).padStart(gutterWidth)} |`)} ${lines[number - 1] ?? ""}`.trimEnd();
-
-  // Tabs before the span stay tabs, so the carets line up under the source text.
-  const indent = text.slice(0, col - 1).replaceAll(NON_TAB, " ");
-  const marker = `${bar} ${indent}${style.error(`${"^".repeat(width)} ${diagnostic.label}`)}`;
-
-  const snippet = shown.flatMap((number) =>
-    number === line ? [sourceLine(number), marker] : [sourceLine(number)]
-  );
+  const gutterWidth = String(
+    Math.min(line + CONTEXT_LINES, lines.length)
+  ).length;
 
   return [
-    `${style.error("error")}${style.bold(`: ${diagnostic.headline}`)}`,
-    `${blank}${style.gutter("-->")} ${input.file}:${line}:${col}`,
-    bar,
-    ...snippet,
-    bar,
+    `${paint(input.color, ["red", "bold"], "error")}${paint(input.color, "bold", `: ${diagnostic.headline}`)}`,
+    `${" ".repeat(gutterWidth + 1)}${paint(input.color, "gray", "-->")} ${input.file}:${line}:${col}`,
+    frame,
   ].join("\n");
 };
 
 /**
  * Renders validation issues of a YAML config file as rustc-style diagnostics: a headline, the `file:line:column`
- * location, and a source snippet with carets under the offending entry. If the text has YAML syntax errors, they
- * replace `issues`, because their positions come from the parser. Each issue path is a JSON Pointer into the YAML
- * document.
+ * location, and a code frame with carets under the offending entry. If the text has YAML syntax errors, they replace
+ * `issues`, because their positions come from the parser. Each issue path is a JSON Pointer into the YAML document.
  */
 export const renderConfigDiagnostics = (
   input: ConfigDiagnosticsInput
@@ -224,11 +207,7 @@ export const renderConfigDiagnostics = (
       ? syntaxDiagnostics(doc)
       : issueDiagnostics(doc, input.issues);
 
-  const lines = input.source.split(LINE_BREAK);
-
-  if (lines.at(-1) === "" && lines.length > 1) {
-    lines.pop();
-  }
+  const lines = input.source.replace(TRAILING_LINE_BREAK, "").split(LINE_BREAK);
 
   return `${diagnostics.map((diagnostic) => renderDiagnostic(diagnostic, input, counter, lines)).join("\n\n")}\n`;
 };

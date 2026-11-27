@@ -392,12 +392,10 @@ describe("wheatley status and init", () => {
     expect(terminal.stderr()).toBe(
       [
         "error: invalid value at /agents/home/model",
-        ` --> ${file}:4:5`,
-        "  |",
-        "3 |   home:",
-        "4 |     model: 5",
-        "  |     ^^^^^^^^ must be object",
-        "  |",
+        `  --> ${file}:4:5`,
+        "  3 |   home:",
+        "> 4 |     model: 5",
+        "    |     ^^^^^^^^ must be object",
         "",
         "Cannot start the daemon: config.yaml is invalid",
         "",

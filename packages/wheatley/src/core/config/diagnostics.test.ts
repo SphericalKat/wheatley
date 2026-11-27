@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { expect, it } from "vitest";
 
 import { renderConfigDiagnostics } from "./diagnostics.js";
@@ -28,12 +30,10 @@ it("points at the position of a YAML syntax error", () => {
   expect(render(source)).toBe(
     lines(
       "error: invalid YAML syntax",
-      " --> /home/me/.wheatley/config.yaml:5:3",
-      "  |",
-      "4 |    x: 1",
-      "5 |   bad",
-      "  |   ^^^ Implicit map keys need to be followed by map values",
-      "  |"
+      "  --> /home/me/.wheatley/config.yaml:5:3",
+      "  4 |    x: 1",
+      "> 5 |   bad",
+      "    |   ^^^ Implicit map keys need to be followed by map values"
     )
   );
 });
@@ -50,13 +50,11 @@ it("underlines a value of the wrong type together with its key", () => {
   expect(render(source)).toBe(
     lines(
       "error: invalid value at /agents/home/model",
-      " --> /home/me/.wheatley/config.yaml:4:5",
-      "  |",
-      "3 |   home:",
-      "4 |     model: 5 # a number",
-      "  |     ^^^^^^^^ must be object",
-      "5 |     instructions: hi",
-      "  |"
+      "  --> /home/me/.wheatley/config.yaml:4:5",
+      "  3 |   home:",
+      "> 4 |     model: 5 # a number",
+      "    |     ^^^^^^^^ must be object",
+      "  5 |     instructions: hi"
     )
   );
 });
@@ -73,21 +71,17 @@ it("points at an unknown field and at the map that holds it", () => {
   expect(render(source)).toBe(
     lines(
       "error: invalid value at /agents/home/bogus",
-      " --> /home/me/.wheatley/config.yaml:5:5",
-      "  |",
-      "4 |     model: { provider: a, id: b }",
-      "5 |     bogus: 1",
-      "  |     ^^^^^^^^ schema is false",
-      "  |",
+      "  --> /home/me/.wheatley/config.yaml:5:5",
+      "  4 |     model: { provider: a, id: b }",
+      "> 5 |     bogus: 1",
+      "    |     ^^^^^^^^ schema is false",
       "",
       "error: invalid value at /agents/home",
-      " --> /home/me/.wheatley/config.yaml:3:3",
-      "  |",
-      "2 | agents:",
-      "3 |   home:",
-      "  |   ^^^^ must not have additional properties",
-      "4 |     model: { provider: a, id: b }",
-      "  |"
+      "  --> /home/me/.wheatley/config.yaml:3:3",
+      "  2 | agents:",
+      "> 3 |   home:",
+      "    |   ^^^^ must not have additional properties",
+      "  4 |     model: { provider: a, id: b }"
     )
   );
 });
@@ -103,13 +97,11 @@ it("points at the parent key of a missing required field", () => {
   expect(render(source)).toBe(
     lines(
       "error: invalid value at /agents/home",
-      " --> /home/me/.wheatley/config.yaml:3:3",
-      "  |",
-      "2 | agents:",
-      "3 |   home:",
-      "  |   ^^^^ must have required properties model",
-      "4 |     instructions: hi",
-      "  |"
+      "  --> /home/me/.wheatley/config.yaml:3:3",
+      "  2 | agents:",
+      "> 3 |   home:",
+      "    |   ^^^^ must have required properties model",
+      "  4 |     instructions: hi"
     )
   );
 });
@@ -129,37 +121,27 @@ it("points at a reserved and a duplicate Frontend Binding ID", () => {
   expect(render(source)).toBe(
     lines(
       "error: invalid value at /agents/home/frontends/0/id",
-      " --> /home/me/.wheatley/config.yaml:6:11",
-      "  |",
-      "5 |     frontends:",
-      "6 |       - { id: cli, type: telegram, config: {} }",
-      '  |           ^^^^^^^ The binding ID "cli" is reserved for the CLI Chat',
-      "7 |       - { id: tg, type: telegram, config: {} }",
-      "  |",
+      "  --> /home/me/.wheatley/config.yaml:6:11",
+      "  5 |     frontends:",
+      "> 6 |       - { id: cli, type: telegram, config: {} }",
+      '    |           ^^^^^^^ The binding ID "cli" is reserved for the CLI Chat',
+      "  7 |       - { id: tg, type: telegram, config: {} }",
       "",
       "error: invalid value at /agents/home/frontends/2/id",
-      " --> /home/me/.wheatley/config.yaml:8:11",
-      "  |",
-      "7 |       - { id: tg, type: telegram, config: {} }",
-      "8 |       - { id: tg, type: telegram, config: {} }",
-      "  |           ^^^^^^ Duplicate binding ID: tg",
-      "  |"
+      "  --> /home/me/.wheatley/config.yaml:8:11",
+      "  7 |       - { id: tg, type: telegram, config: {} }",
+      "> 8 |       - { id: tg, type: telegram, config: {} }",
+      "    |           ^^^^^^ Duplicate binding ID: tg"
     )
   );
 });
 
 it("adds ANSI colors only when color is on", () => {
   const source = lines("version: 1", "agents:", "  home:", "    model: 5");
+  const plain = render(source);
+  const colored = render(source, true);
 
-  expect(render(source, true)).toBe(
-    lines(
-      "\u001B[1;31merror\u001B[0m\u001B[1m: invalid value at /agents/home/model\u001B[0m",
-      " \u001B[1;34m-->\u001B[0m /home/me/.wheatley/config.yaml:4:5",
-      "\u001B[1;34m  |\u001B[0m",
-      "\u001B[1;34m3 |\u001B[0m   home:",
-      "\u001B[1;34m4 |\u001B[0m     model: 5",
-      "\u001B[1;34m  |\u001B[0m     \u001B[1;31m^^^^^^^^ must be object\u001B[0m",
-      "\u001B[1;34m  |\u001B[0m"
-    )
-  );
+  expect(plain).toBe(stripVTControlCharacters(plain));
+  expect(colored).not.toBe(plain);
+  expect(stripVTControlCharacters(colored)).toBe(plain);
 });
