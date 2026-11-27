@@ -19,7 +19,7 @@ import {
   matchCommands,
   suggestCommand,
 } from "./commands.js";
-import { createMarkdownRenderer, renderMarkdown } from "./markdown.js";
+import { createMarkdownStream, renderMarkdown } from "./markdown.js";
 import type { MarkdownLine } from "./markdown.js";
 
 /** The parts of the daemon client that the chat uses. */
@@ -87,7 +87,7 @@ export interface SessionUsage {
 export interface ChatView {
   readonly agent: string;
   readonly entries: readonly Entry[];
-  /** The rendered, unfinished last line of a streamed reply, or no lines. */
+  /** The rendered, unfinished last block of a streamed reply, or no lines. */
   readonly live: readonly MarkdownLine[];
   readonly activity: Activity | undefined;
   readonly approval: PendingApproval | undefined;
@@ -148,9 +148,8 @@ export class ChatController {
   readonly #now: () => number;
   #view: ChatView;
   #nextId = 0;
-  #buffer = "";
   #streamed = "";
-  #renderLine = createMarkdownRenderer();
+  readonly #markdown = createMarkdownStream();
   #replyStarted = false;
   #runStartedAt: number | undefined;
   #tools = 0;
@@ -598,26 +597,15 @@ export class ChatController {
   };
 
   readonly #stream = (delta: string): void => {
-    this.#buffer += delta;
     this.#streamed += delta;
 
-    const end = this.#buffer.lastIndexOf("\n");
+    const complete = this.#markdown.write(delta);
 
-    if (end !== -1) {
-      const lines = this.#buffer.slice(0, end).split("\n");
-
-      this.#buffer = this.#buffer.slice(end + 1);
-      this.#appendReply(lines.map((line) => this.#renderLine(line)));
+    if (complete.length > 0) {
+      this.#appendReply(complete);
     }
 
-    this.#update({ live: this.#buffer === "" ? [] : [this.#renderPreview()] });
-  };
-
-  /** Renders the unfinished line without changing the renderer's code-fence state. */
-  readonly #renderPreview = (): MarkdownLine => {
-    const preview = createMarkdownRenderer();
-
-    return preview(this.#buffer);
+    this.#update({ live: this.#markdown.live() });
   };
 
   readonly #appendReply = (lines: readonly MarkdownLine[]): void => {
@@ -627,13 +615,13 @@ export class ChatController {
 
   /** Ends the current streamed text block, for example before a Tool call or at the end of a reply. */
   readonly #endSegment = (): void => {
-    if (this.#buffer !== "") {
-      this.#appendReply([this.#renderLine(this.#buffer)]);
+    const rest = this.#markdown.end();
+
+    if (rest.length > 0) {
+      this.#appendReply(rest);
     }
 
-    this.#buffer = "";
     this.#streamed = "";
-    this.#renderLine = createMarkdownRenderer();
     this.#replyStarted = false;
     this.#update({ live: [] });
   };
