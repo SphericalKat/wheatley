@@ -16,7 +16,7 @@ import {
   packageBinScript,
   resolveServiceSpec,
 } from "./service.js";
-import type { ServiceManagerOptions } from "./service.js";
+import type { ServiceManager, ServiceManagerOptions } from "./service.js";
 import {
   applyUpgrade,
   packageDir,
@@ -86,6 +86,9 @@ const SERVICE_ACTIONS = [
   "status",
 ] as const;
 
+/** A `wheatley service` action. Commander accepts only these values. */
+type ServiceAction = (typeof SERVICE_ACTIONS)[number];
+
 /** Runs `body` and turns a thrown error into exit code 1 and a line on `io.err`, so that a command never rejects. */
 const guarded = async (
   io: CliIo,
@@ -100,72 +103,59 @@ const guarded = async (
   }
 };
 
+/** The steps of each `wheatley service` action. */
+const SERVICE_STEPS: Readonly<
+  Record<
+    ServiceAction,
+    (manager: ServiceManager, deps: OpsCliDeps, io: CliIo) => Promise<void>
+  >
+> = {
+  install: async (manager, deps, io) => {
+    const spec = await resolveServiceSpec({
+      binScript: packageBinScript(),
+      env: deps.env,
+      execPath: deps.execPath,
+      homeDir: deps.homeDir,
+      drainTimeoutMs: deps.drainTimeoutMs,
+    });
+
+    const result = await manager.install(spec);
+    io.out(`Installed the ${manager.kind} unit: ${result.unitPath}`);
+
+    for (const note of result.notes) {
+      io.out(note);
+    }
+  },
+  restart: async (manager, _deps, io) => {
+    await manager.restart();
+    io.out("Restarted the Wheatley service.");
+  },
+  start: async (manager, _deps, io) => {
+    await manager.start();
+    io.out("Started the Wheatley service.");
+  },
+  status: async (manager, _deps, io) => {
+    const status = await manager.status();
+    io.out(`Manager: ${status.manager}`);
+    io.out(`Unit: ${status.unitPath}`);
+    io.out(`State: ${status.state}`);
+    io.out(`PID: ${status.pid ?? "-"}`);
+  },
+  stop: async (manager, _deps, io) => {
+    await manager.stop();
+    io.out("Stopped the Wheatley service.");
+  },
+};
+
 const serviceCommand = async (
   deps: OpsCliDeps,
   io: CliIo,
-  action: string
+  action: ServiceAction
 ): Promise<number> => {
-  const manager = createServiceManager(deps);
+  await SERVICE_STEPS[action](createServiceManager(deps), deps, io);
 
-  switch (action) {
-    case "install": {
-      const spec = await resolveServiceSpec({
-        binScript: packageBinScript(),
-        env: deps.env,
-        execPath: deps.execPath,
-        homeDir: deps.homeDir,
-        drainTimeoutMs: deps.drainTimeoutMs,
-      });
-
-      const result = await manager.install(spec);
-      io.out(`Installed the ${manager.kind} unit: ${result.unitPath}`);
-
-      for (const note of result.notes) {
-        io.out(note);
-      }
-
-      return EXIT_OK;
-    }
-
-    case "start": {
-      await manager.start();
-      io.out("Started the Wheatley service.");
-
-      return EXIT_OK;
-    }
-
-    case "stop": {
-      await manager.stop();
-      io.out("Stopped the Wheatley service.");
-
-      return EXIT_OK;
-    }
-
-    case "restart": {
-      await manager.restart();
-      io.out("Restarted the Wheatley service.");
-
-      return EXIT_OK;
-    }
-
-    case "status": {
-      const status = await manager.status();
-      io.out(`Manager: ${status.manager}`);
-      io.out(`Unit: ${status.unitPath}`);
-      io.out(`State: ${status.state}`);
-      io.out(`PID: ${status.pid ?? "-"}`);
-
-      return EXIT_OK;
-    }
-
-    default: {
-      throw new Error(`Unknown service action: ${action}`);
-    }
-  }
+  return EXIT_OK;
 };
-
-const isUpdateMethod = (value: string): value is UpdateMethod =>
-  UPDATE_METHODS.some((method) => method === value);
 
 const newerMajorLines = (major: NewerMajor): string[] => {
   const intro = `Wheatley ${major.version} is a new major version. wheatley update stays within the current major version. Read the release notes, then`;
@@ -178,7 +168,8 @@ const newerMajorLines = (major: NewerMajor): string[] => {
 /** The options of `wheatley update`. */
 interface UpdateOptions {
   readonly check?: boolean;
-  readonly method?: string;
+  /** Commander accepts only the values of `UPDATE_METHODS`. */
+  readonly method?: UpdateMethod;
 }
 
 const updateCommand = async (
@@ -186,10 +177,6 @@ const updateCommand = async (
   io: CliIo,
   values: UpdateOptions
 ): Promise<number> => {
-  if (values.method !== undefined && !isUpdateMethod(values.method)) {
-    throw new Error(`Unknown install method: ${values.method}`);
-  }
-
   const installation = await resolveInstallation({
     env: deps.env,
     execPath: deps.execPath,
@@ -350,12 +337,14 @@ export const addOpsCommands = (
     .addArgument(
       new Argument("<action>", "The service action").choices(SERVICE_ACTIONS)
     )
-    .action(async (action: string, _options: NoOptions, command: Command) => {
-      await run(
-        command,
-        async (deps) => await serviceCommand(deps, host.io, action)
-      );
-    });
+    .action(
+      async (action: ServiceAction, _options: NoOptions, command: Command) => {
+        await run(
+          command,
+          async (deps) => await serviceCommand(deps, host.io, action)
+        );
+      }
+    );
 
   program
     .command("update")
