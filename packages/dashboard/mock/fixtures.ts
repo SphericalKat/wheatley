@@ -101,7 +101,7 @@ const fixtureConfig = (): DeploymentConfig => ({
         },
       },
       memory: { maxChars: DEFAULT_MEMORY_MAX_CHARS },
-      model: { id: "claude-sonnet-4-5", provider: "anthropic" },
+      model: "anthropic/claude-sonnet-4-5",
       permissionPolicy: [
         { action: "allow", tool: "read_file" },
         { action: "ask", tool: "shell" },
@@ -109,14 +109,13 @@ const fixtureConfig = (): DeploymentConfig => ({
       plugins: [{ source: "./plugins/notes" }],
     },
     work: {
-      model: {
-        id: "claude-sonnet-4-5",
-        provider: "anthropic",
-        thinking: "low",
-      },
+      model: "anthropic/claude-sonnet-4-5",
+      thinking: "low",
     },
   },
-  providers: { anthropic: { apiKey: { secret: "ANTHROPIC_API_KEY" } } },
+  provider: {
+    anthropic: { options: { apiKey: { secret: "ANTHROPIC_API_KEY" } } },
+  },
   version: 1,
 });
 

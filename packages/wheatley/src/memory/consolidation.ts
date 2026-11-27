@@ -265,10 +265,19 @@ export const createMemoryConsolidation = (
     try {
       const prompt = await buildPrompt();
 
-      const request: MaintenanceRunRequest =
-        config?.model === undefined
-          ? { job: CONSOLIDATION_JOB, prompt }
-          : { job: CONSOLIDATION_JOB, model: config.model, prompt };
+      let request: MaintenanceRunRequest = { job: CONSOLIDATION_JOB, prompt };
+
+      if (config?.model !== undefined) {
+        request =
+          config.thinking === undefined
+            ? { job: CONSOLIDATION_JOB, model: config.model, prompt }
+            : {
+                job: CONSOLIDATION_JOB,
+                model: config.model,
+                prompt,
+                thinking: config.thinking,
+              };
+      }
 
       ({ runId } = await runner.start(request));
       db.prepare(

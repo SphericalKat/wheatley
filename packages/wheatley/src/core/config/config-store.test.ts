@@ -11,17 +11,16 @@ import { FileConfigStore } from "./config-store.js";
 const CONFIG = `# Deployment settings
 version: 1
 
-providers:
+provider:
   anthropic:
-    apiKey:
-      secret: ANTHROPIC_KEY # the provider key
+    options:
+      apiKey:
+        secret: ANTHROPIC_KEY # the provider key
 
 agents:
   # The household assistant
   home:
-    model:
-      provider: anthropic
-      id: claude-sonnet-5-5
+    model: anthropic/claude-sonnet-5-5
     permissionPolicy:
       - tool: read_file
         action: allow
@@ -67,9 +66,9 @@ describe("FileConfigStore", () => {
         home: {
           ...snapshot.config.agents.home,
           instructions: "Be brief",
-          model: { id: "claude-opus-5", provider: "anthropic" },
+          model: "anthropic/claude-opus-5",
         },
-        work: { model: { id: "claude-haiku-5-5", provider: "anthropic" } },
+        work: { model: "anthropic/claude-haiku-5-5" },
       },
     };
 
@@ -79,7 +78,7 @@ describe("FileConfigStore", () => {
     expect(raw).toContain("# Deployment settings");
     expect(raw).toContain("# the provider key");
     expect(raw).toContain("  # The household assistant\n  home:");
-    expect(raw).toContain("      id: claude-opus-5");
+    expect(raw).toContain("    model: anthropic/claude-opus-5");
     expect(raw.indexOf("home:")).toBeLessThan(raw.indexOf("work:"));
     expect(saved.config).toStrictEqual(next);
     expect(saved.revision).not.toBe(snapshot.revision);

@@ -60,7 +60,7 @@ describe("on-demand consolidation", () => {
       config: {
         consolidation: {
           enabled: false,
-          model: { id: "small-1", provider: "faux" },
+          model: "faux/small-1",
         },
       },
       maintenance: runner,
@@ -76,7 +76,7 @@ describe("on-demand consolidation", () => {
     expect(runner.requests).toMatchObject([
       {
         job: CONSOLIDATION_JOB,
-        model: { id: "small-1", provider: "faux" },
+        model: "faux/small-1",
       },
     ]);
     expect(runner.requests[0]?.prompt).toContain("travel.md: 13 characters");

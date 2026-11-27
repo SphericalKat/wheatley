@@ -23,15 +23,20 @@ const validConfig = {
           transport: "stdio",
         },
       },
-      model: { id: "claude-sonnet-5", provider: "anthropic" },
+      model: "anthropic/claude-sonnet-5",
       permissionPolicy: [
         { action: "allow", tool: "read_file" },
         { action: "ask", tool: "mcp:github:*" },
       ],
     },
   },
-  providers: {
-    anthropic: { apiKey: { secret: "ANTHROPIC_API_KEY" }, maxConcurrent: 2 },
+  provider: {
+    anthropic: {
+      options: {
+        apiKey: { secret: "ANTHROPIC_API_KEY" },
+        maxConcurrent: 2,
+      },
+    },
   },
   version: 1,
   webhooks: { enabled: true, port: 8787 },
@@ -57,10 +62,42 @@ describe("DeploymentConfigSchema", () => {
   it("rejects a raw secret value where a secret reference is required", () => {
     const decoded = decode(DeploymentConfigSchema, {
       ...validConfig,
-      providers: { anthropic: { apiKey: "sk-live-value" } },
+      provider: { anthropic: { options: { apiKey: "sk-live-value" } } },
     });
 
     expect(decoded).toMatchObject({ ok: false });
+  });
+
+  it("accepts OpenCode-style custom providers, {env:VAR} api keys, and model overrides", () => {
+    const decoded = decode(DeploymentConfigSchema, {
+      ...validConfig,
+      agents: {
+        home: {
+          ...validConfig.agents.home,
+          model: "deepseek/deepseek-flash",
+          thinking: "medium",
+        },
+      },
+      provider: {
+        deepseek: {
+          models: {
+            "deepseek-flash": {
+              limit: { context: 1_000_000, output: 384_000 },
+              name: "DeepSeek Flash",
+              reasoning: true,
+            },
+          },
+          name: "DeepSeek via Purroxy",
+          npm: "@ai-sdk/anthropic",
+          options: {
+            apiKey: "{env:ANTHROPIC_API_KEY}",
+            baseURL: "https://main.purroxy.org/deepseek/anthropic",
+          },
+        },
+      },
+    });
+
+    expect(decoded.ok).toBe(true);
   });
 
   it("rejects unknown fields so typos fail validation", () => {

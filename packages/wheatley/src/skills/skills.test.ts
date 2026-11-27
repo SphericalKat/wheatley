@@ -31,7 +31,7 @@ const silentLog: Logger = {
   warn: () => {},
 };
 
-const baseConfig: AgentConfig = { model: { id: "model-1", provider: "test" } };
+const baseConfig: AgentConfig = { model: "test/model-1" };
 
 let homeDir = "";
 let agentDir = "";

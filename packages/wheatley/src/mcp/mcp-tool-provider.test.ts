@@ -73,7 +73,7 @@ const agentConfig = (
   mcpServers: Readonly<Record<string, McpServerConfig>>
 ): AgentConfig => ({
   mcpServers,
-  model: { id: "test-model", provider: "test" },
+  model: "test/test-model",
 });
 
 const secrets = new InMemorySecretStore({

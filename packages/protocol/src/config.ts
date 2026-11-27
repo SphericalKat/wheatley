@@ -7,7 +7,9 @@ import {
   PermissionRuleSchema,
   SecretNameSchema,
 } from "./domain.js";
+import type { ModelRef } from "./domain.js";
 import { CRON_EXPRESSION_MIN_LENGTH, MAX_TCP_PORT } from "./limits.js";
+import { decode } from "./validation.js";
 
 const strict = { additionalProperties: false } as const;
 
@@ -27,31 +29,143 @@ export const StringOrSecretSchema = Type.Union([
 
 export type StringOrSecret = Static<typeof StringOrSecretSchema>;
 
-/** A model choice: a pi-ai provider name and model ID. */
-export const ModelChoiceSchema = Type.Object(
+const EnvApiKeyRefSchema = Type.String({
+  pattern: "^\\{env:[A-Z_][A-Z0-9_]*\\}$",
+});
+
+/** A reference to a provider API key: either `{ secret: NAME }` or OpenCode's `{env:NAME}` syntax. */
+export const ApiKeyRefSchema = Type.Union([
+  SecretRefSchema,
+  EnvApiKeyRefSchema,
+]);
+
+export type ApiKeyRef = Static<typeof ApiKeyRefSchema>;
+
+const ENV_REF_PATTERN = /^\{env:(?<name>[A-Z_][A-Z0-9_]*)\}$/u;
+
+/** Returns the secret/environment variable name referenced by an `ApiKeyRef`. */
+export const apiKeySecretName = (ref: ApiKeyRef): string => {
+  const secretRef = decode(SecretRefSchema, ref);
+
+  if (secretRef.ok) {
+    return secretRef.value.secret;
+  }
+
+  const envRef = decode(EnvApiKeyRefSchema, ref);
+
+  if (envRef.ok) {
+    const match = ENV_REF_PATTERN.exec(envRef.value);
+
+    return match?.groups?.name ?? envRef.value;
+  }
+
+  return "";
+};
+
+/** Thinking level override for an Agent or maintenance Run. */
+export const ThinkingLevelSchema = Type.Union([
+  Type.Literal("off"),
+  Type.Literal("low"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+]);
+
+export type ThinkingLevel = Static<typeof ThinkingLevelSchema>;
+
+/** A model identifier in OpenCode `<provider>/<model-id>` format, for example `anthropic/claude-sonnet-5-5`. */
+export const ModelIdSchema = Type.String({ pattern: "^[^/\\s]+/[^\\s]+$" });
+
+export type ModelId = Static<typeof ModelIdSchema>;
+
+/** Splits a `<provider>/<id>` string on its first slash. */
+export const parseModelId = (model: string): ModelRef => {
+  const slash = model.indexOf("/");
+
+  return slash === -1
+    ? { id: model, provider: "" }
+    : { id: model.slice(slash + 1), provider: model.slice(0, slash) };
+};
+
+/** Supported wire protocols for custom or overridden providers. */
+export const ProviderApiSchema = Type.Union([
+  Type.Literal("anthropic-messages"),
+  Type.Literal("openai-completions"),
+  Type.Literal("openai-responses"),
+  Type.Literal("google-generative-ai"),
+  Type.Literal("mistral-conversations"),
+]);
+
+export type ProviderApi = Static<typeof ProviderApiSchema>;
+
+/** Custom or overridden model metadata under `provider.<id>.models.<model-id>`. */
+export const ProviderModelConfigSchema = Type.Object(
   {
-    id: Type.String({ minLength: 1 }),
-    provider: Type.String({ minLength: 1 }),
-    thinking: Type.Optional(
-      Type.Union([
-        Type.Literal("off"),
-        Type.Literal("low"),
-        Type.Literal("medium"),
-        Type.Literal("high"),
-      ])
+    api: Type.Optional(ProviderApiSchema),
+    cost: Type.Optional(
+      Type.Object(
+        {
+          cache_read: Type.Optional(Type.Number({ minimum: 0 })),
+          cache_write: Type.Optional(Type.Number({ minimum: 0 })),
+          input: Type.Optional(Type.Number({ minimum: 0 })),
+          output: Type.Optional(Type.Number({ minimum: 0 })),
+        },
+        strict
+      )
     ),
+    headers: Type.Optional(Type.Record(Type.String(), StringOrSecretSchema)),
+    limit: Type.Optional(
+      Type.Object(
+        {
+          context: Type.Optional(Type.Integer({ minimum: 1 })),
+          output: Type.Optional(Type.Integer({ minimum: 1 })),
+        },
+        strict
+      )
+    ),
+    modalities: Type.Optional(
+      Type.Object(
+        {
+          input: Type.Optional(
+            Type.Array(
+              Type.Union([Type.Literal("text"), Type.Literal("image")])
+            )
+          ),
+          output: Type.Optional(Type.Array(Type.String())),
+        },
+        strict
+      )
+    ),
+    name: Type.Optional(Type.String({ minLength: 1 })),
+    reasoning: Type.Optional(Type.Boolean()),
   },
   strict
 );
 
-export type ModelChoice = Static<typeof ModelChoiceSchema>;
+export type ProviderModelConfig = Static<typeof ProviderModelConfigSchema>;
 
-/** Credentials and limits for one model provider. Each provider entry is one Concurrency Gate key. */
+/** Connection, credential, and concurrency options for one provider (OpenCode-style `provider.<id>.options`). */
+export const ProviderOptionsSchema = Type.Object(
+  {
+    apiKey: Type.Optional(ApiKeyRefSchema),
+    baseURL: Type.Optional(Type.String({ minLength: 1 })),
+    headers: Type.Optional(Type.Record(Type.String(), StringOrSecretSchema)),
+    maxConcurrent: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  strict
+);
+
+export type ProviderOptions = Static<typeof ProviderOptionsSchema>;
+
+/** OpenCode-style provider entry under `provider.<id>`. Each provider key is one Concurrency Gate key. */
 export const ProviderConfigSchema = Type.Object(
   {
-    apiKey: Type.Optional(SecretRefSchema),
-    baseUrl: Type.Optional(Type.String({ minLength: 1 })),
-    maxConcurrent: Type.Optional(Type.Integer({ minimum: 1 })),
+    api: Type.Optional(ProviderApiSchema),
+    models: Type.Optional(
+      Type.Record(Type.String({ minLength: 1 }), ProviderModelConfigSchema)
+    ),
+    name: Type.Optional(Type.String({ minLength: 1 })),
+    npm: Type.Optional(Type.String({ minLength: 1 })),
+    options: Type.Optional(ProviderOptionsSchema),
   },
   strict
 );
@@ -105,10 +219,11 @@ export const MemoryConfigSchema = Type.Object(
       Type.Object(
         {
           enabled: Type.Optional(Type.Boolean()),
-          model: Type.Optional(ModelChoiceSchema),
+          model: Type.Optional(ModelIdSchema),
           schedule: Type.Optional(
             Type.String({ minLength: CRON_EXPRESSION_MIN_LENGTH })
           ),
+          thinking: Type.Optional(ThinkingLevelSchema),
           timezone: Type.Optional(Type.String({ minLength: 1 })),
         },
         strict
@@ -192,7 +307,7 @@ export const AgentConfigSchema = Type.Object(
       )
     ),
     memory: Type.Optional(MemoryConfigSchema),
-    model: ModelChoiceSchema,
+    model: ModelIdSchema,
     /** Ordered rules. The first match wins. */
     permissionPolicy: Type.Optional(Type.Array(PermissionRuleSchema)),
     plugins: Type.Optional(Type.Array(PluginConfigSchema)),
@@ -202,6 +317,7 @@ export const AgentConfigSchema = Type.Object(
         strict
       )
     ),
+    thinking: Type.Optional(ThinkingLevelSchema),
   },
   strict
 );
@@ -213,7 +329,7 @@ export const DeploymentConfigSchema = Type.Object(
   {
     agents: Type.Record(AgentNameSchema, AgentConfigSchema, strict),
     daemon: Type.Optional(DaemonConfigSchema),
-    providers: Type.Optional(Type.Record(Type.String(), ProviderConfigSchema)),
+    provider: Type.Optional(Type.Record(Type.String(), ProviderConfigSchema)),
     version: Type.Literal(1),
     webhooks: Type.Optional(WebhooksConfigSchema),
   },

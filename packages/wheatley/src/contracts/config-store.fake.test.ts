@@ -7,7 +7,7 @@ import { SeamError } from "./errors.js";
 import { InMemorySecretStore } from "./secret-store.fake.js";
 
 const config: DeploymentConfig = {
-  agents: { home: { model: { id: "faux-1", provider: "faux" } } },
+  agents: { home: { model: "faux/faux-1" } },
   version: 1,
 };
 

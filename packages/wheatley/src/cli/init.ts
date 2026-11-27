@@ -44,17 +44,15 @@ const configTemplate = (
 # Save changes, then restart the changed Agent: wheatley restarts no Agent on its own.
 version: 1
 
-providers:
+provider:
   ${provider}:
-    # The API key is a secret: set it in secrets.yaml or as an environment variable.
-    apiKey:
-      secret: ${apiKeySecret(provider)}
+    options:
+      # The API key is a secret: set it in secrets.yaml or as an environment variable.
+      apiKey: "{env:${apiKeySecret(provider)}}"
 
 agents:
   ${agent}:
-    model:
-      provider: ${provider}
-      id: ${model}
+    model: ${provider}/${model}
     # Rules match canonical Tool names. The first match wins. Without a match, read_file is allowed, and
     # write_file and shell ask for an Approval.
     permissionPolicy:

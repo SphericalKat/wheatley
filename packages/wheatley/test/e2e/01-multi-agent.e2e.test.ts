@@ -226,7 +226,9 @@ it("gives each Agent its own harness.sqlite, agent.sqlite, workspace, Chats, Run
 it("shares one Concurrency Gate slot of a provider credential between Agents", async () => {
   const h = await start({
     agents: { alpha: {}, beta: {} },
-    config: { providers: { [FAKE_CREDENTIAL]: { maxConcurrent: 1 } } },
+    config: {
+      provider: { [FAKE_CREDENTIAL]: { options: { maxConcurrent: 1 } } },
+    },
   });
 
   const session = await h.connect();

@@ -137,9 +137,7 @@ beforeEach(async () => {
       "agents:",
       ...["alpha", "beta"].flatMap((name) => [
         `  ${name}:`,
-        "    model:",
-        `      provider: ${FAKE_PROVIDER}`,
-        `      id: ${llm.modelId}`,
+        `    model: ${FAKE_PROVIDER}/${llm.modelId}`,
       ]),
       "",
     ].join("\n")
@@ -318,7 +316,7 @@ describe("ControlServer", () => {
 
     const created = await client.request("agents.create", {
       agent: "gamma",
-      config: { model: { id: llm.modelId, provider: FAKE_PROVIDER } },
+      config: { model: `${FAKE_PROVIDER}/${llm.modelId}` },
       expectedRevision: config.revision,
     });
 
@@ -326,7 +324,7 @@ describe("ControlServer", () => {
       rpcCode(
         client.request("agents.create", {
           agent: "delta",
-          config: { model: { id: llm.modelId, provider: FAKE_PROVIDER } },
+          config: { model: `${FAKE_PROVIDER}/${llm.modelId}` },
           expectedRevision: config.revision,
         })
       )

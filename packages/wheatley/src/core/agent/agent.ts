@@ -6,6 +6,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Models } from "@earendil-works/pi-ai";
 import {
   parseDuration,
+  parseModelId,
   TOOL_INPUT_PREVIEW_MAX_LENGTH,
   TOOL_OUTPUT_PREVIEW_MAX_LENGTH,
 } from "@wheatley-ai/protocol";
@@ -17,7 +18,6 @@ import type {
   ChatMessage,
   CommandName,
   ExtensionStatus,
-  ModelChoice,
   RunOrigin,
   RunTimelineItem,
   ToolInfo,
@@ -77,6 +77,7 @@ import { openPiAdapter } from "./pi-adapter.js";
 import type {
   PiAdapter,
   PiGateVerdict,
+  PiModelChoice,
   PiRunOutcome,
   PiToolCall,
 } from "./pi-adapter.js";
@@ -284,7 +285,15 @@ export interface AgentStatus {
 
 const CONFIG_MODEL_META_KEY = "config_model";
 
-const modelSignature = (model: ModelChoice): string =>
+const agentModelChoice = (config: AgentConfig): PiModelChoice => {
+  const ref = parseModelId(config.model);
+
+  return config.thinking === undefined
+    ? ref
+    : { ...ref, thinking: config.thinking };
+};
+
+const modelSignature = (model: PiModelChoice): string =>
   JSON.stringify({
     id: model.id,
     provider: model.provider,
@@ -835,7 +844,8 @@ export class Agent {
   readonly #syncConversationModels = async (): Promise<void> => {
     const pi = this.#requirePi();
     const { config, models } = this.#options;
-    const currentSignature = modelSignature(config.model);
+    const configuredModel = agentModelChoice(config);
+    const currentSignature = modelSignature(configuredModel);
 
     const configChanged =
       this.#store.getMeta(CONFIG_MODEL_META_KEY) !== currentSignature;
@@ -855,7 +865,7 @@ export class Agent {
 
       if (configChanged) {
         // oxlint-disable-next-line no-await-in-loop -- Startup sync runs sequentially against one SQLite Harness.
-        await pi.setModel(conversationId, config.model);
+        await pi.setModel(conversationId, configuredModel);
         continue;
       }
 
@@ -869,7 +879,7 @@ export class Agent {
 
       if (!usable) {
         // oxlint-disable-next-line no-await-in-loop -- Startup sync runs sequentially against one SQLite Harness.
-        await pi.setModel(conversationId, config.model);
+        await pi.setModel(conversationId, configuredModel);
       }
     }
 
@@ -900,7 +910,7 @@ export class Agent {
   };
 
   readonly #createConversation = async (
-    model: ModelChoice = this.#options.config.model
+    model: PiModelChoice = agentModelChoice(this.#options.config)
   ): Promise<string> =>
     await this.#requirePi().createConversation({
       cwd: this.#workspaceDir,
@@ -1567,9 +1577,10 @@ export class Agent {
 
     const preferredProviders = [
       ...new Set(
-        [currentProvider, this.#options.config.model.provider].filter(
-          (provider): provider is string => provider !== undefined
-        )
+        [
+          currentProvider,
+          parseModelId(this.#options.config.model).provider,
+        ].filter((provider): provider is string => provider !== undefined)
       ),
     ];
 
@@ -1697,7 +1708,18 @@ export class Agent {
   };
 
   readonly #startMaintenance: MaintenanceRunner["start"] = async (request) => {
-    const conversationId = await this.#createConversation(request.model);
+    let model: PiModelChoice | undefined;
+
+    if (request.model !== undefined) {
+      const ref = parseModelId(request.model);
+
+      model =
+        request.thinking === undefined
+          ? ref
+          : { ...ref, thinking: request.thinking };
+    }
+
+    const conversationId = await this.#createConversation(model);
 
     const { runId } = await this.#startRun({
       chat: null,

@@ -5,6 +5,7 @@ import {
   PermissionActionSchema,
   decode,
   isJsonValue,
+  parseModelId,
 } from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
@@ -330,6 +331,8 @@ const AgentSettings = ({
     }
   };
 
+  const currentModel = parseModelId(current.model);
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -340,10 +343,10 @@ const AgentSettings = ({
             onChange={(event) => {
               edit({
                 ...current,
-                model: { ...current.model, provider: event.target.value },
+                model: `${event.target.value}/${currentModel.id}`,
               });
             }}
-            value={current.model.provider}
+            value={currentModel.provider}
           />
         </Field>
         <Field label="Model ID">
@@ -353,36 +356,37 @@ const AgentSettings = ({
             onChange={(event) => {
               edit({
                 ...current,
-                model: { ...current.model, id: event.target.value },
+                model: `${currentModel.provider}/${event.target.value}`,
               });
             }}
-            value={current.model.id}
+            value={currentModel.id}
           />
         </Field>
         <ModelSuggestions
           modelsId={modelsId}
-          provider={current.model.provider}
+          provider={currentModel.provider}
           providersId={providersId}
         />
         <Field label="Thinking">
           <select
             className={inputClass}
             onChange={(event) => {
-              const { thinking: _previous, ...model } = current.model;
               const { value } = event.target;
 
-              edit({
-                ...current,
-                model:
+              edit(
+                withOptional(
+                  current,
+                  "thinking",
                   value === "off" ||
-                  value === "low" ||
-                  value === "medium" ||
-                  value === "high"
-                    ? { ...model, thinking: value }
-                    : model,
-              });
+                    value === "low" ||
+                    value === "medium" ||
+                    value === "high"
+                    ? value
+                    : undefined
+                )
+              );
             }}
-            value={current.model.thinking ?? ""}
+            value={current.thinking ?? ""}
           >
             <option value="">Provider default</option>
             <option value="off">off</option>

@@ -43,11 +43,14 @@ const withWorkModel = (
     throw new Error("The fixture has no work Agent");
   }
 
+  const slash = work.model.indexOf("/");
+  const provider = slash === -1 ? "anthropic" : work.model.slice(0, slash);
+
   return {
     ...config,
     agents: {
       ...config.agents,
-      work: { ...work, model: { ...work.model, id } },
+      work: { ...work, model: `${provider}/${id}` },
     },
   };
 };
@@ -219,7 +222,7 @@ test("re-applies an Agent form change on top of a newer config without losing th
   expect(editor.state.get().conflict?.change.kind).toBe("agent");
   expect(await editor.resolveConflict("overwrite")).toBe(true);
   expect(daemonConfig().agents.home?.instructions).toBe("Mine");
-  expect(daemonConfig().agents.work?.model.id).toBe("theirs");
+  expect(daemonConfig().agents.work?.model).toBe("anthropic/theirs");
 });
 
 test("reloads by itself when config.yaml changes and the draft has no edits", async () => {
@@ -253,7 +256,7 @@ test("reports the issues of an invalid raw save", async () => {
 
 test("creates, renames, and deletes Agents with the loaded revision", async () => {
   const editor = await loadedEditor();
-  const config = { model: { id: "claude-haiku-4-5", provider: "anthropic" } };
+  const config = { model: "anthropic/claude-haiku-4-5" };
 
   expect(await editor.save({ agent: "lab", config, kind: "create" })).toBe(
     true
@@ -288,5 +291,5 @@ test("keeps an Agent rename that conflicts until the Operator decides", async ()
   ).toBe(false);
   expect(daemonConfig().agents.work).toBeDefined();
   expect(await editor.resolveConflict("overwrite")).toBe(true);
-  expect(daemonConfig().agents.office?.model.id).toBe("theirs");
+  expect(daemonConfig().agents.office?.model).toBe("anthropic/theirs");
 });

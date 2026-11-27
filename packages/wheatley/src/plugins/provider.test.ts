@@ -73,7 +73,7 @@ const load = async (
   overrides: Partial<ProviderInput> = {}
 ): Promise<PluginProvider> => {
   const config: AgentConfig = {
-    model: { id: "model-1", provider: "test" },
+    model: "test/model-1",
     plugins: [...plugins],
   };
 

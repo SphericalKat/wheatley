@@ -13,6 +13,7 @@ import {
   encodeResult,
   eventTopic,
   isJsonValue,
+  parseModelId,
   PROTOCOL_VERSION,
   RpcError,
   RpcErrorCode,
@@ -493,9 +494,9 @@ export const createMockDaemon = (
   const chatModel = (agent: string): ModelRef => {
     const { model } = agentConfig(agent);
 
-    return (
-      state.chatModels.get(agent) ?? { id: model.id, provider: model.provider }
-    );
+    const parsed = parseModelId(model);
+
+    return state.chatModels.get(agent) ?? parsed;
   };
 
   /** Switches the CLI Chat model like `/model <args>`, with the reply texts of the real Agent. */
@@ -504,7 +505,10 @@ export const createMockDaemon = (
 
     const model: ModelRef =
       slash === -1
-        ? { id: args, provider: agentConfig(agent).model.provider }
+        ? {
+            id: args,
+            provider: parseModelId(agentConfig(agent).model).provider,
+          }
         : { id: args.slice(slash + 1), provider: args.slice(0, slash) };
 
     const argument = `${model.provider}/${model.id}`;
@@ -1158,11 +1162,11 @@ export const createMockDaemon = (
     },
     "system.status": () => ({
       agents: Object.keys(state.config.agents).map(health),
-      concurrency: Object.entries(state.config.providers ?? {}).map(
+      concurrency: Object.entries(state.config.provider ?? {}).map(
         ([credential, provider]) => ({
           credential,
           inUse: state.runs.filter((run) => run.status === "running").length,
-          limit: provider.maxConcurrent ?? DEFAULT_GATE_LIMIT,
+          limit: provider.options?.maxConcurrent ?? DEFAULT_GATE_LIMIT,
           waiting: 0,
         })
       ),

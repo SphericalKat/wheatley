@@ -219,7 +219,7 @@ export class ChatController {
       const model = config.agents[agent]?.model;
 
       if (model !== undefined) {
-        this.#defaultModel = `${model.provider}/${model.id}`;
+        this.#defaultModel = model;
         this.#update({ model: this.#defaultModel });
       }
 
