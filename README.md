@@ -1,12 +1,27 @@
 # Wheatley
 
-Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript. One Deployment hosts one or more Agents. Each Agent has its own model, Permission Policy, Memory, Triggers, and Conversations. You talk to an Agent from the CLI or from the web dashboard. Terms such as Deployment, Agent, Chat, Conversation, Run, and Approval follow [`GLOSSARY.md`](GLOSSARY.md).
+Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript. One Deployment hosts one or more Agents. Each Agent has its own model, Permission Policy, Memory, Triggers, and Conversations. You talk to an Agent from the CLI or from the web dashboard.
 
 ![Wheatley CLI thinking demo](docs/assets/wheatley-thinking.gif)
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Chat and Approvals](#chat-and-approvals)
+- [Dashboard](#dashboard)
+- [Triggers and webhooks](#triggers-and-webhooks)
+- [Memory](#memory)
+- [Operations](#operations)
+- [Write a Plugin](#write-a-plugin)
+- [Development](#development)
+- [License](#license)
+
 ## Requirements
 
-- Node.js `26.13.1` or newer (`.node-version`). The install script downloads Node.js automatically if your machine does not have a compatible version.
+- Node.js `26.13.1` or newer. The install script downloads Node.js automatically if your machine does not have a compatible version.
 - `pnpm` `12.23.0` when building from source.
 - An API key for a model provider (for example Anthropic or OpenAI).
 - Docker and Docker Compose if you run the container image.
@@ -44,7 +59,7 @@ The script installs files under XDG directories and leaves `~/.wheatley` untouch
 Notes:
 
 - If your machine already has Node.js `26.13.1+` and `npm`, the script reuses them. Otherwise it downloads Node.js `26.13.1` from `https://nodejs.org/dist`, verifies it against `SHASUMS256.txt`, and supports overriding the mirror with `WHEATLEY_NODE_MIRROR`.
-- On Linux, the managed Node.js binary needs `libatomic` (`apt-get install libatomic1` on Debian or Ubuntu).
+- On Linux, the managed Node.js binary needs `libatomic` (for example, package `libatomic1` on Debian or Ubuntu).
 - On musl systems such as Alpine Linux, install Node.js `26.13.1+` through the system package manager first, or use Docker.
 
 ### npm, pnpm, yarn, or bun
@@ -94,19 +109,13 @@ The image is based on `node:26-trixie-slim`. The container keeps the Deployment 
 
 Before version `1.0.0`, a minor version can contain breaking changes.
 
-1. If the image is private, log in to the GitHub Container Registry with a token that has the `read:packages` scope:
-
-   ```bash
-   docker login ghcr.io
-   ```
-
-2. Pull the latest image:
+1. Pull the latest image:
 
    ```bash
    docker pull ghcr.io/sphericalkat/wheatley:latest
    ```
 
-3. Continue with [Docker Compose](#run-with-docker-compose) or [`docker run`](#run-with-docker-run).
+2. Continue with [Docker Compose](#run-with-docker-compose) or [`docker run`](#run-with-docker-run).
 
 ### Run with Docker Compose
 
@@ -229,21 +238,6 @@ The Deployment home stays in the `wheatley-data` volume.
    ```
 
 The examples below use `wheatley`. In a source checkout, use `node packages/wheatley/bin/wheatley.js` instead.
-
-### Install from a tarball
-
-1. Build from source, as shown above.
-2. Pack the package in the repository root. The `prepack` script builds it again:
-
-   ```bash
-   pnpm --filter @wheatley-ai/cli pack
-   ```
-
-3. Install the tarball:
-
-   ```bash
-   npm install --global ./wheatley-ai-cli-<version>.tgz
-   ```
 
 ## Quick start
 
@@ -495,8 +489,6 @@ The Agent can also list and delete Triggers with `list_triggers` and `cancel_tri
 
 The Webhook Ingress answers `202 Accepted`. The Run appends the request body to the Trigger prompt. The limit for a request body is 256 KiB.
 
-The dashboard does not show the Trigger ID or the webhook URL. The Runs view shows the Trigger ID only for Runs that a Trigger started.
-
 ## Memory
 
 Each Agent keeps Memory in `agents/<name>/memory/`. The main file is `MEMORY.md`. The Agent reads `MEMORY.md` at the start of each new Conversation. The Agent writes Memory with the `memory_*` Tools.
@@ -529,7 +521,7 @@ wheatley update --method pnpm
 
 | Install method | Behavior |
 | --- | --- |
-| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the owning `--prefix` for `fnm`/`nvm` installs) |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the active `--prefix` when installed through a Node.js version manager) |
 | pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
 | yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
 | bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
@@ -624,49 +616,7 @@ Run these commands from the repository root:
 | `pnpm typecheck` | Check the TypeScript types of every package. |
 | `pnpm test`      | Run the Vitest test suite.                   |
 
-If your shell uses an older Node.js version, run `eval "$(fnm env)" && fnm use` first.
-
-### Release process
-
-The `Release` workflow in `.github/workflows/release.yml` uses [release-please](https://github.com/googleapis/release-please). It runs on each push to `main`.
-
-1. Write each commit title as a Conventional Commit, for example `feat: add a Trigger view` or `fix: close the socket`. release-please reads these titles to choose the next version and write `CHANGELOG.md`.
-2. release-please opens or updates a release pull request. The pull request changes the version in the root `package.json`, `packages/wheatley/package.json`, and `packages/sdk/package.json`.
-3. Merge the release pull request.
-4. The workflow creates the `v<version>` tag and the GitHub release.
-5. The workflow publishes `@wheatley-ai/sdk` and `@wheatley-ai/cli` to npm.
-6. The workflow pushes the `linux/amd64` and `linux/arm64` image to `ghcr.io/sphericalkat/wheatley`.
-7. After the npm publish, the workflow sets the version and checksum in `packaging/aur/PKGBUILD`, builds the package, and pushes `PKGBUILD` and `.SRCINFO` to the AUR package `wheatley-cli`.
-
-Before version `1.0.0`, a `feat` commit raises the minor version, and a `fix` commit raises the patch version.
-
-The workflow publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers). It uses no npm token. Each npm package must have a trusted publisher with these values:
-
-| Field                | Value          |
-| -------------------- | -------------- |
-| Organization or user | `SphericalKat` |
-| Repository           | `wheatley`     |
-| Workflow filename    | `release.yml`  |
-| Environment          | (empty)        |
-
-The repository must have **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** turned on.
-
-The AUR job needs these repository settings:
-
-| Setting | Kind | Value |
-| --- | --- | --- |
-| `AUR_SSH_PRIVATE_KEY` | Secret | The private SSH key of the AUR account |
-| `AUR_USERNAME` | Variable | The AUR account name, for the commit and `Maintainer` |
-| `AUR_EMAIL` | Variable | The email address for the commit and `Maintainer` |
-
-The CI copies of `PKGBUILD` and `.SRCINFO` replace the files in the AUR. The files in `packaging/aur` keep the version of the last manual edit.
-
-## Known limitations
-
-- A Unix socket path has a length limit of about 100 bytes. If the home path is too long, the daemon fails with `listen EINVAL` on `daemon.sock`. Keep the home path short.
-- The dashboard does not show the Trigger ID or the webhook URL of a Trigger.
-- Webhooks support only static Bearer tokens. HMAC signatures are not supported.
-- The Control Server has no authentication.
+If your shell defaults to an older Node.js version, switch to the version in `.node-version` first.
 
 ## License
 

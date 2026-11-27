@@ -1,7 +1,7 @@
 class Wheatley < Formula
   desc "Persistent personal AI agent with a daemon, a CLI, and a dashboard"
   homepage "https://github.com/SphericalKat/wheatley"
-  url "https://registry.npmjs.org/@wheatley-ai/cli/-/cli-@VERSION@.tgz"
+  url "https://github.com/SphericalKat/wheatley/releases/download/v@VERSION@/wheatley-ai-cli-@VERSION@.tgz"
   sha256 "@SHA256@"
   license "ISC"
 
