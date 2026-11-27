@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0](https://github.com/SphericalKat/wheatley/compare/v0.3.0...v0.4.0) (2026-11-27)
+
+
+### Features
+
+* add /model pickers for the CLI, chat Frontends, and dashboard ([191986b](https://github.com/SphericalKat/wheatley/commit/191986b45cc094f6fc7d7b4984f8f63b9dc913e1))
+* adopt focused ESM libraries for CLI, Markdown, HTTP servers, semver, and dashboard routing ([f1bd372](https://github.com/SphericalKat/wheatley/commit/f1bd3728df701f350d5213dd62345bb93c8d4988))
+* **cli:** add interactive /model picker in the Ink TUI ([8e75190](https://github.com/SphericalKat/wheatley/commit/8e751903356c2bc6287f5cf42344778b85529ede)), closes [#112](https://github.com/SphericalKat/wheatley/issues/112)
+* **cli:** default bare wheatley to chat and auto-start ephemeral daemon ([2840940](https://github.com/SphericalKat/wheatley/commit/2840940aa0a787a919d5191de6fd3bc831c0af9d))
+* **cli:** show source diagnostics for an invalid config.yaml ([eba4d66](https://github.com/SphericalKat/wheatley/commit/eba4d66f5392f356286da82f2cb8d8fc2269a721))
+* **cli:** show source diagnostics for an invalid config.yaml ([22ce68c](https://github.com/SphericalKat/wheatley/commit/22ce68ceb1601b1a94ba7e457ce245500f2486b4))
+* **dashboard:** add model picker using models.list ([b4ff3dc](https://github.com/SphericalKat/wheatley/commit/b4ff3dc97214c6050e622a39bc9487a1ea055cb3))
+* **discord:** add native /model picker ([571d5bb](https://github.com/SphericalKat/wheatley/commit/571d5bbe1ac11d800b47af8398d598e0fbbf974e))
+* **docs:** add Starlight documentation site package ([7f8e088](https://github.com/SphericalKat/wheatley/commit/7f8e088e27393f4759c4bb2701143aaa88943988))
+* **docs:** add Starlight documentation site package ([e42113f](https://github.com/SphericalKat/wheatley/commit/e42113fa6f5a7d747c61708983f0f82631c23990))
+* list available models when /model has no argument ([804ccbf](https://github.com/SphericalKat/wheatley/commit/804ccbff1844ee032df37bfbdd3778202b1d1eae))
+* **slack:** add native /model picker ([a8cea8a](https://github.com/SphericalKat/wheatley/commit/a8cea8a4af0299efbb23e296e86f330333a1dc2a))
+* **telegram:** add native /model picker ([d47098f](https://github.com/SphericalKat/wheatley/commit/d47098f24d16e2f5f92a23a2ad0f3599fbec4577))
+
+
+### Bug Fixes
+
+* **cli:** remove the help subcommand that commander adds ([21eb86d](https://github.com/SphericalKat/wheatley/commit/21eb86d0cfa5640d53cb08bed690a995ca6bd312))
+* **docs:** fix broken Starlight steps and callouts from oxfmt ([43b7d04](https://github.com/SphericalKat/wheatley/commit/43b7d04767b4e683f98ec7b174ec002aad606ae5))
+* **docs:** fix broken Starlight steps and callouts from oxfmt ([a21c11f](https://github.com/SphericalKat/wheatley/commit/a21c11f0bbac2e7efda795ff15054060e6625b29))
+* **docs:** include astro/client types in tsconfig for clean-checkout linting ([01c7ca5](https://github.com/SphericalKat/wheatley/commit/01c7ca5e1cfba32a951042693432028402fafd82))
+* **http:** answer 400 for an unreadable webhook body and share the Hono listener setup ([3e34a87](https://github.com/SphericalKat/wheatley/commit/3e34a870ef202834b4bad75697ff6c69cec63888))
+* **http:** serve a dashboard folder that appears after the daemon starts ([af46d84](https://github.com/SphericalKat/wheatley/commit/af46d848dcfc94d43c37fe554c3d5cad317a7112))
+* **markdown:** resolve streamed reference links against definitions that arrive later ([635123a](https://github.com/SphericalKat/wheatley/commit/635123a3de39010eabcf1e08799cb73d1046bb9d))
+* **release:** serve the CLI tarball from GitHub releases for Homebrew and AUR ([d6fe38c](https://github.com/SphericalKat/wheatley/commit/d6fe38ca1d73bebe7d49ced91ae055b3c91fd053))
+* **release:** serve the CLI tarball from GitHub releases for Homebrew and AUR ([899742c](https://github.com/SphericalKat/wheatley/commit/899742c1ffc3b5acd52db882915e39b8eb13b6db))
+* **service:** do not quote WorkingDirectory in systemd unit ([fc88e4e](https://github.com/SphericalKat/wheatley/commit/fc88e4ea94e4a448cff8d62c4401a705c158b9ae))
+* **service:** do not quote WorkingDirectory in systemd unit ([0473282](https://github.com/SphericalKat/wheatley/commit/04732824b94bfb552cb6e00e1f9df6883cf5e193))
+
 ## [0.3.0](https://github.com/SphericalKat/wheatley/compare/v0.2.0...v0.3.0) (2026-11-27)
 
 
