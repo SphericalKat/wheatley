@@ -7,6 +7,8 @@ import { Aside } from "@astrojs/starlight/components";
 
 You can talk to your Wheatley assistants from the command line or from your browser — both stay in sync with the same conversations and approvals.
 
+If no local daemon listens on the Unix socket and `--url` is not set, `wheatley`, `wheatley chat`, and `wheatley ask` start a temporary in-process daemon for that session and stop it on exit. If a daemon is already running, they attach to it and leave it running on exit.
+
 ## Quick one-shot questions (`wheatley ask`)
 
 Send a single prompt and print the reply:
@@ -25,9 +27,9 @@ git diff | wheatley ask "Explain these changes in three bullet points"
   When input is piped (not an interactive terminal), `wheatley ask` automatically denies any tool call that requires manual approval so scripts never hang waiting for a prompt.
 </Aside>
 
-## Interactive terminal chat (`wheatley chat`)
+## Interactive terminal chat (`wheatley` / `wheatley chat`)
 
-Run `wheatley chat` to open the full-screen terminal interface:
+Run `wheatley` (or `wheatley chat`) to open the full-screen terminal interface:
 
 - Replies stream live with formatted Markdown and word-wrapped code blocks.
 - Tool calls appear inline with their input, result, and duration.
