@@ -1,0 +1,120 @@
+---
+title: Chat frontends
+description: Connect a Wheatley Agent to Telegram, Slack, or Discord.
+---
+
+import { TabItem, Tabs } from "@astrojs/starlight/components";
+
+A **Frontend Binding** connects one external chat endpoint (such as a Telegram bot token) to one Agent. Each Agent can have multiple Frontend Bindings under `agents.<name>.frontends` in `config.yaml`.
+
+Every Frontend Binding has:
+
+- `id`: unique lowercase identifier within the Agent (`cli` is reserved).
+- `type`: built-in frontend type (`telegram`, `slack`, or `discord`) or a frontend type provided by a Plugin.
+- `enabled`: optional boolean to disable a binding without removing it.
+- `config`: frontend-specific settings. All chat frontends require a non-empty `allowedChatIds` allowlist.
+
+## Configure a built-in frontend
+
+<Tabs syncKey="frontend">
+  <TabItem label="Telegram">
+    Add your BotFather token to `secrets.yaml` (for example `TELEGRAM_BOT_TOKEN: <token>`), then add a `telegram` binding:
+
+    ```yaml
+    agents:
+      default:
+        frontends:
+          - id: telegram-main
+            type: telegram
+            config:
+              botToken:
+                secret: TELEGRAM_BOT_TOKEN
+              allowedChatIds:
+                - 123456789
+              mode: polling
+              groupActivation: mention
+              streaming: draft
+              draftIntervalMs: 1200
+    ```
+
+    | Option | Required | Default | Description |
+    | --- | --- | --- | --- |
+    | `botToken` | Yes | — | `{ secret: "<name>" }` reference to the BotFather token |
+    | `allowedChatIds` | Yes | — | Non-empty list of user, group, supergroup IDs, or `<chat_id>:topic:<thread_id>` keys |
+    | `mode` | No | `polling` | `polling` for outbound long polling, or `webhook` via Webhook Ingress |
+    | `webhookUrl` | If `webhook` | — | Public HTTPS URL forwarded to `/frontends/<agent>/<binding-id>/updates` |
+    | `groupActivation` | No | `mention` | `mention` (only mentions or replies in groups) or `always` |
+    | `streaming` | No | `draft` | `draft` (stream edits) or `typing` (typing indicator only) |
+    | `draftIntervalMs` | No | `1200` | Minimum milliseconds between draft edits (minimum `500`) |
+
+  </TabItem>
+
+  <TabItem label="Slack">
+    Socket Mode is the default transport and requires both a bot token (`xoxb-...`) and an app-level token (`xapp-...`) in `secrets.yaml`.
+
+    ```yaml
+    agents:
+      default:
+        frontends:
+          - id: slack-main
+            type: slack
+            config:
+              transport: socket
+              botToken:
+                secret: SLACK_BOT_TOKEN
+              appToken:
+                secret: SLACK_APP_TOKEN
+              allowedChatIds:
+                - C0123456789
+              channelTrigger: mention-or-reply
+              streaming: edit
+              editIntervalMs: 1200
+    ```
+
+    | Option | Required | Default | Description |
+    | --- | --- | --- | --- |
+    | `botToken` | Yes | — | `{ secret: "<name>" }` reference to the `xoxb-` bot token |
+    | `allowedChatIds` | Yes | — | Non-empty list of Slack channel, DM, or `<channel_id>:<thread_ts>` IDs |
+    | `transport` | No | `socket` | `socket` (Socket Mode) or `webhook` (Events API via Webhook Ingress) |
+    | `appToken` | If `socket` | — | `{ secret: "<name>" }` reference to the `xapp-` app-level token |
+    | `signingSecret` | If `webhook` | — | `{ secret: "<name>" }` reference to the Slack signing secret |
+    | `channelTrigger` | No | `mention-or-reply` | `mention-or-reply` or `all` for channel messages (DMs always reach the Agent) |
+    | `streaming` | No | `edit` | `edit` (stream draft replies) or `typing` (reaction indicator only) |
+    | `editIntervalMs` | No | `1200` | Minimum milliseconds between draft edits (minimum `1000`) |
+    | `typingReaction` | No | `hourglass_flowing_sand` | Emoji name without colons shown while a Run works |
+
+  </TabItem>
+
+  <TabItem label="Discord">
+    Add your Discord bot token to `secrets.yaml` (for example `DISCORD_BOT_TOKEN: <token>`), then add a `discord` binding:
+
+    ```yaml
+    agents:
+      default:
+        frontends:
+          - id: discord-main
+            type: discord
+            config:
+              tokenSecret: DISCORD_BOT_TOKEN
+              allowedChatIds:
+                - "123456789012345678"
+              guildMessages: mention_or_reply
+              streaming: edit
+              editIntervalMs: 1200
+              commandGuildIds:
+                - "987654321098765432"
+    ```
+
+    | Option | Required | Default | Description |
+    | --- | --- | --- | --- |
+    | `tokenSecret` | Yes | — | Secret name in `secrets.yaml` that holds the Discord bot token |
+    | `allowedChatIds` | Yes | — | Non-empty list of Discord channel, DM, or thread snowflake IDs as strings |
+    | `guildMessages` | No | `mention_or_reply` | `mention_or_reply` or `all` in guild channels and threads (DMs always reach the Agent) |
+    | `streaming` | No | `edit` | `edit` (typing plus draft edits) or `typing` (typing indicator only) |
+    | `editIntervalMs` | No | `1200` | Minimum milliseconds between draft edits (`250` to `60000`) |
+    | `commandGuildIds` | No | `[]` | Guild IDs for instant slash command registration (empty registers global commands) |
+
+  </TabItem>
+</Tabs>
+
+:::tip Restart the Agent after you add or change a Frontend Binding in `config.yaml`. :::

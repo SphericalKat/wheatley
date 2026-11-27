@@ -1,0 +1,40 @@
+---
+title: Wheatley
+description: Self-hosted, always-on personal AI assistant written in TypeScript.
+template: splash
+hero:
+  tagline: Self-hosted, always-on personal AI assistant. One Deployment hosts one or more isolated Agents with their own models, permissions, memory, triggers, and chat frontends.
+  actions:
+    - text: Install Wheatley
+      link: /wheatley/getting-started/install/
+      icon: right-arrow
+    - text: Quick start
+      link: /wheatley/getting-started/quick-start/
+      icon: rocket
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Core capabilities
+
+<CardGrid>
+  <Card title="Install in minutes" icon="download">
+    Install on macOS or Linux with the install script, npm, pnpm, Homebrew, AUR,
+    or Docker. Run the daemon in the foreground or as a background service.
+  </Card>
+  <Card title="Any supported model or agent setup" icon="setting">
+    Connect Agents to Anthropic, OpenAI, Google, OpenRouter, Groq, Mistral, xAI,
+    DeepSeek, or an OpenAI-compatible proxy. Run multiple isolated Agents in one
+    Deployment.
+  </Card>
+  <Card title="Chat anywhere" icon="comment">
+    Talk to an Agent from the CLI, the built-in web dashboard, Telegram, Slack,
+    or Discord. Approve or deny sensitive Tool calls directly in chat.
+  </Card>
+  <Card title="Extend with MCP, skills, and plugins" icon="puzzle">
+    Attach stdio or HTTP MCP Servers, load Markdown Skills on demand, schedule
+    cron or webhook Triggers, and write TypeScript Plugins with
+    `@wheatley-ai/sdk`.
+  </Card>
+</CardGrid>

@@ -1,0 +1,131 @@
+---
+title: MCP servers, skills, and plugins
+description: Extend a Wheatley Agent with MCP Servers, Markdown Skills, and TypeScript Plugins.
+---
+
+import { Steps, TabItem, Tabs } from "@astrojs/starlight/components";
+
+Agents do not share extension instances. Each Agent loads its own MCP Servers, Skills, and Plugins. If one extension fails to load, the Agent still starts and reports the error in its health status.
+
+## MCP Servers
+
+Add external tool providers over the Model Context Protocol under `agents.<name>.mcpServers` in `config.yaml`. The map key becomes the server name in canonical Tool names (`mcp:<server>:<tool>`).
+
+MCP Server Tools use the `ask` Permission Policy action by default.
+
+<Tabs syncKey="mcp-transport">
+  <TabItem label="stdio">
+    Run a local MCP Server as a child process:
+
+    ```yaml
+    agents:
+      default:
+        mcpServers:
+          filesystem:
+            transport: stdio
+            command: npx
+            args:
+              - -y
+              - "@modelcontextprotocol/server-filesystem"
+              - /path/to/folder
+            env:
+              API_TOKEN:
+                secret: MY_MCP_TOKEN
+    ```
+
+  </TabItem>
+
+  <TabItem label="HTTP">
+    Connect to a remote MCP Server over HTTP:
+
+    ```yaml
+    agents:
+      default:
+        mcpServers:
+          linear:
+            transport: http
+            url: https://mcp.example.com/mcp
+            headers:
+              Authorization:
+                secret: LINEAR_AUTH_HEADER
+    ```
+
+  </TabItem>
+</Tabs>
+
+Set `enabled: false` on any server entry to disable it without deleting its configuration.
+
+## Skills
+
+A Skill is a folder containing a `SKILL.md` file (and optional supporting files) that an Agent loads on demand with the `read_skill` Tool.
+
+Wheatley loads Skills from two locations:
+
+- **Shared Skills**: `<home>/skills/` (available to every Agent in the Deployment).
+- **Agent Skills**: `<home>/agents/<name>/skills/` (available only to that Agent).
+
+To disable specific Skills for one Agent, list their names under `skills.disabled`:
+
+```yaml
+agents:
+  default:
+    skills:
+      disabled:
+        - unused-skill
+```
+
+## Write a Plugin
+
+A Plugin is an ESM package that contributes Tools and Frontends to an Agent. The `@wheatley-ai/sdk` package exports the Plugin contract and its types.
+
+<Steps>
+  1. Create an ESM package for the Plugin and install `@wheatley-ai/sdk`:
+
+     ```bash
+     npm install @wheatley-ai/sdk
+     ```
+
+2.  Default-export the Plugin from the package entry point:
+
+    ```ts
+    import { definePlugin } from "@wheatley-ai/sdk";
+
+    export default definePlugin({
+      apiVersion: 1,
+      name: "hello",
+      version: "1.0.0",
+      setup: () => ({
+        tools: [
+          {
+            name: "greet",
+            description: "Greets the user",
+            inputSchema: { type: "object", properties: {} },
+            execute: async () => ({
+              content: [{ type: "text", text: "Hello" }],
+            }),
+          },
+        ],
+      }),
+    });
+    ```
+
+3.  Install the Plugin package in the `extensions` folder of the Deployment home:
+
+    ```bash
+    npm install --prefix ~/.wheatley/extensions <plugin package>
+    ```
+
+4.  Add the Plugin to the Agent in `config.yaml`, then restart the Agent:
+
+         ```yaml
+         agents:
+           default:
+             plugins:
+               - source: <plugin package>
+         ```
+
+    </Steps>
+
+`source` also accepts a file path. A path starting with `./` or `../` resolves against the Deployment home. A path starting with `~/` resolves against your home directory.
+
+The Agent sees each Plugin Tool as `<plugin>:<tool>`, for example `hello:greet`. Plugin Tools use the `ask` Permission Policy action by default. Wheatley skips Plugins with an unsupported `apiVersion`.

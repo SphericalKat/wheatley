@@ -1,0 +1,227 @@
+---
+title: Install
+description: Install Wheatley on macOS, Linux, or Docker.
+---
+
+import { Steps, TabItem, Tabs } from "@astrojs/starlight/components";
+
+## Requirements
+
+- Node.js `26.13.1` or newer. The install script downloads Node.js automatically if your machine does not have a compatible version.
+- `pnpm` `12.23.0` when you build from source.
+- An API key for a model provider, for example Anthropic or OpenAI.
+- Docker and Docker Compose if you run the container image.
+
+Each release publishes `@wheatley-ai/cli` and `@wheatley-ai/sdk` to npm, `ghcr.io/sphericalkat/wheatley` to GHCR, the `wheatley` formula to `SphericalKat/homebrew-tap`, and `wheatley-cli` to the AUR.
+
+## Choose an install method
+
+<Tabs syncKey="install-method">
+  <TabItem label="Install script">
+    Works on macOS (`arm64`, `x64`) and glibc Linux (`x64`, `arm64`):
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
+    ```
+
+    To pin a release or skip shell profile edits, pass flags after `--`:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 0.3.0 --no-modify-path
+    ```
+
+    Open a new shell (or run the `export PATH=...` line printed by the script) so `wheatley` is on your `PATH`.
+
+    The script installs files under XDG directories and leaves `~/.wheatley` untouched for your Deployment data:
+
+    | Directory | Contents |
+    | --- | --- |
+    | `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | `@wheatley-ai/cli` package |
+    | `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/runtime` | Managed Node.js `26.13.1` (only if host Node is missing or older) |
+    | `${XDG_BIN_HOME:-$HOME/.local/bin}` | `wheatley` executable |
+
+    :::note
+    - If your machine already has Node.js `26.13.1+` and `npm`, the script reuses them. Otherwise it downloads Node.js `26.13.1` from `https://nodejs.org/dist`, verifies it against `SHASUMS256.txt`, and supports overriding the mirror with `WHEATLEY_NODE_MIRROR`.
+    - On Linux, the managed Node.js binary needs `libatomic` (for example, package `libatomic1` on Debian or Ubuntu).
+    - On musl systems such as Alpine Linux, install Node.js `26.13.1+` through the system package manager first, or use Docker.
+    :::
+
+  </TabItem>
+
+  <TabItem label="npm / pnpm / yarn / bun">
+    Requires Node.js `26.13.1` or newer on your machine:
+
+    <Tabs syncKey="pkg-manager">
+      <TabItem label="npm">
+        ```bash
+        npm install --global @wheatley-ai/cli
+        ```
+      </TabItem>
+      <TabItem label="pnpm">
+        ```bash
+        pnpm add --global @wheatley-ai/cli
+        ```
+      </TabItem>
+      <TabItem label="yarn">
+        ```bash
+        yarn global add @wheatley-ai/cli
+        ```
+      </TabItem>
+      <TabItem label="bun">
+        ```bash
+        bun install --global @wheatley-ai/cli
+        ```
+      </TabItem>
+    </Tabs>
+
+    Append `@<version>` (for example `@wheatley-ai/cli@0.3.0`) to install a specific release.
+
+  </TabItem>
+
+  <TabItem label="Homebrew">
+    ```bash
+    brew install sphericalkat/tap/wheatley
+    ```
+
+    Homebrew installs its `node` formula as a dependency.
+
+  </TabItem>
+
+  <TabItem label="Arch Linux (AUR)">
+    ```bash
+    paru -S wheatley-cli
+    # or
+    yay -S wheatley-cli
+    ```
+
+    The package depends on the Arch `nodejs` package, installs into `/usr/lib/node_modules`, and links `/usr/bin/wheatley`.
+
+  </TabItem>
+
+  <TabItem label="Docker">
+    The image is based on `node:26-trixie-slim`. The container keeps the Deployment home in `/data` and runs `wheatley daemon`.
+
+    | Tag | Points to |
+    | --- | --- |
+    | `<major>.<minor>.<patch>` | One release, for example `0.3.0` |
+    | `<major>.<minor>` | The newest patch release of that minor version |
+    | `<major>` | The newest release of that major version |
+    | `latest` | The newest release |
+
+    :::caution
+    Before version `1.0.0`, a minor version can contain breaking changes.
+    :::
+
+    <Tabs>
+      <TabItem label="Docker Compose">
+        The Compose file in `docker/docker-compose.yml` uses the image tag in `WHEATLEY_TAG` (default `0`) and publishes port `7420` on `127.0.0.1` only.
+
+        <Steps>
+          1. Open the `docker` folder and pull the image:
+
+             ```bash
+             cd docker
+             docker compose pull
+             ```
+
+          2. Create `config.yaml` and `secrets.yaml` in `/data`:
+
+             ```bash
+             docker compose run --rm wheatley wheatley init
+             ```
+
+          3. Make the Control Server listen on all container interfaces:
+
+             ```bash
+             docker compose run --rm wheatley sh -c 'printf "daemon:\n  host: 0.0.0.0\n  port: 7420\n" >> /data/config.yaml'
+             ```
+
+          4. Add your API key to `secrets.yaml`:
+
+             ```bash
+             docker compose run --rm wheatley sh -c 'echo "ANTHROPIC_API_KEY: <your key>" >> /data/secrets.yaml'
+             ```
+
+          5. Start the daemon and open the dashboard at `http://127.0.0.1:7420/`:
+
+             ```bash
+             docker compose up -d
+             ```
+        </Steps>
+      </TabItem>
+
+      <TabItem label="docker run">
+        <Steps>
+          1. Create the volume for the Deployment home:
+
+             ```bash
+             docker volume create wheatley-data
+             ```
+
+          2. Create `config.yaml` and `secrets.yaml`:
+
+             ```bash
+             docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest wheatley init
+             ```
+
+          3. Make the Control Server listen on all container interfaces:
+
+             ```bash
+             docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest sh -c 'printf "daemon:\n  host: 0.0.0.0\n  port: 7420\n" >> /data/config.yaml'
+             ```
+
+          4. Add your API key to `secrets.yaml`:
+
+             ```bash
+             docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest sh -c 'echo "ANTHROPIC_API_KEY: <your key>" >> /data/secrets.yaml'
+             ```
+
+          5. Start the daemon and open the dashboard at `http://127.0.0.1:7420/`:
+
+             ```bash
+             docker run -d --name wheatley --init --restart unless-stopped --stop-timeout 45 \
+               -p 127.0.0.1:7420:7420 -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest
+             ```
+        </Steps>
+      </TabItem>
+    </Tabs>
+
+  </TabItem>
+
+  <TabItem label="Build from source">
+    <Steps>
+      1. Clone the repository and open its folder.
+
+      2. Install dependencies:
+
+         ```bash
+         pnpm install
+         ```
+
+      3. Build every package and the dashboard:
+
+         ```bash
+         pnpm build
+         ```
+
+      4. Run the CLI:
+
+         ```bash
+         node packages/wheatley/bin/wheatley.js --help
+         ```
+    </Steps>
+
+    In a source checkout, replace `wheatley` with `node packages/wheatley/bin/wheatley.js` in the examples across these docs.
+
+  </TabItem>
+</Tabs>
+
+## Verify the installation
+
+Check that the CLI is available on your `PATH`:
+
+```bash
+wheatley --version
+```
+
+Continue to [Quick start](/wheatley/getting-started/quick-start/) to initialize your Deployment and start your first Agent.

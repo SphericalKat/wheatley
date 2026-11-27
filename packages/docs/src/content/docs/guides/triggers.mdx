@@ -1,0 +1,59 @@
+---
+title: Triggers and webhooks
+description: Start Agent Runs on a schedule or from incoming HTTP webhooks.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+A **Trigger** starts a Run without an incoming message. Each Trigger belongs to one Agent and uses one of three schedules:
+
+- `cron`: a five-field cron expression in a time zone.
+- `once`: one execution at a given date or after a delay.
+- `webhook`: an HTTP `POST` request to the Webhook Ingress.
+
+## Create a `cron` or `once` Trigger
+
+Use either of these methods:
+
+- Open the **Triggers and Extensions** view in the dashboard and select **New Trigger**.
+- Ask the Agent in chat, for example: `"Remind me every weekday at 09:00 to check my email"`. The Agent calls the `schedule_trigger` Tool.
+
+An Agent can also inspect and remove its scheduled Triggers with `list_triggers` and `cancel_trigger`. An Agent cannot create or delete a `webhook` Trigger.
+
+## Set up a webhook Trigger
+
+The Webhook Ingress is off by default. Its default host is `127.0.0.1` and its default port is `8788`.
+
+<Steps>
+  1. Enable the Webhook Ingress in `config.yaml` and restart the daemon:
+
+     ```yaml
+     webhooks:
+       enabled: true
+       port: 8788
+     ```
+
+2.  Add a bearer token to `secrets.yaml`:
+
+    ```yaml
+    MY_HOOK_TOKEN: <random value>
+    ```
+
+3.  Open the **Triggers and Extensions** view in the dashboard and create a Trigger with the **Webhook** schedule.
+
+4.  Set **Token secret** to `MY_HOOK_TOKEN`.
+
+5.  Ask the Agent to list its Triggers, then copy the `id` of the new Trigger.
+
+6.  Send an HTTP `POST` request to the Webhook Ingress:
+
+         ```bash
+         curl -X POST \
+           -H "Authorization: Bearer <random value>" \
+           --data 'Build 42 failed' \
+           http://127.0.0.1:8788/webhooks/<agent>/<triggerId>
+         ```
+
+    </Steps>
+
+The Webhook Ingress responds with `202 Accepted` and appends the request body to the Trigger prompt. The maximum request body size is 256 KiB.

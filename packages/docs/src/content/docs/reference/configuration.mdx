@@ -1,0 +1,73 @@
+---
+title: Configuration
+description: Reference for config.yaml, secrets.yaml, Permission Policy, and daemon settings.
+---
+
+`config.yaml` stores Deployment settings. `secrets.yaml` stores secret values with file mode `0600`. `config.yaml` refers to secrets by name only (`{ secret: "<NAME>" }`).
+
+An environment variable with the same name overrides the value in `secrets.yaml`.
+
+:::note After you edit `config.yaml`, restart the changed Agent (or restart the daemon for `daemon` and `webhooks` changes). Wheatley does not restart Agents automatically. :::
+
+## Top-level structure
+
+```yaml
+version: 1
+
+daemon:
+  host: 127.0.0.1
+  port: 7420
+  drainTimeout: 30s
+  allowedOrigins:
+    - http://localhost:5173
+
+webhooks:
+  enabled: false
+  host: 127.0.0.1
+  port: 8788
+
+providers:
+  anthropic:
+    apiKey:
+      secret: ANTHROPIC_API_KEY
+    maxConcurrent: 4
+
+agents:
+  default:
+    model:
+      provider: anthropic
+      id: claude-sonnet-5-5
+```
+
+## Permission Policy
+
+`agents.<name>.permissionPolicy` is an ordered list of rules. Each rule specifies a `tool` pattern and an `action`: `allow`, `ask`, or `deny`. The first matching rule wins. A `*` wildcard matches any text.
+
+```yaml
+agents:
+  default:
+    permissionPolicy:
+      - tool: read_file
+        action: allow
+      - tool: shell
+        action: deny
+      - tool: "mcp:filesystem:*"
+        action: ask
+```
+
+When no rule matches, a Tool uses its default action:
+
+| Tool | Default action |
+| --- | --- |
+| `read_file` | `allow` |
+| `write_file`, `shell` | `ask` |
+| `memory_search`, `memory_read`, `memory_write`, `memory_delete` | `allow` |
+| `schedule_trigger`, `list_triggers`, `cancel_trigger` | `allow` |
+| Plugin Tools (`<plugin>:<tool>`) | `ask` |
+| MCP Server Tools (`mcp:<server>:<tool>`) | `ask` |
+
+Built-in file and shell Tools operate inside `agents/<name>/workspace`.
+
+### Approval timeout
+
+An Approval waits 15 minutes (`15m`) by default. Set `approvalTimeout` on an Agent to change the wait time (for example `30m`), or set `approvalTimeout: null` to wait without a limit.
