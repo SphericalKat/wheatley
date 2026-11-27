@@ -8,7 +8,15 @@ This package installs the `wheatley` command. The daemon, the CLI, and the dashb
 
 ## Install
 
-You need Node.js 26.13.1 or newer.
+On macOS or on Linux with glibc, run the `curl` installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
+```
+
+The installer puts the package in `${XDG_DATA_HOME:-~/.local/share}/wheatley/app` and the `wheatley` command in `${XDG_BIN_HOME:-~/.local/bin}`. If the host has no Node.js 26.13.1 or newer, it downloads Node.js into `${XDG_DATA_HOME:-~/.local/share}/wheatley/runtime`. On Linux, that Node.js needs `libatomic` (`apt-get install libatomic1` on Debian or Ubuntu). To install one release, add `--version <version>`. To prevent changes to your shell profile, add `--no-modify-path`. To update, run the installer again.
+
+To install with npm, you need Node.js 26.13.1 or newer:
 
 ```sh
 npm install -g @wheatley-ai/cli

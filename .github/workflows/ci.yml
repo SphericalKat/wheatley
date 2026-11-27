@@ -29,3 +29,43 @@ jobs:
       - run: pnpm check
 
       - run: pnpm typecheck
+
+  installer:
+    name: curl installer in a clean container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      # The installer installs this pull request's CLI, so the check does not depend on the last npm release.
+      - name: Pack @wheatley-ai/cli
+        run: pnpm --filter @wheatley-ai/cli pack --pack-destination "$RUNNER_TEMP/packages"
+
+      - name: Install with scripts/install.sh in debian:trixie-slim without Node.js
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            --volume "$RUNNER_TEMP/packages:/packages:ro" \
+            --env DEBIAN_FRONTEND=noninteractive \
+            debian:trixie-slim sh -euc '
+              apt-get update
+              apt-get install --yes --no-install-recommends ca-certificates curl libatomic1
+              if command -v node; then
+                echo "The container must not have Node.js before the install." >&2
+                exit 1
+              fi
+              for tarball in /packages/wheatley-ai-cli-*.tgz; do
+                WHEATLEY_PACKAGE_SPEC=$tarball sh /scripts/install.sh
+              done
+              PATH="$HOME/.local/bin:$PATH" wheatley --version
+            '
