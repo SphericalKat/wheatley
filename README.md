@@ -4,124 +4,80 @@ Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript
 
 ## Requirements
 
-- Node.js `26.13.1` or later. The repository pins `26.13.1` in `.node-version`. The `curl` installer downloads Node.js if the host has no Node.js `26.13.1` or later.
-- `pnpm` `12.23.0`, for a build from source.
-- An API key for a model provider, for example Anthropic or OpenAI.
-- Docker with Docker Compose, for the Docker install only.
+- Node.js `26.13.1` or newer (`.node-version`). The install script downloads Node.js automatically if your machine does not have a compatible version.
+- `pnpm` `12.23.0` when building from source.
+- An API key for a model provider (for example Anthropic or OpenAI).
+- Docker and Docker Compose if you run the container image.
 
 ## Install
 
-Each release publishes these artifacts:
+Each release publishes [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli) and [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk) to npm, `ghcr.io/sphericalkat/wheatley` to GHCR, the `wheatley` formula to [`SphericalKat/homebrew-tap`](https://github.com/SphericalKat/homebrew-tap), and [`wheatley-cli`](https://aur.archlinux.org/packages/wheatley-cli) to the AUR.
 
-- The npm package [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli). It contains the daemon, the CLI, and the dashboard.
-- The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
-- The Docker image `ghcr.io/sphericalkat/wheatley`.
-- The Homebrew formula `wheatley` in the tap [`SphericalKat/homebrew-tap`](https://github.com/SphericalKat/homebrew-tap).
-- The AUR package [`wheatley-cli`](https://aur.archlinux.org/packages/wheatley-cli), for Arch Linux.
-- A GitHub release with a `v<version>` tag and the changelog.
+Pick the install method that fits your machine, then check `wheatley --version` and jump to [Quick start](#quick-start).
 
-### Install with the `curl` installer
+### Install script (macOS and Linux)
 
-The installer works on macOS (`arm64` and `x64`) and on Linux with glibc (`x64` and `arm64`).
+Works on macOS (`arm64`, `x64`) and glibc Linux (`x64`, `arm64`):
 
-1. Run the installer:
+```bash
+curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
+```
 
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
-   ```
+To pin a release or skip shell profile edits, pass flags after `--`:
 
-   To install one release, add `--version`:
+```bash
+curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 0.2.0 --no-modify-path
+```
 
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 0.2.0
-   ```
+Open a new shell (or run the `export PATH=...` line printed by the script) so `wheatley` is on your `PATH`.
 
-2. Open a new shell, or run the `export PATH=...` line that the installer prints.
-3. Check the installed version:
+The script installs files under XDG directories and leaves `~/.wheatley` untouched for your Deployment data:
 
-   ```bash
-   wheatley --version
-   ```
-
-4. Continue with the [Quick start](#quick-start).
-
-The installer uses these folders. It does not write to `~/.wheatley`, which holds the Deployment home.
-
-| Folder | Contents |
+| Directory | Contents |
 | --- | --- |
-| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | The installed `@wheatley-ai/cli` package. |
-| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/runtime` | Node.js `26.13.1`, if the host has no suitable Node.js. |
-| `${XDG_BIN_HOME:-$HOME/.local/bin}` | The `wheatley` command. |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | `@wheatley-ai/cli` package |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/runtime` | Managed Node.js `26.13.1` (only if host Node is missing or older) |
+| `${XDG_BIN_HOME:-$HOME/.local/bin}` | `wheatley` executable |
 
-The installer works like this:
+Notes:
 
-- If the host has Node.js `26.13.1` or later with `npm`, the installer uses them. Otherwise, it downloads Node.js `26.13.1` from `https://nodejs.org/dist` and verifies the file against `SHASUMS256.txt`. Set `WHEATLEY_NODE_MIRROR` to use another download site.
-- The downloaded Node.js needs `libatomic` on Linux. On Debian or Ubuntu, run `apt-get install libatomic1`.
-- On musl systems, for example Alpine Linux, the installer stops. Install Node.js `26.13.1` or later with the system package manager and run the installer again, or use Docker.
-- If `~/.local/bin` is not on `PATH`, the installer adds it to the profile of your shell. To prevent this change, add `--no-modify-path`.
-- To update, run the installer again. It keeps the same folders.
+- If your machine already has Node.js `26.13.1+` and `npm`, the script reuses them. Otherwise it downloads Node.js `26.13.1` from `https://nodejs.org/dist`, verifies it against `SHASUMS256.txt`, and supports overriding the mirror with `WHEATLEY_NODE_MIRROR`.
+- On Linux, the managed Node.js binary needs `libatomic` (`apt-get install libatomic1` on Debian or Ubuntu).
+- On musl systems such as Alpine Linux, install Node.js `26.13.1+` through the system package manager first, or use Docker.
 
-### Install from npm
+### npm, pnpm, yarn, or bun
 
-1. Install the latest release globally:
+Requires Node.js `26.13.1` or newer on your machine:
 
-   ```bash
-   npm install --global @wheatley-ai/cli
-   ```
+```bash
+npm install --global @wheatley-ai/cli
+# or
+pnpm add --global @wheatley-ai/cli
+# or
+yarn global add @wheatley-ai/cli
+# or
+bun install --global @wheatley-ai/cli
+```
 
-   With `pnpm`:
+Append `@<version>` (for example `@wheatley-ai/cli@0.2.0`) to install a specific release.
 
-   ```bash
-   pnpm add --global @wheatley-ai/cli
-   ```
+### Homebrew
 
-2. Check the installed version:
+```bash
+brew install sphericalkat/tap/wheatley
+```
 
-   ```bash
-   npm list --global @wheatley-ai/cli
-   ```
+Homebrew installs its `node` formula as a dependency.
 
-3. Continue with the [Quick start](#quick-start).
+### Arch Linux (AUR)
 
-The package puts the `wheatley` command on your `PATH`. To install one version, add it to the package name, for example `@wheatley-ai/cli@0.1.0`.
+```bash
+paru -S wheatley-cli
+# or
+yay -S wheatley-cli
+```
 
-### Install with Homebrew
-
-1. Install the latest release:
-
-   ```bash
-   brew install sphericalkat/tap/wheatley
-   ```
-
-2. Check the installed version:
-
-   ```bash
-   wheatley --version
-   ```
-
-3. Continue with the [Quick start](#quick-start).
-
-The formula installs the Homebrew `node` formula as a dependency. To update a Homebrew install, run `brew upgrade sphericalkat/tap/wheatley`.
-
-### Install from the AUR
-
-On Arch Linux, the AUR package `wheatley-cli` installs the npm release in `/usr/lib/node_modules` and puts `wheatley` in `/usr/bin`. The package depends on the `nodejs` package of Arch Linux.
-
-1. Install the package with an AUR helper:
-
-   ```bash
-   paru -S wheatley-cli
-   ```
-
-   With `yay`:
-
-   ```bash
-   yay -S wheatley-cli
-   ```
-
-2. Continue with the [Quick start](#quick-start).
-
-To update, run `paru -Syu` or `yay -Syu`. Do not use `wheatley update` for an AUR install, because pacman owns the installed files.
+The package depends on Arch's `nodejs` package, installs into `/usr/lib/node_modules`, and links `/usr/bin/wheatley`.
 
 ### Run with Docker
 
@@ -561,39 +517,28 @@ wheatley service status
 
 ### Update
 
-`wheatley update` updates Wheatley to the newest release of its major version:
-
 ```bash
 wheatley update --check
 wheatley update
 wheatley update --method pnpm
 ```
 
-`wheatley update` reads the published versions from the npm registry over HTTP. If `npm_config_registry` is set, it uses that registry.
+`wheatley update` checks the npm registry over HTTP (respecting `npm_config_registry` if set), detects how Wheatley was installed, and upgrades to the newest release in your current major version. Pass `--method` (`npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`) to override detection.
 
-`wheatley update` finds out how you installed Wheatley. `--method` overrides the detection. It accepts `npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`.
-
-| Install method | What `wheatley update` does |
+| Install method | Behavior |
 | --- | --- |
-| npm | Runs `npm install --global @wheatley-ai/cli@<version>`. For an npm prefix from `fnm` or `nvm`, it uses the `npm` and `--prefix` of that prefix. |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>` (targeting the owning `--prefix` for `fnm`/`nvm` installs) |
 | pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
 | yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
 | bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
-| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley`, or `brew upgrade wheatley` for a core formula |
-| `curl` installer | Runs the installer again with `--version <version> --no-modify-path` |
-| Volta | Prints `volta install @wheatley-ai/cli@<version>` |
-| mise | Prints `mise use -g npm:@wheatley-ai/cli@<version>` |
-| AUR | Prints an instruction to update `wheatley-cli` with your AUR helper, for example `paru -Syu` |
-| Docker | Prints the Docker Compose commands |
-| Source checkout | Fails. Use `git`, or pass `--method`. |
+| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley` (or `brew upgrade wheatley` for a core formula) |
+| Install script (`curl`) | Re-runs `scripts/install.sh --version <version> --no-modify-path` |
+| Volta / mise / AUR / Docker | Prints the native update command (`volta install`, `mise use -g`, `paru -Syu`, or `docker compose`) without modifying files |
+| Source checkout | Exits with an error. Update with `git` or pass `--method`. |
 
-After an npm, yarn, or bun update, `wheatley update` reads the version of the running copy again. If the running copy still has the old version, the command fails.
+For `npm`, `yarn`, and `bun`, `wheatley update` re-reads the installed `package.json` afterward and fails if the running copy did not change version.
 
-`wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
-
-For an AUR install, update with your AUR helper, for example `paru -Syu wheatley-cli`. Do not use `wheatley update` there, because pacman owns the installed files.
-
-After an update, restart the daemon, for example with `wheatley service restart`.
+Major version upgrades are never installed automatically. Instead, `wheatley update` prints the upgrade command for your install method. After updating, restart the daemon (for example `wheatley service restart`).
 
 ### Restore an Agent database
 
