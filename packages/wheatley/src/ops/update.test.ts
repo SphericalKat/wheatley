@@ -62,8 +62,28 @@ describe("major-version guard", () => {
     expect(selectUpdate("1.0.0-rc.2", ["1.0.0"]).target).toBe("1.0.0");
   });
 
+  it("ignores versions that are not in canonical form", () => {
+    expect(
+      selectUpdate("1.0.0", ["v1.0.3", "=1.0.4", " 1.0.5", "1.0.6 ", "1.0.2"])
+    ).toStrictEqual({ newerMajor: undefined, target: "1.0.2" });
+  });
+
+  it("returns the published text of a release with build metadata", () => {
+    expect(
+      selectUpdate("1.0.0", ["1.0.1+build.5", "2.0.0+sha.1"])
+    ).toStrictEqual({ newerMajor: "2.0.0+sha.1", target: "1.0.1+build.5" });
+  });
+
   it("rejects an invalid installed version", () => {
-    expect(() => selectUpdate("next", ["1.0.0"])).toThrow("semantic version");
+    expect(() => selectUpdate("next", ["1.0.0"])).toThrow(
+      "The installed version is not a semantic version: next"
+    );
+  });
+
+  it("rejects an installed version with a v prefix", () => {
+    expect(() => selectUpdate("v1.0.0", ["1.0.1"])).toThrow(
+      "The installed version is not a semantic version: v1.0.0"
+    );
   });
 });
 

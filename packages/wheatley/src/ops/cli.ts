@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
-import { parseArgs } from "node:util";
+
+import { Argument, Option } from "commander";
+import type { Command } from "commander";
 
 import { systemClock } from "../contracts/module.js";
 import type { Clock } from "../contracts/module.js";
@@ -14,7 +16,7 @@ import {
   packageBinScript,
   resolveServiceSpec,
 } from "./service.js";
-import type { ServiceManagerOptions } from "./service.js";
+import type { ServiceManager, ServiceManagerOptions } from "./service.js";
 import {
   applyUpgrade,
   packageDir,
@@ -30,15 +32,6 @@ export interface CliIo {
   /** Writes one line of error or usage output, for example to stderr. `line` has no line break at the end. */
   readonly err: (line: string) => void;
 }
-
-/**
- * One `wheatley` subcommand. `args` are the arguments after the subcommand name. Resolves with the process exit code:
- * 0 for success, 1 for a failure, and 2 for a usage error. It never rejects: it writes errors to `io.err`.
- */
-export type CliCommand = (
-  args: readonly string[],
-  io: CliIo
-) => Promise<number>;
 
 /** What the ops CLI commands need from the host. */
 export interface OpsCliDeps extends ServiceManagerOptions {
@@ -81,117 +74,88 @@ export const hostCliDeps = (
 
 const EXIT_OK = 0;
 const EXIT_FAILURE = 1;
-const EXIT_USAGE = 2;
 
-const SERVICE_USAGE =
-  "Usage: wheatley service <install|start|stop|restart|status>";
+/** The parsed options of a subcommand that declares none. */
+type NoOptions = Readonly<Record<string, never>>;
 
-const UPDATE_USAGE = `Usage: wheatley update [--check] [--method ${UPDATE_METHODS.join("|")}]`;
-const RESTORE_USAGE = "Usage: wheatley restore <agent> [backup]";
+const SERVICE_ACTIONS = [
+  "install",
+  "start",
+  "stop",
+  "restart",
+  "status",
+] as const;
 
-class UsageError extends Error {
-  override readonly name = "UsageError";
-}
+/** A `wheatley service` action. Commander accepts only these values. */
+type ServiceAction = (typeof SERVICE_ACTIONS)[number];
 
-const isUsageError = (error: Error): boolean =>
-  error instanceof UsageError ||
-  ("code" in error && String(error.code).startsWith("ERR_PARSE_ARGS"));
+/** Runs `body` and turns a thrown error into exit code 1 and a line on `io.err`, so that a command never rejects. */
+const guarded = async (
+  io: CliIo,
+  body: () => Promise<number>
+): Promise<number> => {
+  try {
+    return await body();
+  } catch (error) {
+    io.err(error instanceof Error ? error.message : String(error));
 
-/** Turns thrown errors into exit codes, so that a command never rejects. */
-const guarded =
-  (usage: string, body: CliCommand): CliCommand =>
-  async (args, io) => {
-    try {
-      return await body(args, io);
-    } catch (error) {
-      const failure = error instanceof Error ? error : new Error(String(error));
-      io.err(failure.message);
+    return EXIT_FAILURE;
+  }
+};
 
-      if (isUsageError(failure)) {
-        io.err(usage);
-
-        return EXIT_USAGE;
-      }
-
-      return EXIT_FAILURE;
-    }
-  };
-
-const serviceCommand =
-  (deps: OpsCliDeps): CliCommand =>
-  async (args, io) => {
-    const { positionals } = parseArgs({
-      allowPositionals: true,
-      args: [...args],
+/** The steps of each `wheatley service` action. */
+const SERVICE_STEPS: Readonly<
+  Record<
+    ServiceAction,
+    (manager: ServiceManager, deps: OpsCliDeps, io: CliIo) => Promise<void>
+  >
+> = {
+  install: async (manager, deps, io) => {
+    const spec = await resolveServiceSpec({
+      binScript: packageBinScript(),
+      env: deps.env,
+      execPath: deps.execPath,
+      homeDir: deps.homeDir,
+      drainTimeoutMs: deps.drainTimeoutMs,
     });
 
-    const [action, ...extra] = positionals;
+    const result = await manager.install(spec);
+    io.out(`Installed the ${manager.kind} unit: ${result.unitPath}`);
 
-    if (action === undefined || extra.length > 0) {
-      throw new UsageError("Pass exactly one service action.");
+    for (const note of result.notes) {
+      io.out(note);
     }
+  },
+  restart: async (manager, _deps, io) => {
+    await manager.restart();
+    io.out("Restarted the Wheatley service.");
+  },
+  start: async (manager, _deps, io) => {
+    await manager.start();
+    io.out("Started the Wheatley service.");
+  },
+  status: async (manager, _deps, io) => {
+    const status = await manager.status();
+    io.out(`Manager: ${status.manager}`);
+    io.out(`Unit: ${status.unitPath}`);
+    io.out(`State: ${status.state}`);
+    io.out(`PID: ${status.pid ?? "-"}`);
+  },
+  stop: async (manager, _deps, io) => {
+    await manager.stop();
+    io.out("Stopped the Wheatley service.");
+  },
+};
 
-    const manager = createServiceManager(deps);
+const serviceCommand = async (
+  deps: OpsCliDeps,
+  io: CliIo,
+  action: ServiceAction
+): Promise<number> => {
+  await SERVICE_STEPS[action](createServiceManager(deps), deps, io);
 
-    switch (action) {
-      case "install": {
-        const spec = await resolveServiceSpec({
-          binScript: packageBinScript(),
-          env: deps.env,
-          execPath: deps.execPath,
-          homeDir: deps.homeDir,
-          drainTimeoutMs: deps.drainTimeoutMs,
-        });
-
-        const result = await manager.install(spec);
-        io.out(`Installed the ${manager.kind} unit: ${result.unitPath}`);
-
-        for (const note of result.notes) {
-          io.out(note);
-        }
-
-        return EXIT_OK;
-      }
-
-      case "start": {
-        await manager.start();
-        io.out("Started the Wheatley service.");
-
-        return EXIT_OK;
-      }
-
-      case "stop": {
-        await manager.stop();
-        io.out("Stopped the Wheatley service.");
-
-        return EXIT_OK;
-      }
-
-      case "restart": {
-        await manager.restart();
-        io.out("Restarted the Wheatley service.");
-
-        return EXIT_OK;
-      }
-
-      case "status": {
-        const status = await manager.status();
-        io.out(`Manager: ${status.manager}`);
-        io.out(`Unit: ${status.unitPath}`);
-        io.out(`State: ${status.state}`);
-        io.out(`PID: ${status.pid ?? "-"}`);
-
-        return EXIT_OK;
-      }
-
-      default: {
-        throw new UsageError(`Unknown service action: ${action}`);
-      }
-    }
-  };
-
-const isUpdateMethod = (value: string): value is UpdateMethod =>
-  UPDATE_METHODS.some((method) => method === value);
+  return EXIT_OK;
+};
 
 const newerMajorLines = (major: NewerMajor): string[] => {
   const intro = `Wheatley ${major.version} is a new major version. wheatley update stays within the current major version. Read the release notes, then`;
@@ -201,167 +165,220 @@ const newerMajorLines = (major: NewerMajor): string[] => {
     : [`${intro}:`, ...major.action.lines];
 };
 
-const updateCommand =
-  (deps: OpsCliDeps): CliCommand =>
-  async (args, io) => {
-    const { values } = parseArgs({
-      args: [...args],
-      options: {
-        check: { type: "boolean" },
-        method: { type: "string" },
-      },
-    });
-
-    if (values.method !== undefined && !isUpdateMethod(values.method)) {
-      throw new UsageError(`Unknown install method: ${values.method}`);
-    }
-
-    const installation = await resolveInstallation({
-      env: deps.env,
-      execPath: deps.execPath,
-      method: values.method,
-      packageDir: deps.packageDir,
-      platform: deps.platform,
-      runner: deps.runner,
-      userHome: deps.userHome,
-    });
-
-    const plan = await planUpdate({
-      current: await readPackageVersion(installation.packageDir),
-      env: deps.env,
-      fetch: deps.fetch,
-      installation,
-    });
-
-    if (plan.kind === "docker") {
-      io.out(
-        "This Wheatley runs in Docker. In the folder of docker-compose.yml, run:"
-      );
-
-      for (const command of plan.commands) {
-        io.out(`  ${command}`);
-      }
-
-      return EXIT_OK;
-    }
-
-    const newerMajor =
-      plan.newerMajor === undefined ? [] : newerMajorLines(plan.newerMajor);
-
-    if (plan.kind === "up_to_date") {
-      io.out(
-        `Wheatley ${plan.current} is the newest release of its major version.`
-      );
-    } else if (plan.action.kind === "notice") {
-      io.out(
-        `Wheatley ${plan.target} is available. This Wheatley runs ${plan.current}.`
-      );
-
-      for (const line of plan.action.lines) {
-        io.out(line);
-      }
-    } else if (values.check === true) {
-      io.out(
-        `Update available: ${plan.current} -> ${plan.target}. Run: wheatley update`
-      );
-    } else {
-      io.out(
-        `Updating Wheatley ${plan.current} -> ${plan.target}: ${plan.action.command.join(" ")}`
-      );
-      await applyUpgrade(plan.action, {
-        packageDir: installation.packageDir,
-        runner: deps.runner,
-        target: plan.target,
-        workDir: deps.userHome,
-      });
-      io.out(
-        `Updated Wheatley to ${plan.target}. If the daemon runs as a service, run: wheatley service restart`
-      );
-    }
-
-    for (const line of newerMajor) {
-      io.out(line);
-    }
-
-    return EXIT_OK;
-  };
-
-const restoreCommand =
-  (deps: OpsCliDeps): CliCommand =>
-  async (args, io) => {
-    const { positionals } = parseArgs({
-      allowPositionals: true,
-      args: [...args],
-    });
-
-    const [agent, backup, ...extra] = positionals;
-
-    if (agent === undefined || extra.length > 0) {
-      throw new UsageError("Pass an Agent name and at most one backup.");
-    }
-
-    const agentDir = agentDirFor(deps.homeDir, agent);
-
-    if (backup === undefined) {
-      const backups = await listBackups(agentDir);
-      io.out(
-        backups.length === 0
-          ? `Agent ${agent} has no backups.`
-          : `Backups of Agent ${agent}, newest first:`
-      );
-
-      for (const info of backups) {
-        io.out(`  ${info.file}  (${info.reason}, ${info.createdAt})`);
-      }
-
-      return EXIT_OK;
-    }
-
-    if (await deps.isDaemonRunning()) {
-      io.err(
-        "The Wheatley daemon is running and holds agent.sqlite open. Stop it first, for example: wheatley service stop"
-      );
-
-      return EXIT_FAILURE;
-    }
-
-    const result = await restoreAgentBackup({
-      agentDir,
-      backup,
-      clock: deps.clock,
-    });
-
-    io.out(`Restored Agent ${agent} from ${result.restoredFrom}.`);
-
-    if (result.safetyBackup !== undefined) {
-      io.out(
-        `The replaced agent.sqlite is in backup ${result.safetyBackup.file}.`
-      );
-    }
-
-    return EXIT_OK;
-  };
-
-/** The ops subcommands, by name, for the CLI root. */
-export interface OpsCommands {
-  /** `wheatley service <install|start|stop|restart|status>` */
-  readonly service: CliCommand;
-  /** `wheatley update [--check] [--method npm|pnpm|yarn|bun|brew|curl]` */
-  readonly update: CliCommand;
-  /**
-   * `wheatley restore <agent> [backup]`
-   *
-   * - Without `backup`, it lists the Agent's backups on stdout and exits 0.
-   * - With `backup`, it restores that backup and exits 0.
-   * - A missing Agent name, an extra argument, or an unknown option prints the usage on stderr and exits 2.
-   * - A running daemon, an invalid Agent name, or a failed restore prints the error on stderr and exits 1.
-   */
-  readonly restore: CliCommand;
+/** The options of `wheatley update`. */
+interface UpdateOptions {
+  readonly check?: boolean;
+  /** Commander accepts only the values of `UPDATE_METHODS`. */
+  readonly method?: UpdateMethod;
 }
 
-/** Creates the ops subcommand handlers. */
-export const createOpsCommands = (deps: OpsCliDeps): OpsCommands => ({
-  restore: guarded(RESTORE_USAGE, restoreCommand(deps)),
-  service: guarded(SERVICE_USAGE, serviceCommand(deps)),
-  update: guarded(UPDATE_USAGE, updateCommand(deps)),
-});
+const updateCommand = async (
+  deps: OpsCliDeps,
+  io: CliIo,
+  values: UpdateOptions
+): Promise<number> => {
+  const installation = await resolveInstallation({
+    env: deps.env,
+    execPath: deps.execPath,
+    method: values.method,
+    packageDir: deps.packageDir,
+    platform: deps.platform,
+    runner: deps.runner,
+    userHome: deps.userHome,
+  });
+
+  const plan = await planUpdate({
+    current: await readPackageVersion(installation.packageDir),
+    env: deps.env,
+    fetch: deps.fetch,
+    installation,
+  });
+
+  if (plan.kind === "docker") {
+    io.out(
+      "This Wheatley runs in Docker. In the folder of docker-compose.yml, run:"
+    );
+
+    for (const command of plan.commands) {
+      io.out(`  ${command}`);
+    }
+
+    return EXIT_OK;
+  }
+
+  const newerMajor =
+    plan.newerMajor === undefined ? [] : newerMajorLines(plan.newerMajor);
+
+  if (plan.kind === "up_to_date") {
+    io.out(
+      `Wheatley ${plan.current} is the newest release of its major version.`
+    );
+  } else if (plan.action.kind === "notice") {
+    io.out(
+      `Wheatley ${plan.target} is available. This Wheatley runs ${plan.current}.`
+    );
+
+    for (const line of plan.action.lines) {
+      io.out(line);
+    }
+  } else if (values.check === true) {
+    io.out(
+      `Update available: ${plan.current} -> ${plan.target}. Run: wheatley update`
+    );
+  } else {
+    io.out(
+      `Updating Wheatley ${plan.current} -> ${plan.target}: ${plan.action.command.join(" ")}`
+    );
+    await applyUpgrade(plan.action, {
+      packageDir: installation.packageDir,
+      runner: deps.runner,
+      target: plan.target,
+      workDir: deps.userHome,
+    });
+    io.out(
+      `Updated Wheatley to ${plan.target}. If the daemon runs as a service, run: wheatley service restart`
+    );
+  }
+
+  for (const line of newerMajor) {
+    io.out(line);
+  }
+
+  return EXIT_OK;
+};
+
+const restoreCommand = async (
+  deps: OpsCliDeps,
+  io: CliIo,
+  agent: string,
+  backup: string | undefined
+): Promise<number> => {
+  const agentDir = agentDirFor(deps.homeDir, agent);
+
+  if (backup === undefined) {
+    const backups = await listBackups(agentDir);
+    io.out(
+      backups.length === 0
+        ? `Agent ${agent} has no backups.`
+        : `Backups of Agent ${agent}, newest first:`
+    );
+
+    for (const info of backups) {
+      io.out(`  ${info.file}  (${info.reason}, ${info.createdAt})`);
+    }
+
+    return EXIT_OK;
+  }
+
+  if (await deps.isDaemonRunning()) {
+    io.err(
+      "The Wheatley daemon is running and holds agent.sqlite open. Stop it first, for example: wheatley service stop"
+    );
+
+    return EXIT_FAILURE;
+  }
+
+  const result = await restoreAgentBackup({
+    agentDir,
+    backup,
+    clock: deps.clock,
+  });
+
+  io.out(`Restored Agent ${agent} from ${result.restoredFrom}.`);
+
+  if (result.safetyBackup !== undefined) {
+    io.out(
+      `The replaced agent.sqlite is in backup ${result.safetyBackup.file}.`
+    );
+  }
+
+  return EXIT_OK;
+};
+
+/** What the ops subcommands of `addOpsCommands` need from the CLI root. */
+export interface OpsCommandHost {
+  /** The dependencies for one parsed subcommand, for example with the Deployment home of its `--home`. */
+  readonly deps: (command: Command) => OpsCliDeps;
+  readonly io: CliIo;
+  /** Receives the exit code of the subcommand: 0 for success and 1 for a failure. */
+  readonly exit: (code: number) => void;
+}
+
+/**
+ * Adds `service`, `update`, and `restore` to `program`. Call it after the root options and the output, help, and
+ * exit settings of `program`, because subcommands copy those settings when they are created.
+ *
+ * - `wheatley service <install|start|stop|restart|status>`
+ * - `wheatley update [--check] [--method npm|pnpm|yarn|bun|brew|curl]`
+ * - `wheatley restore <agent> [backup]`: without `backup`, it lists the Agent's backups on stdout. With `backup`, it
+ *   restores that backup. A running daemon, an invalid Agent name, or a failed restore prints the error on stderr and
+ *   exits 1.
+ *
+ * Commander reports usage errors, for example a missing Agent name or an unknown option, before an action runs.
+ */
+export const addOpsCommands = (
+  program: Command,
+  host: OpsCommandHost
+): void => {
+  const run = async (
+    command: Command,
+    body: (deps: OpsCliDeps) => Promise<number>
+  ): Promise<void> => {
+    host.exit(
+      await guarded(host.io, async () => await body(host.deps(command)))
+    );
+  };
+
+  program
+    .command("service")
+    .description(
+      "Install or control the Wheatley service: install, start, stop, restart, status"
+    )
+    .addArgument(
+      new Argument("<action>", "The service action").choices(SERVICE_ACTIONS)
+    )
+    .action(
+      async (action: ServiceAction, _options: NoOptions, command: Command) => {
+        await run(
+          command,
+          async (deps) => await serviceCommand(deps, host.io, action)
+        );
+      }
+    );
+
+  program
+    .command("update")
+    .description("Update Wheatley within its major version")
+    .option("--check", "Report an available update and install nothing")
+    .addOption(
+      new Option(
+        "--method <method>",
+        "The install method of this Wheatley"
+      ).choices(UPDATE_METHODS)
+    )
+    .action(async (options: UpdateOptions, command: Command) => {
+      await run(
+        command,
+        async (deps) => await updateCommand(deps, host.io, options)
+      );
+    });
+
+  program
+    .command("restore")
+    .description("List the backups of an Agent, or restore its agent.sqlite")
+    .argument("<agent>", "The Agent name")
+    .argument("[backup]", "The backup file to restore")
+    .action(
+      async (
+        agent: string,
+        backup: string | undefined,
+        _options: NoOptions,
+        command: Command
+      ) => {
+        await run(
+          command,
+          async (deps) => await restoreCommand(deps, host.io, agent, backup)
+        );
+      }
+    );
+};

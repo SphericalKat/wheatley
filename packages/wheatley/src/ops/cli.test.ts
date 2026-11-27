@@ -5,37 +5,16 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { runCli } from "../cli/main.js";
 import type { Clock } from "../contracts/module.js";
 import { openAgentDatabase } from "../db/database.js";
 import { runMigrations } from "../db/migrations.js";
 import { backupAgentDatabase } from "./backup.js";
-import { createOpsCommands } from "./cli.js";
-import type { CliIo, OpsCliDeps } from "./cli.js";
+import type { OpsCliDeps } from "./cli.js";
 import { FakeCommandRunner } from "./command-runner.fake.js";
 import type { FetchFn } from "./registry.js";
 
 const clock: Clock = { now: () => Date.parse("2026-11-26T09:30:00.000Z") };
-
-interface CapturedIo extends CliIo {
-  readonly stdout: string[];
-  readonly stderr: string[];
-}
-
-const captureIo = (): CapturedIo => {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-
-  return {
-    err: (line) => {
-      stderr.push(line);
-    },
-    out: (line) => {
-      stdout.push(line);
-    },
-    stderr,
-    stdout,
-  };
-};
 
 let home = "";
 
@@ -79,6 +58,53 @@ const deps = (overrides: Partial<OpsCliDeps> = {}): OpsCliDeps => ({
   ...overrides,
 });
 
+/** The output of one `wheatley` run, split into lines without the final line break. */
+interface OpsResult {
+  readonly code: number;
+  readonly stdout: string[];
+  readonly stderr: string[];
+}
+
+const outputLines = (chunks: readonly string[]): string[] => {
+  const text = chunks.join("");
+
+  return text === "" ? [] : text.replace(/\n$/u, "").split("\n");
+};
+
+// Standard input without lines: the ops commands read none.
+const noInput = async function* noInput(): AsyncGenerator<string> {
+  await Promise.resolve();
+  yield* [];
+};
+
+/** Runs `wheatley --home <home> ...argv` with the test dependencies of `service`, `update`, and `restore`. */
+const run = async (
+  argv: readonly string[],
+  overrides: Partial<OpsCliDeps> = {}
+): Promise<OpsResult> => {
+  const out: string[] = [];
+  const err: string[] = [];
+
+  const code = await runCli(
+    ["--home", home, ...argv],
+    {
+      env: {},
+      isTTY: false,
+      lines: noInput(),
+      shutdown: new AbortController().signal,
+      stderr: (text) => {
+        err.push(text);
+      },
+      stdout: (text) => {
+        out.push(text);
+      },
+    },
+    { ops: deps(overrides) }
+  );
+
+  return { code, stderr: outputLines(err), stdout: outputLines(out) };
+};
+
 const seedBackup = async (): Promise<string> => {
   const agentDir = path.join(home, "agents", "home");
   await mkdir(agentDir, { recursive: true });
@@ -103,114 +129,112 @@ const seedBackup = async (): Promise<string> => {
 describe("wheatley restore", () => {
   it("restores a backup by file name", async () => {
     const file = await seedBackup();
-    const io = captureIo();
 
-    const code = await createOpsCommands(deps()).restore(["home", file], io);
+    const result = await run(["restore", "home", file]);
 
-    expect(code).toBe(0);
-    expect(io.stdout[0]).toContain(
+    expect(result.code).toBe(0);
+    expect(result.stdout[0]).toContain(
       `Restored Agent home from ${path.join(home, "agents", "home", "backups", file)}`
     );
   });
 
   it("refuses while the daemon runs", async () => {
     const file = await seedBackup();
-    const io = captureIo();
 
-    const commands = createOpsCommands(
-      deps({ isDaemonRunning: async () => await Promise.resolve(true) })
-    );
+    const result = await run(["restore", "home", file], {
+      isDaemonRunning: async () => await Promise.resolve(true),
+    });
 
-    await expect(commands.restore(["home", file], io)).resolves.toBe(1);
-    expect(io.stderr.join("\n")).toContain("wheatley service stop");
+    expect(result.code).toBe(1);
+    expect(result.stderr.join("\n")).toContain("wheatley service stop");
   });
 
   it("lists the backups and exits 0 if no backup is named", async () => {
     const file = await seedBackup();
-    const io = captureIo();
 
-    await expect(createOpsCommands(deps()).restore(["home"], io)).resolves.toBe(
-      0
-    );
-    expect(io.stdout).toEqual([
+    const result = await run(["restore", "home"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toEqual([
       "Backups of Agent home, newest first:",
       `  ${file}  (pre-migration, 2026-11-26T09:30:00.000Z)`,
     ]);
-    expect(io.stderr).toEqual([]);
+    expect(result.stderr).toEqual([]);
   });
 
   it("reports an Agent without backups and exits 0", async () => {
-    const io = captureIo();
+    const result = await run(["restore", "home"]);
 
-    await expect(createOpsCommands(deps()).restore(["home"], io)).resolves.toBe(
-      0
-    );
-    expect(io.stdout).toEqual(["Agent home has no backups."]);
-    expect(io.stderr).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toEqual(["Agent home has no backups."]);
+    expect(result.stderr).toEqual([]);
   });
 
   it("prints the usage and exits 2 without an Agent name", async () => {
-    const io = captureIo();
+    const result = await run(["restore"]);
 
-    await expect(createOpsCommands(deps()).restore([], io)).resolves.toBe(2);
-    expect(io.stdout).toEqual([]);
-    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
+    expect(result.code).toBe(2);
+    expect(result.stdout).toEqual([]);
+    expect(result.stderr).toContain("error: missing required argument 'agent'");
+    expect(result.stderr).toContain(
+      "Usage: wheatley restore [options] <agent> [backup]"
+    );
   });
 
   it("prints the usage and exits 2 for an extra argument", async () => {
-    const io = captureIo();
+    const result = await run(["restore", "home", "a.sqlite", "b"]);
 
-    await expect(
-      createOpsCommands(deps()).restore(["home", "a.sqlite", "b"], io)
-    ).resolves.toBe(2);
-    expect(io.stdout).toEqual([]);
-    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
+    expect(result.code).toBe(2);
+    expect(result.stdout).toEqual([]);
+    expect(result.stderr).toContain(
+      "Usage: wheatley restore [options] <agent> [backup]"
+    );
   });
 
   it("prints the usage and exits 2 for an unknown option", async () => {
     await seedBackup();
-    const io = captureIo();
 
-    await expect(
-      createOpsCommands(deps()).restore(["home", "--bogus"], io)
-    ).resolves.toBe(2);
-    expect(io.stdout).toEqual([]);
-    expect(io.stderr).toContain("Usage: wheatley restore <agent> [backup]");
+    const result = await run(["restore", "home", "--bogus"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toEqual([]);
+    expect(result.stderr).toContain("error: unknown option '--bogus'");
+    expect(result.stderr).toContain(
+      "Usage: wheatley restore [options] <agent> [backup]"
+    );
   });
 
   it("rejects an Agent name that would leave the agents folder", async () => {
-    const io = captureIo();
+    const result = await run(["restore", "../etc", "x.sqlite"]);
 
-    await expect(
-      createOpsCommands(deps()).restore(["../etc", "x.sqlite"], io)
-    ).resolves.toBe(1);
-    expect(io.stderr[0]).toContain("Invalid Agent name");
+    expect(result.code).toBe(1);
+    expect(result.stderr[0]).toContain("Invalid Agent name");
   });
 });
 
 describe("wheatley service", () => {
   it("installs the systemd unit for the Wheatley home folder", async () => {
     const runner = new FakeCommandRunner();
-    const io = captureIo();
 
-    const code = await createOpsCommands(deps({ runner })).service(
-      ["install"],
-      io
-    );
+    const result = await run(["service", "install"], { runner });
 
-    expect(code).toBe(0);
-    expect(io.stdout[0]).toContain("wheatley.service");
+    expect(result.code).toBe(0);
+    expect(result.stdout[0]).toContain("wheatley.service");
     expect(runner.lines).toContain("systemctl --user enable wheatley.service");
   });
 
   it("returns a usage error for an unknown action or a bad flag", async () => {
-    const io = captureIo();
-    const commands = createOpsCommands(deps());
+    const unknown = await run(["service", "launch"]);
+    const badFlag = await run(["service", "start", "--now"]);
 
-    await expect(commands.service(["launch"], io)).resolves.toBe(2);
-    await expect(commands.service(["start", "--now"], io)).resolves.toBe(2);
-    expect(io.stderr).toContain(
-      "Usage: wheatley service <install|start|stop|restart|status>"
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain(
+      "error: command-argument value 'launch' is invalid for argument 'action'. Allowed choices are install, start, stop, restart, status."
+    );
+    expect(badFlag.code).toBe(2);
+    expect(badFlag.stderr).toContain("error: unknown option '--now'");
+    expect(badFlag.stderr).toContain(
+      "Usage: wheatley service [options] <action>"
     );
   });
 });
@@ -226,15 +250,13 @@ const registry =
 
 describe("wheatley update", () => {
   it("prints the Docker Compose commands in Docker", async () => {
-    const io = captureIo();
+    const result = await run(["update"], {
+      env: { WHEATLEY_DOCKER: "1", WHEATLEY_HOME: home },
+    });
 
-    const commands = createOpsCommands(
-      deps({ env: { WHEATLEY_DOCKER: "1", WHEATLEY_HOME: home } })
-    );
-
-    await expect(commands.update([], io)).resolves.toBe(0);
-    expect(io.stdout).toContain("  docker compose pull");
-    expect(io.stdout).toContain("  docker compose up -d");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("  docker compose pull");
+    expect(result.stdout).toContain("  docker compose up -d");
   });
 
   it("checks within the major version and only reports a new major version", async () => {
@@ -247,18 +269,15 @@ describe("wheatley update", () => {
     );
 
     const runner = new FakeCommandRunner();
-    const io = captureIo();
 
-    const code = await createOpsCommands(
-      deps({
-        fetch: registry(["1.0.0", "1.0.1", "2.0.0"]),
-        packageDir,
-        runner,
-      })
-    ).update(["--check", "--method", "npm"], io);
+    const result = await run(["update", "--check", "--method", "npm"], {
+      fetch: registry(["1.0.0", "1.0.1", "2.0.0"]),
+      packageDir,
+      runner,
+    });
 
-    expect(code).toBe(0);
-    expect(io.stdout).toStrictEqual([
+    expect(result.code).toBe(0);
+    expect(result.stdout).toStrictEqual([
       "Update available: 1.0.0 -> 1.0.1. Run: wheatley update",
       `Wheatley 2.0.0 is a new major version. wheatley update stays within the current major version. Read the release notes, then run: npm install --global --prefix ${home} @wheatley-ai/cli@2.0.0`,
     ]);
@@ -289,18 +308,18 @@ describe("wheatley update", () => {
         : { exitCode: 1 };
     });
 
-    const io = captureIo();
+    const result = await run(["update"], {
+      fetch: registry(["1.0.0", "1.2.0"]),
+      packageDir,
+      runner,
+    });
 
-    const code = await createOpsCommands(
-      deps({ fetch: registry(["1.0.0", "1.2.0"]), packageDir, runner })
-    ).update([], io);
-
-    expect(io.stderr).toStrictEqual([]);
-    expect(code).toBe(0);
+    expect(result.stderr).toStrictEqual([]);
+    expect(result.code).toBe(0);
     expect(runner.lines).toContain(
       "bun install --global @wheatley-ai/cli@1.2.0"
     );
-    expect(io.stdout.at(-1)).toBe(
+    expect(result.stdout.at(-1)).toBe(
       "Updated Wheatley to 1.2.0. If the daemon runs as a service, run: wheatley service restart"
     );
   });
@@ -314,14 +333,15 @@ describe("wheatley update", () => {
       "cli"
     );
 
-    const io = captureIo();
+    const result = await run(["update", "--method", "yarn"], {
+      fetch: registry(["1.2.0"]),
+      packageDir,
+    });
 
-    const code = await createOpsCommands(
-      deps({ fetch: registry(["1.2.0"]), packageDir })
-    ).update(["--method", "yarn"], io);
-
-    expect(code).toBe(1);
-    expect(io.stderr[0]).toContain(`${packageDir} still has Wheatley 1.0.0`);
+    expect(result.code).toBe(1);
+    expect(result.stderr[0]).toContain(
+      `${packageDir} still has Wheatley 1.0.0`
+    );
   });
 
   it("prints instructions for a Volta install and changes nothing", async () => {
@@ -340,14 +360,15 @@ describe("wheatley update", () => {
     );
 
     const runner = new FakeCommandRunner();
-    const io = captureIo();
 
-    const code = await createOpsCommands(
-      deps({ fetch: registry(["1.0.3"]), packageDir, runner })
-    ).update([], io);
+    const result = await run(["update"], {
+      fetch: registry(["1.0.3"]),
+      packageDir,
+      runner,
+    });
 
-    expect(code).toBe(0);
-    expect(io.stdout).toStrictEqual([
+    expect(result.code).toBe(0);
+    expect(result.stdout).toStrictEqual([
       "Wheatley 1.0.3 is available. This Wheatley runs 1.0.0.",
       "Volta manages this Wheatley. To update it, run:",
       "  volta install @wheatley-ai/cli@1.0.3",
@@ -356,20 +377,22 @@ describe("wheatley update", () => {
   });
 
   it("refuses a source checkout", async () => {
-    const io = captureIo();
+    const result = await run(["update"]);
 
-    await expect(createOpsCommands(deps()).update([], io)).resolves.toBe(1);
-    expect(io.stderr[0]).toContain("source checkout");
+    expect(result.code).toBe(1);
+    expect(result.stderr[0]).toContain("source checkout");
   });
 
   it("rejects an unknown method and the removed --manager flag", async () => {
-    const io = captureIo();
-    const commands = createOpsCommands(deps());
+    const method = await run(["update", "--method", "apt"]);
+    const manager = await run(["update", "--manager", "npm"]);
 
-    await expect(commands.update(["--method", "apt"], io)).resolves.toBe(2);
-    await expect(commands.update(["--manager", "npm"], io)).resolves.toBe(2);
-    expect(io.stderr).toContain(
-      "Usage: wheatley update [--check] [--method npm|pnpm|yarn|bun|brew|curl]"
+    expect(method.code).toBe(2);
+    expect(method.stderr).toContain(
+      "error: option '--method <method>' argument 'apt' is invalid. Allowed choices are npm, pnpm, yarn, bun, brew, curl."
     );
+    expect(manager.code).toBe(2);
+    expect(manager.stderr).toContain("error: unknown option '--manager'");
+    expect(manager.stderr).toContain("Usage: wheatley update [options]");
   });
 });

@@ -223,7 +223,7 @@ it("serves the built dashboard SPA on / and accepts /ws only from its own or all
   expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
   expect(await page.text()).toBe(index);
 
-  const deepRoute = await fetch(`${harness.httpUrl()}/config/agents/home`);
+  const deepRoute = await fetch(`${harness.httpUrl()}/agents/home/chat`);
 
   expect(deepRoute.status).toBe(200);
   expect(await deepRoute.text()).toBe(index);

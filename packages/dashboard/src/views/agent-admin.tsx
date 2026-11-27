@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { AgentNameSchema, decode } from "@wheatley-ai/protocol";
 import { useId, useState } from "react";
 
@@ -6,8 +7,6 @@ import type {
   AgentDataDisposal,
   ConfigChange,
 } from "../models/config-editor.js";
-import { formatRoute } from "../router.js";
-import type { Route } from "../router.js";
 import {
   ActionButton,
   ConfirmButton,
@@ -20,10 +19,6 @@ const AGENT_NAME_HINT =
   "Lowercase letters, digits, and hyphens. It must start with a letter. The name is also the folder name.";
 
 const isAgentName = (name: string): boolean => decode(AgentNameSchema, name).ok;
-
-const navigate = (route: Route): void => {
-  globalThis.location.hash = formatRoute(route);
-};
 
 /** Saves a change through the Config model and throws its error, so the dialog stays open and shows it. */
 const useSaveOrThrow = (): ((change: ConfigChange) => Promise<void>) => {
@@ -99,6 +94,7 @@ export const CreateAgentButton = () => {
   const { config } = useServices();
   const { config: deploymentConfig } = useStore(config.state);
   const save = useSaveOrThrow();
+  const navigate = useNavigate();
   const providersId = useId();
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("");
@@ -127,7 +123,10 @@ export const CreateAgentButton = () => {
           kind: "create",
         });
         setName("");
-        navigate({ agent: name, view: "config" });
+        await navigate({
+          params: { agent: name },
+          to: "/agents/$agent/config",
+        });
       }}
       title="Create an Agent"
       tone="primary"
@@ -174,6 +173,7 @@ export const CreateAgentButton = () => {
 /** Renames an Agent after the Operator confirms the new name. */
 export const RenameAgentButton = ({ agent }: { readonly agent: string }) => {
   const save = useSaveOrThrow();
+  const navigate = useNavigate();
   const [newName, setNewName] = useState(agent);
 
   return (
@@ -187,7 +187,10 @@ export const RenameAgentButton = ({ agent }: { readonly agent: string }) => {
         }
 
         await save({ agent, kind: "rename", newName });
-        navigate({ agent: newName, view: "config" });
+        await navigate({
+          params: { agent: newName },
+          to: "/agents/$agent/config",
+        });
       }}
       title={`Rename ${agent}`}
       tone="primary"
@@ -214,6 +217,7 @@ const DISPOSALS: readonly { value: AgentDataDisposal; label: string }[] = [
 /** Deletes an Agent after the Operator confirms what happens to its data. */
 export const DeleteAgentButton = ({ agent }: { readonly agent: string }) => {
   const save = useSaveOrThrow();
+  const navigate = useNavigate();
   const [data, setData] = useState<AgentDataDisposal>("archive");
 
   return (
@@ -223,7 +227,7 @@ export const DeleteAgentButton = ({ agent }: { readonly agent: string }) => {
       label="Delete"
       onConfirm={async () => {
         await save({ agent, data, kind: "delete" });
-        navigate({ view: "overview" });
+        await navigate({ to: "/overview" });
       }}
       title={`Delete ${agent}?`}
     >

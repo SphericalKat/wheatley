@@ -1,12 +1,12 @@
 import { once } from "node:events";
 import { chmod, rm } from "node:fs/promises";
-import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { isIPv4 } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
 import type { Logger } from "@wheatley-ai/sdk";
+import { Hono } from "hono";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 
@@ -14,13 +14,16 @@ import { errorMessage } from "../error-message.js";
 import type { EventBus } from "../events.js";
 import type { Router } from "../rpc/router.js";
 import { Connection } from "./connection.js";
-import { serveStaticFile } from "./static-files.js";
+import { createHttpServer } from "./http-server.js";
+import { mountStaticFiles } from "./static-files.js";
 
 /** The WebSocket path of the JSON-RPC protocol (ADR 0005). */
 export const WS_PATH = "/ws";
 
 /** The file mode of the Unix socket: the owner only (ADR 0002). */
 export const SOCKET_FILE_MODE = 0o600;
+
+const PLAIN_TEXT = { "content-type": "text/plain; charset=utf-8" } as const;
 
 /** Hosts whose origins count as the listener's own. */
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"] as const;
@@ -71,10 +74,12 @@ export class ControlServer {
   readonly #wss = new WebSocketServer({ noServer: true });
   readonly #servers: Server[] = [];
   readonly #connections = new Map<WebSocket, Connection>();
+  readonly #app: Hono;
   #port = 0;
 
   private constructor(options: ControlServerOptions) {
     this.#options = options;
+    this.#app = this.#createApp();
   }
 
   /** Starts to listen. Rejects if the port or the socket path is not available. */
@@ -143,9 +148,7 @@ export class ControlServer {
   };
 
   readonly #createHttpServer = (checkOrigin: boolean): Server => {
-    const server = createServer((request, response) => {
-      void this.#serveHttp(request, response);
-    });
+    const server = createHttpServer(this.#app.fetch, "Control Server");
 
     server.on("upgrade", (request, socket, head) => {
       this.#upgrade(request, socket, head, checkOrigin);
@@ -155,35 +158,32 @@ export class ControlServer {
     return server;
   };
 
-  readonly #serveHttp = async (
-    request: IncomingMessage,
-    response: ServerResponse
-  ): Promise<void> => {
+  readonly #createApp = (): Hono => {
+    const app = new Hono();
     const { staticDir } = this.#options;
 
-    try {
-      if (
-        staticDir !== undefined &&
-        (await serveStaticFile(staticDir, request, response))
-      ) {
-        return;
-      }
-    } catch (error) {
-      this.#options.log.warn("A dashboard file could not be served", {
-        error: errorMessage(error),
-      });
+    if (staticDir !== undefined) {
+      mountStaticFiles(app, staticDir);
     }
 
-    const status = request.method === "GET" && request.url === "/" ? 200 : 404;
-
-    response.writeHead(status, {
-      "content-type": "text/plain; charset=utf-8",
-    });
-    response.end(
-      status === 200
-        ? `Wheatley daemon. Connect with JSON-RPC over WebSocket at ${WS_PATH}.\n`
-        : "Not found\n"
+    app.get("/", (c) =>
+      c.body(
+        `Wheatley daemon. Connect with JSON-RPC over WebSocket at ${WS_PATH}.\n`,
+        200,
+        PLAIN_TEXT
+      )
     );
+    app.notFound((c) => c.body("Not found\n", 404, PLAIN_TEXT));
+    app.onError((failure, c) => {
+      this.#options.log.warn("A Control Server HTTP request failed", {
+        error: errorMessage(failure),
+        path: c.req.path,
+      });
+
+      return c.body("Not found\n", 404, PLAIN_TEXT);
+    });
+
+    return app;
   };
 
   readonly #allowedOrigin = (origin: string): boolean => {

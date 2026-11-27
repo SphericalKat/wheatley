@@ -1,14 +1,17 @@
-import { stripVTControlCharacters } from "node:util";
+import { stripVTControlCharacters, styleText } from "node:util";
 
 import { expect, it } from "vitest";
 
 import {
-  createMarkdownRenderer,
+  createMarkdownStream,
   lineText,
   renderMarkdown,
   wrapLines,
 } from "./markdown.js";
 import type { MarkdownLine } from "./markdown.js";
+
+/** Splits a reply into deltas of up to four characters. */
+const DELTAS = /[\s\S]{1,4}/gu;
 
 const plain = (text: string): string => stripVTControlCharacters(text);
 
@@ -47,35 +50,16 @@ it("shows a link label with its URL", () => {
   );
 });
 
-it("keeps a code block open across lines that arrive one at a time", () => {
-  const render = createMarkdownRenderer();
-
-  const lines = [
-    "```ts",
-    "# not a heading",
-    "- not a bullet",
-    "```",
-    "- a bullet",
-  ].map((line) => plain(lineText(render(line))));
-
-  expect(lines).toStrictEqual([
-    "╭─ ts",
-    "│ # not a heading",
-    "│ - not a bullet",
-    "╰─",
-    "• a bullet",
-  ]);
-});
-
 it("wraps at word boundaries and continues a bullet under its text", () => {
   const lines = renderMarkdown(
-    "- alpha beta gamma delta epsilon\nplain words that wrap here"
+    "- alpha beta gamma delta epsilon\n\nplain words that wrap here"
   );
 
   expect(plain(wrapLines(lines, 16)).split("\n")).toStrictEqual([
     "• alpha beta",
     "  gamma delta",
     "  epsilon",
+    "",
     "plain words that",
     "wrap here",
   ]);
@@ -100,5 +84,103 @@ it("keeps code indentation on the first row and on wrapped rows", () => {
     "│     return valueOne +",
     "│     valueTwo;",
     "╰─",
+  ]);
+});
+
+it("renders a table with aligned columns and a rule under the header", () => {
+  const text = [
+    "| Name | Qty |",
+    "| :--- | --: |",
+    "| apple | 3 |",
+    "| `kiwi` | 12 |",
+  ].join("\n");
+
+  expect(shown(renderMarkdown(text)).split("\n")).toStrictEqual([
+    "Name  │ Qty",
+    "──────┼────",
+    "apple │   3",
+    "kiwi  │  12",
+  ]);
+});
+
+it("indents nested list items under the text of their parent item", () => {
+  const text = [
+    "1. first",
+    "   - inner a",
+    "     - deeper",
+    "   - inner b",
+    "2. second",
+  ].join("\n");
+
+  expect(shown(renderMarkdown(text)).split("\n")).toStrictEqual([
+    "1. first",
+    "   • inner a",
+    "     • deeper",
+    "   • inner b",
+    "2. second",
+  ]);
+});
+
+it("keeps every line of a multi-line block quote behind the quote bar", () => {
+  const text = ["> line one", "> line two", ">", "> - item"].join("\n");
+
+  expect(shown(renderMarkdown(text)).split("\n")).toStrictEqual([
+    "▎ line one",
+    "▎ line two",
+    "▎ ",
+    "▎ • item",
+  ]);
+});
+
+it("wraps a quoted line and keeps the quote bar on every row", () => {
+  const lines = renderMarkdown("> alpha beta gamma delta");
+
+  expect(plain(wrapLines(lines, 12)).split("\n")).toStrictEqual([
+    "▎ alpha beta",
+    "▎ gamma",
+    "▎ delta",
+  ]);
+});
+
+it("keeps one blank line between blocks and a code fence as one block", () => {
+  const text =
+    "Intro\n\n```ts\n# not a heading\n- not a bullet\n```\n- a bullet";
+
+  expect(shown(renderMarkdown(text)).split("\n")).toStrictEqual([
+    "Intro",
+    "",
+    "╭─ ts",
+    "│ # not a heading",
+    "│ - not a bullet",
+    "╰─",
+    "• a bullet",
+  ]);
+});
+
+it("styles emphasis that spans a line break on both lines", () => {
+  const [first, second] = renderMarkdown("**bold\nstill bold**");
+
+  expect(first?.body).toBe(styleText("bold", "bold"));
+  expect(second?.body).toBe(styleText("bold", "still bold"));
+});
+
+it("resolves a reference link in a streamed reply whose definition arrives later", () => {
+  const reply =
+    "See [the docs][1].\n\nMore text.\n\n[1]: https://example.com/x\n";
+
+  const stream = createMarkdownStream();
+  const printed: MarkdownLine[] = [];
+
+  for (const delta of reply.match(DELTAS) ?? []) {
+    printed.push(...stream.write(delta));
+  }
+
+  printed.push(...stream.end());
+
+  expect(shown(printed).split("\n")).toStrictEqual([
+    "See the docs (https://example.com/x).",
+    "",
+    "More text.",
+    "",
   ]);
 });

@@ -283,3 +283,65 @@ it("shows a streamed reply exactly once, even when the final text arrives before
     ].join("\n")
   );
 });
+
+it("renders a streamed table, nested list, and multi-line quote as whole blocks", async () => {
+  const reply = [
+    "| Step | Done |",
+    "| --- | --: |",
+    "| plan | yes |",
+    "",
+    "- outer",
+    "  - inner",
+    "",
+    "> first line",
+    "> second line",
+    "",
+    "```sh",
+    "ls",
+    "```",
+  ].join("\n");
+
+  const controller = await start("allow", 40);
+  const liveFrames: string[] = [];
+
+  controller.subscribe(() => {
+    liveFrames.push(
+      stripVTControlCharacters(controller.view().live.map(lineText).join("\n"))
+    );
+  });
+
+  llm.faux.setResponses([fauxAssistantMessage(reply)]);
+  await controller.submit("show me");
+
+  const view = await until(controller, (current) =>
+    current.entries.some((entry) => entry.kind === "turn")
+  );
+
+  const text = view.entries
+    .flatMap((entry) =>
+      entry.kind === "reply"
+        ? entry.lines.map((line) => stripVTControlCharacters(lineText(line)))
+        : []
+    )
+    .join("\n");
+
+  expect(text).toBe(
+    [
+      "Step │ Done",
+      "─────┼─────",
+      "plan │  yes",
+      "",
+      "• outer",
+      "  • inner",
+      "",
+      "▎ first line",
+      "▎ second line",
+      "",
+      "╭─ sh",
+      "│ ls",
+      "╰─",
+    ].join("\n")
+  );
+  expect(liveFrames.some((frame) => frame.includes("╭─ sh"))).toBe(true);
+  expect(liveFrames.filter((frame) => frame.includes("```"))).toStrictEqual([]);
+});
