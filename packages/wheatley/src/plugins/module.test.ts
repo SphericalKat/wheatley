@@ -55,7 +55,7 @@ it("starts an Agent module with a broken Plugin and serves the Tools of the work
 
     const instance = await pluginsModule.create(ctx, {
       config: {
-        model: { id: "model-1", provider: "test" },
+        model: "test/model-1",
         plugins: [
           { source: "./plugins/broken.mjs" },
           { source: "./plugins/clock.mjs" },

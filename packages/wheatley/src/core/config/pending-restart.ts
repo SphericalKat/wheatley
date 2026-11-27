@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 
+import { parseModelId } from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   DeploymentConfig,
@@ -77,7 +78,7 @@ export const pendingRestarts = (
 
     const providerChanged = !isDeepStrictEqual(
       provider,
-      next.providers?.[after.model.provider]
+      next.provider?.[parseModelId(after.model).provider]
     );
 
     if (

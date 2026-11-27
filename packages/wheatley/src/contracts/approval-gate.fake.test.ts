@@ -17,7 +17,7 @@ const TIMEOUT_MS = 60_000;
 const config: DeploymentConfig = {
   agents: {
     home: {
-      model: { id: "faux-1", provider: "faux" },
+      model: "faux/faux-1",
       permissionPolicy: [{ action: "deny", tool: "shell" }],
     },
   },

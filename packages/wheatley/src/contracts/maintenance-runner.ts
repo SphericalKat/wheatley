@@ -1,4 +1,4 @@
-import type { ModelChoice } from "@wheatley-ai/protocol";
+import type { ModelId, ThinkingLevel } from "@wheatley-ai/protocol";
 
 /** One internal maintenance Run, for example Memory consolidation. */
 export interface MaintenanceRunRequest {
@@ -7,7 +7,9 @@ export interface MaintenanceRunRequest {
   /** The instruction for the Run. */
   readonly prompt: string;
   /** Replaces the Agent's model for this Run only, for example `memory.consolidation.model`. */
-  readonly model?: ModelChoice;
+  readonly model?: ModelId;
+  /** Optional thinking level override for this Run. */
+  readonly thinking?: ThinkingLevel;
 }
 
 /** How a maintenance Run ended. */

@@ -31,7 +31,7 @@ const context = (): AgentModuleContext => ({
 const deps = (): ApprovalGateDeps => {
   const store = new InMemoryConfigStore(
     {
-      agents: { home: { model: { id: "faux-1", provider: "faux" } } },
+      agents: { home: { model: "faux/faux-1" } },
       version: 1,
     },
     new InMemorySecretStore()

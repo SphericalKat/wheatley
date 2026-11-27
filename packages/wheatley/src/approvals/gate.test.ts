@@ -62,7 +62,7 @@ let errors: string[] = [];
 const configWith = (policy: PermissionRule[]): DeploymentConfig => ({
   agents: {
     home: {
-      model: { id: "faux-1", provider: "faux" },
+      model: "faux/faux-1",
       permissionPolicy: policy,
     },
   },

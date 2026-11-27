@@ -29,7 +29,12 @@ import type {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { bool, obj } from "@earendil-works/pi-schema";
 import { isJsonValue } from "@wheatley-ai/protocol";
-import type { JsonValue, ModelChoice, RunUsage } from "@wheatley-ai/protocol";
+import type {
+  JsonValue,
+  ModelRef,
+  RunUsage,
+  ThinkingLevel,
+} from "@wheatley-ai/protocol";
 import type { JsonSchema, Logger, ToolResult } from "@wheatley-ai/sdk";
 
 import type { ParkedCall } from "../../contracts/approval-gate.js";
@@ -117,9 +122,14 @@ export interface PiAdapterOptions {
   readonly now?: () => number;
 }
 
+/** A resolved model and optional thinking level for pi-durable. */
+export interface PiModelChoice extends ModelRef {
+  readonly thinking?: ThinkingLevel;
+}
+
 /** Settings of a new Conversation. */
 export interface PiConversationOptions {
-  readonly model: ModelChoice;
+  readonly model: PiModelChoice;
   readonly instructions: string | undefined;
   /** The working directory of the Conversation's Tools. */
   readonly cwd: string;
@@ -143,7 +153,7 @@ export interface PiAdapter {
   /** Changes the model of one Conversation from its next model request. */
   readonly setModel: (
     conversationId: string,
-    model: ModelChoice
+    model: PiModelChoice
   ) => Promise<void>;
   /** Replaces the instructions of one Conversation, for example a refreshed Memory snapshot after `/compact`. */
   readonly setInstructions: (

@@ -53,7 +53,7 @@ it("underlines a value of the wrong type together with its key", () => {
       "  --> /home/me/.wheatley/config.yaml:4:5",
       "  3 |   home:",
       "> 4 |     model: 5 # a number",
-      "    |     ^^^^^^^^ must be object",
+      "    |     ^^^^^^^^ must be string",
       "  5 |     instructions: hi"
     )
   );
@@ -64,7 +64,7 @@ it("points at an unknown field and at the map that holds it", () => {
     "version: 1",
     "agents:",
     "  home:",
-    "    model: { provider: a, id: b }",
+    "    model: a/b",
     "    bogus: 1"
   );
 
@@ -72,7 +72,7 @@ it("points at an unknown field and at the map that holds it", () => {
     lines(
       "error: invalid value at /agents/home/bogus",
       "  --> /home/me/.wheatley/config.yaml:5:5",
-      "  4 |     model: { provider: a, id: b }",
+      "  4 |     model: a/b",
       "> 5 |     bogus: 1",
       "    |     ^^^^^^^^ schema is false",
       "",
@@ -81,7 +81,7 @@ it("points at an unknown field and at the map that holds it", () => {
       "  2 | agents:",
       "> 3 |   home:",
       "    |   ^^^^ must not have additional properties",
-      "  4 |     model: { provider: a, id: b }"
+      "  4 |     model: a/b"
     )
   );
 });
@@ -111,7 +111,7 @@ it("points at a reserved and a duplicate Frontend Binding ID", () => {
     "version: 1",
     "agents:",
     "  home:",
-    "    model: { provider: a, id: b }",
+    "    model: a/b",
     "    frontends:",
     "      - { id: cli, type: telegram, config: {} }",
     "      - { id: tg, type: telegram, config: {} }",

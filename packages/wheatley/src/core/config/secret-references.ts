@@ -1,4 +1,4 @@
-import { isJsonValue } from "@wheatley-ai/protocol";
+import { apiKeySecretName, isJsonValue } from "@wheatley-ai/protocol";
 import type {
   DeploymentConfig,
   JsonValue,
@@ -60,6 +60,38 @@ const add = (
   }
 };
 
+const addProviderReferences = (
+  references: Map<string, SecretReference[]>,
+  providers: DeploymentConfig["provider"]
+): void => {
+  for (const [provider, providerConfig] of Object.entries(providers ?? {})) {
+    const reference: SecretReference = { id: provider, kind: "provider" };
+    const apiKeyRef = providerConfig.options?.apiKey;
+
+    if (apiKeyRef !== undefined) {
+      add(references, [apiKeySecretName(apiKeyRef)], reference);
+    }
+
+    if (providerConfig.options?.headers !== undefined) {
+      const headers = isJsonValue(providerConfig.options.headers)
+        ? providerConfig.options.headers
+        : null;
+
+      add(references, secretNamesIn(headers), reference);
+    }
+
+    for (const modelConfig of Object.values(providerConfig.models ?? {})) {
+      if (modelConfig.headers !== undefined) {
+        const headers = isJsonValue(modelConfig.headers)
+          ? modelConfig.headers
+          : null;
+
+        add(references, secretNamesIn(headers), reference);
+      }
+    }
+  }
+};
+
 /**
  * Lists the config entries that refer to each secret: provider API keys, Frontend Binding, MCP Server, and Plugin
  * config. Trigger token secrets live in `agent.sqlite`, so the Trigger module reports them.
@@ -69,16 +101,7 @@ export const secretReferences = (
 ): ReadonlyMap<string, readonly SecretReference[]> => {
   const references = new Map<string, SecretReference[]>();
 
-  for (const [provider, providerConfig] of Object.entries(
-    config.providers ?? {}
-  )) {
-    if (providerConfig.apiKey !== undefined) {
-      add(references, [providerConfig.apiKey.secret], {
-        id: provider,
-        kind: "provider",
-      });
-    }
-  }
+  addProviderReferences(references, config.provider);
 
   for (const [agent, agentConfig] of Object.entries(config.agents)) {
     for (const binding of agentConfig.frontends ?? []) {

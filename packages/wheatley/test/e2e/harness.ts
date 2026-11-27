@@ -264,7 +264,7 @@ const fullAgentConfig = (
 ): AgentConfig => ({
   permissionPolicy: [{ action: "allow", tool: "*" }],
   ...config,
-  model: config.model ?? { id: llm.modelId, provider: FAKE_PROVIDER },
+  model: config.model ?? `${FAKE_PROVIDER}/${llm.modelId}`,
 });
 
 /** The standard streams of one CLI command. */

@@ -501,7 +501,7 @@ it("creates, renames, and deletes an Agent from the Config editor", async () => 
   const editor = await loadedEditor(client);
 
   const workConfig: AgentConfig = {
-    model: { id: h.llm.modelId, provider: FAKE_PROVIDER },
+    model: `${FAKE_PROVIDER}/${h.llm.modelId}`,
     permissionPolicy: [...ALLOW_ALL],
   };
 

@@ -25,15 +25,14 @@ let deployment: Deployment | undefined;
 const configYaml = (agents: readonly string[], maxConcurrent: number): string =>
   [
     "version: 1",
-    "providers:",
+    "provider:",
     `  ${FAKE_PROVIDER}:`,
-    `    maxConcurrent: ${maxConcurrent}`,
+    "    options:",
+    `      maxConcurrent: ${maxConcurrent}`,
     "agents:",
     ...agents.flatMap((agent) => [
       `  ${agent}:`,
-      "    model:",
-      `      provider: ${FAKE_PROVIDER}`,
-      `      id: ${llm.modelId}`,
+      `    model: ${FAKE_PROVIDER}/${llm.modelId}`,
     ]),
     "",
   ].join("\n");

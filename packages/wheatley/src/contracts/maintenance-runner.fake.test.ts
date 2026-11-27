@@ -11,7 +11,7 @@ describe("InMemoryMaintenanceRunner", () => {
 
     const { runId } = await runner.start({
       job: "memory.consolidate",
-      model: { id: "small-1", provider: "faux" },
+      model: "faux/small-1",
       prompt: "Consolidate Memory",
     });
 

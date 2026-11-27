@@ -54,7 +54,7 @@ const openAgent = async (
     agentDir: path.join(home.dir, "agents", "home"),
     clock: systemClock,
     config: {
-      model: { id: llm.modelId, provider: FAKE_PROVIDER },
+      model: `${FAKE_PROVIDER}/${llm.modelId}`,
       permissionPolicy: [{ action: "allow", tool: "*" }],
     },
     events,
@@ -185,7 +185,7 @@ describe("Agent", () => {
   });
   it("parks an ask Tool until the Approval is decided, then runs it", async () => {
     const configStore = new InMemoryConfigStore({
-      agents: { home: { model: { id: llm.modelId, provider: FAKE_PROVIDER } } },
+      agents: { home: { model: `${FAKE_PROVIDER}/${llm.modelId}` } },
       version: 1,
     });
 
@@ -215,7 +215,7 @@ describe("Agent", () => {
 
         return gate;
       },
-      config: { model: { id: llm.modelId, provider: FAKE_PROVIDER } },
+      config: { model: `${FAKE_PROVIDER}/${llm.modelId}` },
     });
 
     try {
@@ -279,7 +279,7 @@ describe("Agent", () => {
 
   it("denies an ask Tool without an Approval gate and lets the model continue", async () => {
     const agent = await openAgent({
-      config: { model: { id: llm.modelId, provider: FAKE_PROVIDER } },
+      config: { model: `${FAKE_PROVIDER}/${llm.modelId}` },
     });
 
     try {
@@ -841,7 +841,7 @@ describe("Agent", () => {
 
     const second = await openAgent({
       config: {
-        model: { id: "next-1", provider: "next-provider" },
+        model: "next-provider/next-1",
         permissionPolicy: [{ action: "allow", tool: "*" }],
       },
       models,

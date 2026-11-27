@@ -101,7 +101,7 @@ export const CreateAgentButton = () => {
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
-  const providers = Object.keys(deploymentConfig?.providers ?? {});
+  const providers = Object.keys(deploymentConfig?.provider ?? {});
 
   return (
     <ConfirmButton
@@ -121,7 +121,7 @@ export const CreateAgentButton = () => {
 
         await save({
           agent: name,
-          config: { model: { id: model, provider } },
+          config: { model: `${provider}/${model}` },
           kind: "create",
         });
         setName("");

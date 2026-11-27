@@ -2,7 +2,7 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { Models } from "@earendil-works/pi-ai";
-import { PROTOCOL_VERSION } from "@wheatley-ai/protocol";
+import { parseModelId, PROTOCOL_VERSION } from "@wheatley-ai/protocol";
 import type {
   AgentConfig,
   AgentHealth,
@@ -152,7 +152,7 @@ export class Deployment {
     });
     this.gate = new ConcurrencyGate(
       (provider) =>
-        this.#current.providers?.[provider]?.maxConcurrent ??
+        this.#current.provider?.[provider]?.options?.maxConcurrent ??
         DEFAULT_PROVIDER_CONCURRENCY
     );
     this.#supervisor = new Supervisor<Agent>({
@@ -614,14 +614,19 @@ export class Deployment {
       throw new SeamError("agent_not_found", `Unknown Agent: ${name}`);
     }
 
-    const providers = snapshot.config.providers ?? {};
-    const createModels = this.#options.models ?? createProviderModels;
-    const base = await createModels(snapshot.config, this.config.secrets);
+    const providers = snapshot.config.provider ?? {};
+
+    const base =
+      this.#options.models === undefined
+        ? await createProviderModels(snapshot.config, this.config.secrets, {
+            homeDir: this.homeDir,
+          })
+        : await this.#options.models(snapshot.config, this.config.secrets);
 
     const models = gatedModels(
       base,
       this.gate,
-      (provider) => this.#current.providers?.[provider]?.baseUrl
+      (provider) => this.#current.provider?.[provider]?.options?.baseURL
     );
 
     const agent = await Agent.open({
@@ -642,7 +647,7 @@ export class Deployment {
 
     this.#applied.set(name, {
       config,
-      provider: providers[config.model.provider],
+      provider: providers[parseModelId(config.model).provider],
     });
 
     return agent;

@@ -20,7 +20,7 @@ const silentLog: Logger = {
 const providerInput: ProviderInput = {
   agentDir: "/data/agents/home",
   agentName: "home",
-  config: { model: { id: "model-1", provider: "test" } },
+  config: { model: "test/model-1" },
   homeDir: "/data",
   log: silentLog,
   secrets: new InMemorySecretStore({}),
