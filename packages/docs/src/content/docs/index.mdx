@@ -1,9 +1,9 @@
 ---
 title: Wheatley
-description: Self-hosted, always-on personal AI assistant written in TypeScript.
+description: A self-hosted, always-on personal AI assistant that runs on your own machine or server.
 template: splash
 hero:
-  tagline: Self-hosted, always-on personal AI assistant. One Deployment hosts one or more isolated Agents with their own models, permissions, memory, triggers, and chat frontends.
+  tagline: Your own always-on AI assistant, running on hardware you control. Connect your preferred AI models, talk from your terminal, browser, Telegram, Slack, or Discord, and approve every sensitive action yourself.
   actions:
     - text: Install Wheatley
       link: /wheatley/getting-started/install/
@@ -14,27 +14,61 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from "@astrojs/starlight/components";
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Core capabilities
+<div class="demo-frame">
+  <img
+    src="/wheatley/wheatley-thinking.gif"
+    alt="Wheatley terminal chat streaming a reply"
+  />
+</div>
+
+## Why run Wheatley
 
 <CardGrid>
-  <Card title="Install in minutes" icon="download">
-    Install on macOS or Linux with the install script, npm, pnpm, Homebrew, AUR,
-    or Docker. Run the daemon in the foreground or as a background service.
+  <Card title="Always on, locally owned" icon="laptop">
+    Run Wheatley on a laptop, home server, or small VPS. Your config,
+    conversations, and memory stay in plain files and SQLite under your home
+    folder.
   </Card>
-  <Card title="Any supported model or agent setup" icon="setting">
-    Connect Agents to Anthropic, OpenAI, Google, OpenRouter, Groq, Mistral, xAI,
-    DeepSeek, or an OpenAI-compatible proxy. Run multiple isolated Agents in one
-    Deployment.
+  <Card title="Bring your own models" icon="setting">
+    Use Anthropic, OpenAI, Google, OpenRouter, Groq, Mistral, xAI, DeepSeek, or
+    any OpenAI-compatible endpoint. Run multiple independent assistants in one
+    setup.
   </Card>
-  <Card title="Chat anywhere" icon="comment">
-    Talk to an Agent from the CLI, the built-in web dashboard, Telegram, Slack,
-    or Discord. Approve or deny sensitive Tool calls directly in chat.
+  <Card title="Chat from anywhere" icon="comment">
+    Message your assistant in the terminal, in the built-in web dashboard, or
+    through Telegram, Slack, and Discord. Approve or deny sensitive actions
+    directly in chat.
   </Card>
-  <Card title="Extend with MCP, skills, and plugins" icon="puzzle">
-    Attach stdio or HTTP MCP Servers, load Markdown Skills on demand, schedule
-    cron or webhook Triggers, and write TypeScript Plugins with
-    `@wheatley-ai/sdk`.
+  <Card title="Built to grow with you" icon="puzzle">
+    Add tools with MCP servers, drop in Markdown skills, schedule recurring
+    reminders or webhooks, and write custom TypeScript plugins when you need
+    more.
   </Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+  <LinkCard
+    title="1. Install Wheatley"
+    description="Install via curl, npm, pnpm, Homebrew, AUR, or Docker."
+    href="/wheatley/getting-started/install/"
+  />
+  <LinkCard
+    title="2. Quick start"
+    description="Create your config, add an API key, and send your first message."
+    href="/wheatley/getting-started/quick-start/"
+  />
+  <LinkCard
+    title="3. Connect your AI model"
+    description="Choose a provider, set up a proxy, or run multiple assistants."
+    href="/wheatley/guides/models-and-agents/"
+  />
+  <LinkCard
+    title="4. Connect a chat app"
+    description="Link your assistant to Telegram, Slack, or Discord."
+    href="/wheatley/guides/frontends/"
+  />
 </CardGrid>

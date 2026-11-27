@@ -1,57 +1,76 @@
 ---
-title: Chat, approvals, and dashboard
-description: Use the CLI Chat, respond to Tool Approvals, and navigate the web dashboard.
+title: CLI chat and dashboard
+description: Use wheatley ask, wheatley chat, tool approvals, and the local web dashboard.
 ---
 
-## One-shot prompts (`wheatley ask`)
+You can talk to your Wheatley assistants from the command line or from your browser — both stay in sync with the same conversations and approvals.
 
-`wheatley ask "<prompt>"` sends a single prompt and prints the reply. `ask` also reads from standard input. When standard input is not a terminal, `ask` automatically denies any Tool call that requires an Approval.
+## Quick one-shot questions (`wheatley ask`)
 
-## Interactive CLI Chat (`wheatley chat`)
+Send a single prompt and print the reply:
 
-`wheatley chat` opens a full-screen terminal chat for an Agent. The web dashboard displays the same Chat. If your Deployment has more than one Agent and none is named `default`, pass `--agent <name>`.
+```bash
+wheatley ask "Summarize today's notes"
+```
 
-If standard input or output is not a terminal (for example, a pipe), `wheatley chat` reads and writes plain lines.
+You can also pipe input into `wheatley ask`:
 
-### Chat slash commands
+```bash
+git diff | wheatley ask "Explain these changes in three bullet points"
+```
 
-| Command | Action |
+:::note When input is piped (not an interactive terminal), `wheatley ask` automatically denies any tool call that requires manual approval so scripts never hang waiting for a prompt. :::
+
+## Interactive terminal chat (`wheatley chat`)
+
+Run `wheatley chat` (or `wheatley chat --agent <name>` if you run multiple assistants) to open the full-screen terminal interface:
+
+- Replies stream live with formatted Markdown and word-wrapped code blocks.
+- Tool calls appear inline with their input, result, and duration.
+- When a run takes 10 seconds or longer, or pauses for your approval, your terminal receives a notification bell.
+
+If you pipe input into `wheatley chat`, it switches automatically to a plain line-by-line mode.
+
+### Slash commands
+
+Type `/` to open the interactive command menu:
+
+| Command | What it does |
 | --- | --- |
-| `/new` | Start a new Conversation in this Chat |
-| `/model <model-id>` | Switch to another model for this Conversation |
-| `/compact` | Compact the current Conversation |
-| `/stop` | Stop the active Run in this Chat |
-| `/goal <objective>` | Start a long-running autonomous Run |
-| `/status` | Show the Conversation, Run, model, and Agent health |
-| `/restart` | Restart this Agent |
-| `/copy` | Copy the last reply to the clipboard (supports OSC 52 over SSH) |
-| `/help` | List commands and keybindings |
-| `/exit` | End the Chat |
+| `/new` | Start a fresh conversation |
+| `/model <model-id>` | Switch models for the current conversation |
+| `/compact` | Summarize and compact the conversation to save context |
+| `/stop` | Stop the currently running reply |
+| `/goal <objective>` | Start a longer autonomous run toward a goal |
+| `/status` | Show active conversation, model, and assistant health |
+| `/restart` | Restart this assistant (for example after editing `config.yaml`) |
+| `/copy` | Copy the last reply to your clipboard (works over SSH with OSC 52) |
+| `/help` | Show commands and keyboard shortcuts |
+| `/exit` | Leave the chat |
 
-### Input shortcuts
+### Helpful shortcuts
 
-- Type `/` to open the command menu. Use Up/Down to select, `Tab` or Right to complete, and `Enter` to run.
-- Start a line with `!` to run a local shell command in the current folder (for example `!git status`) without sending it to the Agent.
-- End a line with `\` and press `Enter`, or press `Alt+Enter`, to insert a newline.
-- Use Up and Down arrows to recall earlier prompts from `<home>/chat_history`.
+- Start a line with `!` to run a local shell command without sending it to your assistant (for example `!git status`).
+- End a line with `\` and press `Enter`, or press `Alt+Enter`, to add a new line.
+- Press Up and Down arrows to browse your prompt history (saved in `~/.wheatley/chat_history`).
 - Use `Ctrl+W`, `Ctrl+U`, and `Ctrl+K` to delete the previous word, text before the cursor, or text after the cursor.
-- Press `Esc` to close the menu or interrupt the active Run. Press `Esc` twice to clear the input line.
-- Press `Ctrl+C` to clear the line, then stop the Run, then exit on a second press. Press `Ctrl+D` on an empty line to exit.
+- Press `Esc` to close the menu or interrupt a running reply. Press `Esc` twice to clear the input line.
+- Press `Ctrl+C` to clear the line, stop a run, or exit on a second press. `Ctrl+D` exits on an empty line.
 
-## Approvals
+## Approving sensitive actions
 
-When a Tool call requires an Approval, Wheatley shows the Tool name and its input. Respond with one of these actions:
+When an assistant wants to run a tool whose rule is `ask` (such as `shell` or `write_file`), Wheatley pauses and shows you the exact tool name and arguments. Choose one of four responses:
 
-- `o`: allow this call once.
-- `c`: allow this Tool for the rest of this Conversation.
-- `a`: allow this Tool always (prepends an `allow` rule to `permissionPolicy` in `config.yaml`).
-- `d <reason>`: deny this call and send the reason back to the Agent. Press `Esc` to deny without a reason.
+- **`o` (once)**: Allow this single tool call.
+- **`c` (conversation)**: Allow this tool for the rest of the current conversation.
+- **`a` (always)**: Allow this tool permanently (adds an `allow` rule to the top of `permissionPolicy` in `config.yaml`).
+- **`d <reason>` (deny)**: Deny the call and tell your assistant why (or press `Esc` to deny without a reason).
 
 ## Web dashboard
 
-The daemon serves the web dashboard on its TCP listener, by default `http://127.0.0.1:7420/`.
+Open `http://127.0.0.1:7420/` in your browser while the daemon is running.
 
-- **Deployment views**: Overview, Inbox, Logs, Secrets.
-- **Per-Agent views**: Chat, Runs, Memory, Triggers and Extensions, Config.
+- **Deployment views**: Overview, Inbox (pending approvals), Logs, and Secrets.
+- **Per-assistant views**: Chat, Runs, Memory, Triggers and Extensions, and Config.
 
-:::caution The Control Server has no authentication. Keep the TCP listener on a loopback address (`127.0.0.1`). The server rejects browser WebSocket connections from foreign origins unless you add them to `daemon.allowedOrigins`. :::
+:::caution[Keep the dashboard local] Wheatley's local web dashboard does not have built-in login authentication. Keep `daemon.host` bound to `127.0.0.1` (or access it over an SSH tunnel or private VPN such as Tailscale). Browser connections from other origins are blocked unless you list them in `daemon.allowedOrigins`. :::
