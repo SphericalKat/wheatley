@@ -21,6 +21,8 @@ import {
 } from "./commands.js";
 import { createMarkdownStream, renderMarkdown } from "./markdown.js";
 import type { MarkdownLine } from "./markdown.js";
+import { openPicker, reducePicker } from "./model-picker.js";
+import type { ModelPicker, PickerAction } from "./model-picker.js";
 
 /** The parts of the daemon client that the chat uses. */
 export type ChatClient = Pick<DaemonClient, "onEvent" | "request">;
@@ -91,6 +93,8 @@ export interface ChatView {
   readonly live: readonly MarkdownLine[];
   readonly activity: Activity | undefined;
   readonly approval: PendingApproval | undefined;
+  /** The open `/model` picker. It replaces the input box until the Sender chooses or cancels. */
+  readonly picker: ModelPicker | undefined;
   readonly model: string | undefined;
   readonly extensions: string | undefined;
   readonly usage: SessionUsage;
@@ -167,6 +171,7 @@ export class ChatController {
       extensions: undefined,
       live: [],
       model: undefined,
+      picker: undefined,
       thinkingLines: shuffledThinkingLines(),
       usage: { costUsd: 0, inputTokens: 0, outputTokens: 0, runs: 0 },
     };
@@ -294,6 +299,65 @@ export class ChatController {
     }
   };
 
+  /** Applies a key press to the open picker. */
+  readonly editPicker = (action: PickerAction): void => {
+    const { picker } = this.#view;
+
+    if (picker !== undefined) {
+      this.#update({ picker: reducePicker(picker, action) });
+    }
+  };
+
+  /**
+   * Closes the picker and switches to the selected model with `chat.command`. Does nothing if no model matches the
+   * query. The Agent's reply shows in the transcript.
+   *
+   * Errors: never rejects. A failed request becomes an error entry.
+   */
+  readonly choosePicker = async (): Promise<void> => {
+    const selected = this.#view.picker?.selected;
+
+    if (selected === undefined) {
+      return;
+    }
+
+    const model = `${selected.provider}/${selected.id}`;
+
+    this.#update({ picker: undefined });
+
+    try {
+      const { accepted } = await this.#options.client.request("chat.command", {
+        agent: this.#options.agent,
+        args: model,
+        name: "model",
+      });
+
+      if (accepted) {
+        this.#update({ model });
+      }
+    } catch (error) {
+      this.#append({
+        kind: "notice",
+        text: `✗ ${errorMessage(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  /** Closes the picker without a request. The model stays the same. */
+  readonly cancelPicker = (): void => {
+    if (this.#view.picker === undefined) {
+      return;
+    }
+
+    this.#update({ picker: undefined });
+    this.#append({
+      kind: "notice",
+      text: "The model did not change.",
+      tone: "dim",
+    });
+  };
+
   /** Stops the shell command or the active Run. Returns false if nothing was running. */
   readonly interrupt = (): boolean => {
     if (this.#shell !== undefined) {
@@ -336,6 +400,12 @@ export class ChatController {
     }
 
     const command = parseCommandText(line);
+
+    if (command?.name === "model" && command.args === undefined) {
+      await this.#openPicker();
+
+      return;
+    }
 
     if (command !== undefined) {
       await this.#options.client.request("chat.command", {
@@ -381,6 +451,26 @@ export class ChatController {
 
     this.#state.sent(messageId);
     this.#refreshStatus();
+  };
+
+  /**
+   * Opens the picker with the models of `models.list`. Without models, it sends `/model` to the Agent instead, so the
+   * transcript shows the Agent's own explanation.
+   */
+  readonly #openPicker = async (): Promise<void> => {
+    const { agent, client } = this.#options;
+
+    const { current, models } = await client.request("models.list", {
+      agent,
+    });
+
+    if (models.length === 0) {
+      await client.request("chat.command", { agent, name: "model" });
+
+      return;
+    }
+
+    this.#update({ picker: openPicker(models, current) });
   };
 
   readonly #runShell = (command: string): void => {

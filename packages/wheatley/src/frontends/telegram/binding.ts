@@ -20,6 +20,7 @@ import { createDeliverer } from "./delivery.js";
 import { HTTP_BAD_REQUEST, HTTP_OK, HTTP_UNAUTHORIZED } from "./http-status.js";
 import { createUpdateHandler } from "./inbound.js";
 import { LiveRuns } from "./live.js";
+import { createPickerStore } from "./model-picker.js";
 import { RecentSet } from "./recent-set.js";
 import { SerialQueue } from "./serial-queue.js";
 
@@ -64,6 +65,7 @@ export const createTelegramBinding = (
 
   const isAllowed = createAllowlist(config.allowedChatIds);
   const approvals = new ApprovalPromptStore(ctx.dataDir);
+  const pickers = createPickerStore(ctx.dataDir);
 
   const live = new LiveRuns(client, log, {
     draftIntervalMs: config.draftIntervalMs,
@@ -77,6 +79,7 @@ export const createTelegramBinding = (
     live,
     log,
     maxAttachmentBytes: ctx.maxAttachmentBytes,
+    pickers,
   });
 
   const handle = createUpdateHandler({
@@ -85,6 +88,7 @@ export const createTelegramBinding = (
     config,
     ctx,
     isAllowed,
+    pickers,
   });
 
   const seenUpdates = new RecentSet<number>(DEDUP_CAPACITY);
@@ -144,6 +148,7 @@ export const createTelegramBinding = (
     },
     start: async (activeSink: FrontendSink): Promise<void> => {
       await approvals.load();
+      await pickers.load();
       bot = await client.getMe();
       sink = activeSink;
 

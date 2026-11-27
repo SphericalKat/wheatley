@@ -1,10 +1,12 @@
 import type {
+  AvailableModel,
   AgentState,
   ChatMessage,
   ConsolidationLogEntry,
   DeploymentConfig,
   FailedDelivery,
   LogRecord,
+  ModelRef,
   PendingApproval,
   PendingRestart,
   RunSummary,
@@ -55,6 +57,8 @@ export interface FixtureState {
   runs: RunSummary[];
   timelines: Map<string, RunTimelineItem[]>;
   conversations: Map<string, string>;
+  /** The model of each Agent's CLI Chat Conversation after `/model`. Without an entry, the configured model. */
+  chatModels: Map<string, ModelRef>;
   chat: Map<string, ChatMessage[]>;
   memory: Map<string, Map<string, FixtureMemoryFile>>;
   memoryMaxChars: number;
@@ -115,6 +119,19 @@ const fixtureConfig = (): DeploymentConfig => ({
   providers: { anthropic: { apiKey: { secret: "ANTHROPIC_API_KEY" } } },
   version: 1,
 });
+
+/** The models that `models.list` returns, sorted by provider, then by model ID. */
+export const FIXTURE_MODELS: readonly AvailableModel[] = [
+  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "anthropic" },
+  { id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" },
+  {
+    id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    provider: "anthropic",
+  },
+  { id: "gpt-5", name: "GPT-5", provider: "openai" },
+  { id: "gpt-5-mini", name: "GPT-5 mini", provider: "openai" },
+];
 
 /** Creates the seed state of the mock daemon at time `now` (epoch milliseconds). */
 export const createFixtureState = (now: number): FixtureState => {
@@ -179,6 +196,7 @@ export const createFixtureState = (now: number): FixtureState => {
       ],
       ["work", []],
     ]),
+    chatModels: new Map(),
     config,
     consolidation: new Map([
       [

@@ -2,7 +2,11 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import {
@@ -15,14 +19,19 @@ import { startWheatley } from "../../wiring/daemon.js";
 import type { WheatleyDaemon } from "../../wiring/daemon.js";
 import { DaemonClient } from "../client.js";
 import { ChatController } from "./controller.js";
-import type { ChatView, Entry } from "./controller.js";
+import type { ChatClient, ChatView, Entry } from "./controller.js";
 import { lineText } from "./markdown.js";
+import { pickerRows } from "./model-picker.js";
+import type { ModelPicker } from "./model-picker.js";
 
 let home: Awaited<ReturnType<typeof temporaryDir>>;
 let llm: FakeLlm;
 let daemon: WheatleyDaemon;
 let client: DaemonClient;
 let controls: string[];
+
+/** The requests that the controller sent to the daemon, in order. */
+let requests: { readonly method: string; readonly params: unknown }[];
 
 const start = async (
   shellAction: "allow" | "ask",
@@ -62,9 +71,18 @@ const start = async (
   });
   client = await DaemonClient.connect({ url: daemon.server.url }, "test");
 
+  const recording: ChatClient = {
+    onEvent: client.onEvent,
+    request: async (method, params) => {
+      requests.push({ method, params });
+
+      return await client.request(method, params);
+    },
+  };
+
   const controller = new ChatController({
     agent: "home",
-    client,
+    client: recording,
     control: (sequence) => {
       controls.push(sequence);
     },
@@ -140,6 +158,7 @@ beforeEach(async () => {
   home = await temporaryDir();
   llm = createFakeLlm();
   controls = [];
+  requests = [];
 });
 
 afterEach(async () => {
@@ -344,4 +363,130 @@ it("renders a streamed table, nested list, and multi-line quote as whole blocks"
   );
   expect(liveFrames.some((frame) => frame.includes("╭─ sh"))).toBe(true);
   expect(liveFrames.filter((frame) => frame.includes("```"))).toStrictEqual([]);
+});
+
+/** A second provider, so the picker shows two groups. Its models sort after the fake LLM's provider. */
+const addZetaProvider = (): void => {
+  llm.models.setProvider(
+    fauxProvider({
+      models: [
+        { id: "z-1", name: "Zeta One" },
+        { id: "z-2", name: "Zeta Two" },
+      ],
+      provider: "zeta",
+    }).provider
+  );
+};
+
+const commandsSent = (): unknown[] =>
+  requests.flatMap(({ method, params }) =>
+    method === "chat.command" ? [params] : []
+  );
+
+const pickerLines = (picker: ModelPicker | undefined): string[] =>
+  picker === undefined
+    ? []
+    : pickerRows(picker).map((row) =>
+        row.kind === "provider"
+          ? row.provider
+          : `${row.selected ? "›" : " "} ${row.model.id}${row.current ? " (current)" : ""}`
+      );
+
+it("opens the /model picker on the current model and switches to the model chosen after a filter", async () => {
+  addZetaProvider();
+  const controller = await start("allow");
+
+  await controller.submit("/model");
+
+  expect(pickerLines(controller.view().picker)).toStrictEqual([
+    FAKE_PROVIDER,
+    `› ${llm.modelId} (current)`,
+    "zeta",
+    "  z-1",
+    "  z-2",
+  ]);
+  expect(commandsSent()).toStrictEqual([]);
+
+  for (const text of "two") {
+    controller.editPicker({ kind: "type", text });
+  }
+
+  expect(pickerLines(controller.view().picker)).toStrictEqual([
+    "zeta",
+    "› z-2",
+  ]);
+
+  await controller.choosePicker();
+
+  const view = await until(controller, (current) =>
+    shown(current.entries).includes(
+      "reply: This Conversation now uses zeta/z-2."
+    )
+  );
+
+  expect(view.picker).toBeUndefined();
+  expect(view.model).toBe("zeta/z-2");
+  expect(commandsSent()).toStrictEqual([
+    { agent: "home", args: "zeta/z-2", name: "model" },
+  ]);
+  await expect(
+    client.request("models.list", { agent: "home" })
+  ).resolves.toMatchObject({ current: { id: "z-2", provider: "zeta" } });
+});
+
+it("closes the /model picker on cancel without a command or a model change", async () => {
+  addZetaProvider();
+  const controller = await start("allow");
+
+  await controller.submit("/model");
+  controller.editPicker({ kind: "move", step: 1 });
+  controller.cancelPicker();
+
+  expect(controller.view().picker).toBeUndefined();
+  expect(shown(controller.view().entries)).toStrictEqual([
+    "user: /model",
+    "notice: The model did not change.",
+  ]);
+  expect(commandsSent()).toStrictEqual([]);
+  await expect(
+    client.request("models.list", { agent: "home" })
+  ).resolves.toMatchObject({
+    current: { id: llm.modelId, provider: FAKE_PROVIDER },
+  });
+});
+
+it("shows the Agent's /model reply instead of a picker when no model is available", async () => {
+  const controller = await start("allow");
+
+  llm.models.deleteProvider(FAKE_PROVIDER);
+  await controller.submit("/model");
+
+  const view = await until(controller, (current) =>
+    current.entries.some((entry) => entry.kind === "reply")
+  );
+
+  expect(view.picker).toBeUndefined();
+  expect(commandsSent()).toStrictEqual([{ agent: "home", name: "model" }]);
+  expect(shown(view.entries)).toContain(
+    `reply: Current model: ${FAKE_PROVIDER}/${llm.modelId}\n\nNo providers have credentials configured.`
+  );
+});
+
+it("sends /model with an argument to the Agent without a picker", async () => {
+  addZetaProvider();
+  const controller = await start("allow");
+
+  await controller.submit("/model zeta/z-1");
+
+  const view = await until(controller, (current) =>
+    shown(current.entries).includes(
+      "reply: This Conversation now uses zeta/z-1."
+    )
+  );
+
+  expect(view.picker).toBeUndefined();
+  expect(requests.map(({ method }) => method)).not.toContain("models.list");
+  expect(commandsSent()).toStrictEqual([
+    { agent: "home", args: "zeta/z-1", name: "model" },
+  ]);
 });

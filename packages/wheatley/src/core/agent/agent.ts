@@ -26,6 +26,8 @@ import { BUILTIN_COMMANDS } from "@wheatley-ai/sdk";
 import type {
   CommandSpec,
   Logger,
+  ModelPicker,
+  ModelRef,
   SecretReader,
   ToolResult,
 } from "@wheatley-ai/sdk";
@@ -63,6 +65,11 @@ import { ConcurrencyGate } from "../concurrency-gate.js";
 import { SerialQueue } from "../config/atomic-file.js";
 import { CLI_BINDING_ID } from "../config/validate.js";
 import { errorMessage } from "../error-message.js";
+import {
+  availableModels,
+  modelPickerText,
+  parseModelRef,
+} from "../model-catalog.js";
 import { toolErrorResult, withExtraTools } from "../tool-routing.js";
 import { AgentStore, CORE_NAMESPACE, coreMigrations } from "./agent-store.js";
 import type { RunDelivery } from "./agent-store.js";
@@ -275,16 +282,8 @@ export interface AgentStatus {
   readonly skillWarnings: readonly string[];
 }
 
-const parseModelArgument = (
-  argument: string,
-  current: ModelChoice
-): ModelChoice => {
-  const slash = argument.indexOf("/");
-
-  return slash === -1
-    ? { id: argument, provider: current.provider }
-    : { id: argument.slice(slash + 1), provider: argument.slice(0, slash) };
-};
+const parseModelArgument = (argument: string, current: ModelChoice): ModelRef =>
+  parseModelRef(argument) ?? { id: argument, provider: current.provider };
 
 /**
  * One running Agent: its `agent.sqlite`, its pi-durable Harness over `harness.sqlite`, its extensions, and its Runs
@@ -499,8 +498,8 @@ export class Agent {
   };
 
   /**
-   * Runs a built-in command for `chat` (ADR 0007). Resolves `false` if the command cannot run, for example `/model`
-   * without an argument or `/stop` without an active Run.
+   * Runs a built-in command for `chat` (ADR 0007). Resolves `false` if the command cannot run, for example `/goal`
+   * without an argument or `/stop` without an active Run. `/model` without an argument lists the available models.
    *
    * Each call sends exactly one command reply to the Chat before it resolves, also when the command cannot run, so a
    * Frontend shows only the reply and adds no message of its own. The exception is `/goal` with an objective, which
@@ -548,6 +547,20 @@ export class Agent {
         return false;
       }
     }
+  };
+
+  /** The available models and the model of the Chat's current Conversation, for `/model` and `models.list`. */
+  readonly modelPicker = async (chat: ChatKey): Promise<ModelPicker> => {
+    const conversationId = await this.#chatConversation(chat);
+
+    const [models, model] = await Promise.all([
+      availableModels(this.#options.models),
+      this.#requirePi().modelOf(conversationId),
+    ]);
+
+    const current = model === undefined ? undefined : parseModelRef(model);
+
+    return current === undefined ? { models } : { current, models };
   };
 
   /** Messages of the Chat's current Conversation, oldest first, before `before`. */
@@ -1179,8 +1192,15 @@ export class Agent {
     }
   };
 
-  /** Sends a command reply to the Chat: an event for the CLI Chat, or an outbox delivery for any other Chat. */
-  readonly #reply = async (chat: ChatKey, text: string): Promise<void> => {
+  /**
+   * Sends a command reply to the Chat: an event for the CLI Chat, or an outbox delivery for any other Chat. Only the
+   * outbox delivery carries `modelPicker`. CLI Chat clients call `models.list` instead.
+   */
+  readonly #reply = async (
+    chat: ChatKey,
+    text: string,
+    modelPicker?: ModelPicker
+  ): Promise<void> => {
     const conversationId = await this.#chatConversation(chat);
 
     if (isCliChat(chat)) {
@@ -1198,7 +1218,7 @@ export class Agent {
     await this.#options.outbox?.enqueue({
       bindingId: chat.bindingId,
       chatId: chat.chatId,
-      delivery: { kind: "message", source: "command", text },
+      delivery: { kind: "message", modelPicker, source: "command", text },
     });
   };
 
@@ -1411,7 +1431,7 @@ export class Agent {
   /** Replies with the usage of a command that needs an argument. Resolves `false`, because the command did not run. */
   readonly #replyUsage = async (
     chat: ChatKey,
-    name: "model" | "goal"
+    name: "goal"
   ): Promise<false> => {
     const spec: CommandSpec | undefined = BUILTIN_COMMANDS.find(
       (command) => command.name === name
@@ -1427,7 +1447,11 @@ export class Agent {
     args: string | undefined
   ): Promise<boolean> => {
     if (args === undefined) {
-      return await this.#replyUsage(chat, "model");
+      const picker = await this.modelPicker(chat);
+
+      await this.#reply(chat, modelPickerText(picker), picker);
+
+      return true;
     }
 
     const model = parseModelArgument(args, this.#options.config.model);

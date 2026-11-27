@@ -11,6 +11,7 @@ import {
   stageIncomingFiles,
 } from "./attachments.js";
 import { chatKeyOf, targetOf } from "./chat-key.js";
+import { isApiError, NOT_MODIFIED } from "./client.js";
 import type {
   BotIdentity,
   TelegramCallbackQuery,
@@ -19,12 +20,21 @@ import type {
   TelegramMessage,
   TelegramUpdate,
   TelegramUser,
+  TextOptions,
 } from "./client.js";
 import type { TelegramConfig } from "./config.js";
+import type { PickerAction, PickerStore } from "./model-picker.js";
+import {
+  parsePickerCallback,
+  pickerScreen,
+  pickerSelectedText,
+} from "./model-picker.js";
 
 const COMMAND_SUFFIX = /^\/[a-z]+@(?<bot>\w+)/iu;
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
+
+const STALE_PICKER_TEXT = "This model picker has expired. Send /model again.";
 
 const displayName = (user: TelegramUser | undefined): string | undefined => {
   if (user === undefined) {
@@ -102,6 +112,7 @@ export interface UpdateHandlerDeps {
   >;
   readonly isAllowed: (chatKey: string) => boolean;
   readonly approvals: ApprovalPromptStore;
+  readonly pickers: PickerStore;
 }
 
 /** Handles one Telegram update for the bot `me` and passes its result to `sink`. Never rejects. */
@@ -112,13 +123,13 @@ export type UpdateHandler = (
 ) => Promise<void>;
 
 /**
- * Creates the inbound side of a Telegram binding: messages, commands, and Approval button presses.
+ * Creates the inbound side of a Telegram binding: messages, commands, and Approval and model picker button presses.
  *
  * It drops updates from Chats outside `allowedChatIds` with an `info` log, and it logs any other failure at `error`
  * instead of rejecting, so one bad update does not stop the updates after it.
  */
 export const createUpdateHandler = (deps: UpdateHandlerDeps): UpdateHandler => {
-  const { approvals, client, config, ctx, isAllowed } = deps;
+  const { approvals, client, config, ctx, isAllowed, pickers } = deps;
   const { log } = ctx;
 
   /** Stages the files of a message and tells the Chat about files over the limit. */
@@ -206,23 +217,86 @@ export const createUpdateHandler = (deps: UpdateHandlerDeps): UpdateHandler => {
     });
   };
 
-  const handleCallback = async (
+  /** Edits a picker message. Ignores a repeated press that leaves the message as it is. */
+  const editPicker = async (
     query: TelegramCallbackQuery,
+    text: string,
+    keyboard: TextOptions["keyboard"]
+  ): Promise<void> => {
+    if (query.message === undefined) {
+      return;
+    }
+
+    try {
+      await client.editMessageText(
+        query.message.chat.id,
+        query.message.message_id,
+        text,
+        { keyboard, parseMode: "HTML" }
+      );
+    } catch (error) {
+      if (!isApiError(error, NOT_MODIFIED)) {
+        throw error;
+      }
+    }
+  };
+
+  const handlePickerPress = async (
+    query: TelegramCallbackQuery,
+    press: { readonly token: string; readonly action: PickerAction },
+    chatId: string | undefined,
     sink: FrontendSink
   ): Promise<void> => {
-    const parsed = parseApprovalCallback(query.data ?? "");
-    const { message } = query;
-    const chatId = message === undefined ? undefined : chatKeyOf(message);
+    const { action, token } = press;
+    const picker = pickers.get(token);
 
-    if (chatId !== undefined && !isAllowed(chatId)) {
-      log.info(
-        "Dropped a button press from a Telegram chat that is not in allowedChatIds",
-        { chatId }
-      );
-      await client.answerCallbackQuery(query.id);
+    if (picker === undefined || picker.chatId !== chatId) {
+      await client.answerCallbackQuery(query.id, STALE_PICKER_TEXT);
 
       return;
     }
+
+    if (action.kind === "show") {
+      const screen = pickerScreen(token, picker, action.view);
+
+      if (screen === undefined) {
+        await client.answerCallbackQuery(query.id, STALE_PICKER_TEXT);
+
+        return;
+      }
+
+      await client.answerCallbackQuery(query.id);
+      await editPicker(query, screen.text, screen.keyboard);
+
+      return;
+    }
+
+    const model = picker.models[action.model];
+
+    if (model === undefined) {
+      await client.answerCallbackQuery(query.id, STALE_PICKER_TEXT);
+
+      return;
+    }
+
+    // Removing the picker first turns a second press into a stale press instead of a second command.
+    await pickers.delete(token);
+    await sink.command({
+      args: `${model.provider}/${model.id}`,
+      chatId: picker.chatId,
+      name: "model",
+      senderDisplayName: displayName(query.from),
+    });
+    await client.answerCallbackQuery(query.id);
+    await editPicker(query, pickerSelectedText(model), []);
+  };
+
+  const handleApprovalPress = async (
+    query: TelegramCallbackQuery,
+    chatId: string | undefined,
+    sink: FrontendSink
+  ): Promise<void> => {
+    const parsed = parseApprovalCallback(query.data ?? "");
 
     const prompt =
       parsed === undefined ? undefined : approvals.byToken(parsed.token);
@@ -253,6 +327,30 @@ export const createUpdateHandler = (deps: UpdateHandlerDeps): UpdateHandler => {
       query.id,
       won ? "Decision recorded." : "This approval has already ended."
     );
+  };
+
+  const handleCallback = async (
+    query: TelegramCallbackQuery,
+    sink: FrontendSink
+  ): Promise<void> => {
+    const { message } = query;
+    const chatId = message === undefined ? undefined : chatKeyOf(message);
+
+    if (chatId !== undefined && !isAllowed(chatId)) {
+      log.info(
+        "Dropped a button press from a Telegram chat that is not in allowedChatIds",
+        { chatId }
+      );
+      await client.answerCallbackQuery(query.id);
+
+      return;
+    }
+
+    const press = parsePickerCallback(query.data ?? "");
+
+    await (press === undefined
+      ? handleApprovalPress(query, chatId, sink)
+      : handlePickerPress(query, press, chatId, sink));
   };
 
   return async (update, sink, me) => {

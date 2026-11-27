@@ -2,13 +2,18 @@ import { once } from "node:events";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import type { FauxResponseFactory, Message } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InMemoryApprovalGate } from "../../contracts/approval-gate.fake.js";
 import { InMemoryConfigStore } from "../../contracts/config-store.fake.js";
 import { InMemoryDeliveryOutbox } from "../../contracts/delivery-outbox.fake.js";
+import type { OutboxItem } from "../../contracts/delivery-outbox.js";
 import { InMemoryMemoryStore } from "../../contracts/memory-store.fake.js";
 import { systemClock } from "../../contracts/module.js";
 import { InMemorySecretStore } from "../../contracts/secret-store.fake.js";
@@ -351,29 +356,161 @@ describe("Agent", () => {
     }
   });
 
-  it("replies with the usage for /model and /goal without an argument, and once for an unknown model", async () => {
+  it("replies with the usage for /goal without an argument, and once for an unknown model", async () => {
     const agent = await openAgent();
 
     try {
       const replies = (): string[] =>
         events.of("chat.message").map((event) => event.message.text);
 
-      await expect(agent.command(CLI_CHAT, "model", undefined)).resolves.toBe(
-        false
-      );
       await expect(agent.command(CLI_CHAT, "goal", undefined)).resolves.toBe(
         false
       );
       await expect(
         agent.command(CLI_CHAT, "model", "unknown-model")
       ).resolves.toBe(false);
+      await expect(
+        agent.command(CLI_CHAT, "model", `${FAKE_PROVIDER}/unknown-model`)
+      ).resolves.toBe(false);
 
       expect(replies()).toStrictEqual([
-        "Usage: /model <model-id>",
         "Usage: /goal <objective>",
+        `Unknown model: ${FAKE_PROVIDER}/unknown-model`,
         `Unknown model: ${FAKE_PROVIDER}/unknown-model`,
       ]);
       expect(events.of("run.started")).toHaveLength(0);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("lists the available models for /model without an argument and marks the current model", async () => {
+    llm.models.setProvider(
+      fauxProvider({
+        models: [{ id: "zeta-2" }, { id: "zeta-1" }],
+        provider: "zeta",
+      }).provider
+    );
+    const agent = await openAgent();
+
+    try {
+      await expect(agent.command(CLI_CHAT, "model", undefined)).resolves.toBe(
+        true
+      );
+      await expect(
+        agent.command(CLI_CHAT, "model", "zeta/zeta-1")
+      ).resolves.toBe(true);
+      await expect(agent.command(CLI_CHAT, "model", undefined)).resolves.toBe(
+        true
+      );
+
+      const replies = events
+        .of("chat.message")
+        .map((event) => event.message.text);
+
+      expect(replies).toStrictEqual([
+        [
+          `Current model: ${FAKE_PROVIDER}/${llm.modelId}`,
+          `**${FAKE_PROVIDER}**\n- ${llm.modelId} (current)`,
+          "**zeta**\n- zeta-1\n- zeta-2",
+          "Use /model <id> or /model <provider>/<id> to switch.",
+        ].join("\n\n"),
+        "This Conversation now uses zeta/zeta-1.",
+        [
+          "Current model: zeta/zeta-1",
+          `**${FAKE_PROVIDER}**\n- ${llm.modelId}`,
+          "**zeta**\n- zeta-1 (current)\n- zeta-2",
+          "Use /model <id> or /model <provider>/<id> to switch.",
+        ].join("\n\n"),
+      ]);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("reports that no provider has credentials for /model without an argument", async () => {
+    llm.models.setProvider({
+      ...llm.faux.provider,
+      auth: {
+        apiKey: {
+          name: "Faux",
+          resolve: async () => {
+            await Promise.resolve();
+          },
+        },
+      },
+    });
+    const agent = await openAgent();
+
+    try {
+      await expect(agent.command(CLI_CHAT, "model", undefined)).resolves.toBe(
+        true
+      );
+
+      expect(events.of("chat.message").at(-1)?.message.text).toBe(
+        `Current model: ${FAKE_PROVIDER}/${llm.modelId}\n\nNo providers have credentials configured.`
+      );
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("attaches the model picker to the /model delivery of a non-CLI Chat", async () => {
+    const enqueued: OutboxItem[] = [];
+
+    const agent = await openAgent({
+      outbox: {
+        enqueue: async (item) => {
+          await Promise.resolve();
+          enqueued.push(item);
+
+          return {
+            attempts: 0,
+            bindingId: item.bindingId,
+            chatId: item.chatId,
+            createdAt: 0,
+            delivery: { ...item.delivery, chatId: item.chatId, messageId: "m" },
+            deliveryId: "m",
+            lastError: null,
+            nextAttemptAt: null,
+            permanent: false,
+            sourceConversationId: undefined,
+            status: "pending",
+          };
+        },
+      },
+    });
+
+    try {
+      await expect(
+        agent.command({ bindingId: "tg", chatId: "42" }, "model", undefined)
+      ).resolves.toBe(true);
+
+      expect(enqueued).toMatchObject([
+        {
+          bindingId: "tg",
+          chatId: "42",
+          delivery: {
+            kind: "message",
+            modelPicker: {
+              current: { id: llm.modelId, provider: FAKE_PROVIDER },
+              models: [
+                {
+                  id: llm.modelId,
+                  name: llm.faux.getModel().name,
+                  provider: FAKE_PROVIDER,
+                },
+              ],
+            },
+            source: "command",
+            text: [
+              `Current model: ${FAKE_PROVIDER}/${llm.modelId}`,
+              `**${FAKE_PROVIDER}**\n- ${llm.modelId} (current)`,
+              "Use /model <id> or /model <provider>/<id> to switch.",
+            ].join("\n\n"),
+          },
+        },
+      ]);
     } finally {
       await agent.close();
     }

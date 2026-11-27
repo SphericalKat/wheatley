@@ -30,6 +30,7 @@ import type {
   MethodName,
   MethodParams,
   MethodResult,
+  ModelRef,
   PendingRestart,
   RunSummary,
   Trigger,
@@ -38,7 +39,11 @@ import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { parse } from "yaml";
 
-import { configToYaml, createFixtureState } from "./fixtures.js";
+import {
+  configToYaml,
+  createFixtureState,
+  FIXTURE_MODELS,
+} from "./fixtures.js";
 import type { FixtureMemoryFile, FixtureState } from "./fixtures.js";
 
 type Handler<M extends MethodName> = (
@@ -485,6 +490,38 @@ export const createMockDaemon = (
     return message.messageId;
   };
 
+  const chatModel = (agent: string): ModelRef => {
+    const { model } = agentConfig(agent);
+
+    return (
+      state.chatModels.get(agent) ?? { id: model.id, provider: model.provider }
+    );
+  };
+
+  /** Switches the CLI Chat model like `/model <args>`, with the reply texts of the real Agent. */
+  const changeModel = (agent: string, args: string) => {
+    const slash = args.indexOf("/");
+
+    const model: ModelRef =
+      slash === -1
+        ? { id: args, provider: agentConfig(agent).model.provider }
+        : { id: args.slice(slash + 1), provider: args.slice(0, slash) };
+
+    const argument = `${model.provider}/${model.id}`;
+
+    const known = FIXTURE_MODELS.some(
+      (entry) => entry.provider === model.provider && entry.id === model.id
+    );
+
+    if (!known) {
+      return { accepted: false, text: `Unknown model: ${argument}` };
+    }
+
+    state.chatModels.set(agent, model);
+
+    return { accepted: true, text: `This Conversation now uses ${argument}.` };
+  };
+
   const conversationOf = (agent: string): string => {
     const existing = state.conversations.get(agent);
 
@@ -586,6 +623,7 @@ export const createMockDaemon = (
     moveKey(state.runtime, from, to);
     moveKey(state.chat, from, to);
     moveKey(state.conversations, from, to);
+    moveKey(state.chatModels, from, to);
     moveKey(state.memory, from, to);
     moveKey(state.consolidation, from, to);
     moveKey(state.triggers, from, to);
@@ -725,22 +763,27 @@ export const createMockDaemon = (
         runId: run.runId,
       };
     },
-    "chat.command": ({ agent, name }) => {
+    "chat.command": ({ agent, args, name }) => {
       requireRunning(agent);
 
       if (name === "new") {
         state.conversations.set(agent, nextId("conv"));
       }
 
+      const { accepted, text } =
+        name === "model" && args !== undefined
+          ? changeModel(agent, args)
+          : { accepted: true, text: `Ran /${name}.` };
+
       addChatMessage(agent, {
         at: now(),
         messageId: nextId("msg"),
         role: "assistant",
         source: "command",
-        text: `Ran /${name}.`,
+        text,
       });
 
-      return { accepted: true };
+      return { accepted };
     },
     "chat.history": ({ agent, before, limit }) => {
       agentConfig(agent);
@@ -994,6 +1037,17 @@ export const createMockDaemon = (
       emit("memory.changed", { agent, change: "written", name });
 
       return { file: { chars: next.length, name, updatedAt } };
+    },
+    "models.list": ({ agent }) => {
+      const models = [...FIXTURE_MODELS];
+
+      if (agent === undefined) {
+        return { models };
+      }
+
+      const running = state.runtime.get(agent)?.state === "running";
+
+      return running ? { current: chatModel(agent), models } : { models };
     },
     "runs.get": ({ agent, runId }) => {
       const run = state.runs.find(

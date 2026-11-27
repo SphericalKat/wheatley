@@ -402,7 +402,18 @@ it("dismisses a failed entry through JSON-RPC", async () => {
   await expect(api.dismiss(entry.deliveryId)).resolves.toBe(false);
 });
 
-it("keeps attachment bytes and Approval deliveries intact across storage", async () => {
+it("keeps attachment bytes, model pickers, and Approval deliveries intact across storage", async () => {
+  const modelPicker = {
+    current: { id: "claude-sonnet-5-5", provider: "anthropic" },
+    models: [
+      {
+        id: "claude-sonnet-5-5",
+        name: "Claude Sonnet 5.5",
+        provider: "anthropic",
+      },
+    ],
+  };
+
   const stopped = await createModule();
   await stopped.api.enqueue({
     bindingId: "tg",
@@ -419,6 +430,16 @@ it("keeps attachment bytes and Approval deliveries intact across storage", async
       kind: "message",
       source: "reply",
       text: "see file",
+    },
+  });
+  await stopped.api.enqueue({
+    bindingId: "tg",
+    chatId: "1",
+    delivery: {
+      kind: "message",
+      modelPicker,
+      source: "command",
+      text: "models",
     },
   });
   await stopped.api.enqueue({
@@ -443,6 +464,7 @@ it("keeps attachment bytes and Approval deliveries intact across storage", async
       kind: "message",
       text: "see file",
     },
+    { kind: "message", modelPicker, text: "models" },
     { approvalId: "approval-1", expiresAt: null, kind: "approval_requested" },
   ]);
 });

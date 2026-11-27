@@ -221,12 +221,7 @@ describe("wheatley chat", () => {
   });
 
   it("prints one Agent reply for each command that cannot run", async () => {
-    const terminal = scriptedIo([
-      "/model unknown-model",
-      "/model",
-      "/goal",
-      "/stop",
-    ]);
+    const terminal = scriptedIo(["/model unknown-model", "/goal", "/stop"]);
 
     const code = await runCli(
       ["chat", "--home", home.dir, "--agent", "home"],
@@ -237,7 +232,6 @@ describe("wheatley chat", () => {
     // The first line is the banner. Every line after it must be an Agent reply.
     expect(terminal.stdout().split("\n").slice(1)).toEqual([
       `home> Unknown model: ${FAKE_PROVIDER}/unknown-model`,
-      "home> Usage: /model <model-id>",
       "home> Usage: /goal <objective>",
       "home> No Run is active.",
       "",

@@ -9,6 +9,7 @@ import type {
   Delivery,
   Logger,
   MessageDelivery,
+  ModelPicker,
 } from "@wheatley-ai/sdk";
 
 import type { ApprovalPromptStore } from "./approvals.js";
@@ -20,7 +21,7 @@ import {
 import { attachmentSize, skippedFilesText, toUpload } from "./attachments.js";
 import { parseChatKey } from "./chat-key.js";
 import type { TelegramTarget } from "./chat-key.js";
-import { TelegramApiError } from "./client.js";
+import { isApiError, NOT_MODIFIED, TelegramApiError } from "./client.js";
 import type { TelegramClient, TextOptions } from "./client.js";
 import {
   HTTP_BAD_REQUEST,
@@ -29,6 +30,8 @@ import {
 } from "./http-status.js";
 import type { Draft, LiveRuns } from "./live.js";
 import { markdownToTelegramHtml } from "./markdown.js";
+import type { PickerStore } from "./model-picker.js";
+import { openingScreen, pickerToken, toStoredPicker } from "./model-picker.js";
 import { RecentSet } from "./recent-set.js";
 
 /** Chunks stay below the 4096-character message limit of the Bot API. */
@@ -40,7 +43,6 @@ const MS_PER_SECOND = 1000;
 const DEDUP_CAPACITY = 1000;
 
 const PARSE_ERROR = /can't parse entities/iu;
-const NOT_MODIFIED = /message is not modified/iu;
 
 /** Converts a client error to the `DeliveryError` that the outbox expects. */
 const toDeliveryError = (cause: unknown): DeliveryError => {
@@ -78,9 +80,6 @@ const toDeliveryError = (cause: unknown): DeliveryError => {
 const isBadRequest = (cause: unknown): cause is TelegramApiError =>
   cause instanceof TelegramApiError && cause.code === HTTP_BAD_REQUEST;
 
-const isApiError = (cause: unknown, pattern: RegExp): boolean =>
-  isBadRequest(cause) && pattern.test(cause.message);
-
 /** Progress of one `message` delivery, so a retry resumes after the parts that Telegram already confirmed. */
 interface MessageProgress {
   sentParts: number;
@@ -93,6 +92,7 @@ export interface DelivererDeps {
   readonly log: Logger;
   readonly isAllowed: (chatKey: string) => boolean;
   readonly approvals: ApprovalPromptStore;
+  readonly pickers: PickerStore;
   readonly live: LiveRuns;
   readonly maxAttachmentBytes: number;
 }
@@ -101,14 +101,24 @@ export interface DelivererDeps {
  * Creates the `FrontendBinding.deliver` of a Telegram binding.
  *
  * A `message` delivery sends its text chunks in order, then its attachments, then one notice that names the
- * attachments over `maxAttachmentBytes`. A retry resumes after the parts that Telegram already confirmed, and a
+ * attachments over `maxAttachmentBytes`. A `message` with a `modelPicker` that lists models sends one picker message
+ * with an inline keyboard instead of its text. A retry resumes after the parts that Telegram already confirmed, and a
  * delivery that already succeeded is dropped. Rejects with a `DeliveryError`: permanent for an invalid or unlisted
  * Chat and for Bot API codes 400 and 403, retryable for other failures.
  */
 export const createDeliverer = (
   deps: DelivererDeps
 ): ((delivery: Delivery) => Promise<void>) => {
-  const { approvals, client, isAllowed, live, log, maxAttachmentBytes } = deps;
+  const {
+    approvals,
+    client,
+    isAllowed,
+    live,
+    log,
+    maxAttachmentBytes,
+    pickers,
+  } = deps;
+
   const progress = new Map<string, MessageProgress>();
   const delivered = new RecentSet<string>(DEDUP_CAPACITY);
 
@@ -271,6 +281,23 @@ export const createDeliverer = (
     delivered.add(delivery.messageId);
   };
 
+  const deliverModelPicker = async (
+    delivery: MessageDelivery,
+    picker: ModelPicker,
+    target: TelegramTarget
+  ): Promise<void> => {
+    const token = pickerToken(delivery.messageId);
+
+    if (pickers.get(token) === undefined) {
+      const stored = toStoredPicker(delivery.chatId, picker);
+      const { keyboard, text } = openingScreen(token, stored);
+      await client.sendMessage(target, text, { keyboard, parseMode: "HTML" });
+      await pickers.put(token, stored);
+    }
+
+    delivered.add(delivery.messageId);
+  };
+
   const deliverApprovalRequest = async (
     delivery: ApprovalRequestedDelivery,
     target: TelegramTarget
@@ -345,7 +372,11 @@ export const createDeliverer = (
     try {
       switch (delivery.kind) {
         case "message": {
-          await deliverMessage(delivery, target);
+          const picker = delivery.modelPicker;
+
+          await (picker === undefined || picker.models.length === 0
+            ? deliverMessage(delivery, target)
+            : deliverModelPicker(delivery, picker, target));
           break;
         }
 

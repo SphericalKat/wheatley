@@ -14,6 +14,7 @@ import type {
   JsonObject,
   JsonValue,
   MessageDelivery,
+  ModelPicker,
 } from "@wheatley-ai/sdk";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -717,6 +718,202 @@ it("edits the Approval prompt on resolve, also after a restart", async () => {
       text: "<b>Allowed once</b> by Ada L\nTool: <code>shell</code>\n<pre>ls</pre>",
     },
   ]);
+});
+
+const LONG_MODEL_ID = `anthropic/${"claude-preview-".repeat(6)}2026`;
+
+/** Two Anthropic models and ten OpenRouter models, with a current OpenRouter model whose ID is over 64 bytes. */
+const pickerOf = (): ModelPicker => ({
+  current: { id: LONG_MODEL_ID, provider: "openrouter" },
+  models: [
+    { id: "claude-haiku", name: "Claude Haiku", provider: "anthropic" },
+    { id: "claude-sonnet", name: "Claude Sonnet", provider: "anthropic" },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `Model ${index}`,
+      provider: "openrouter",
+    })),
+    { id: LONG_MODEL_ID, name: "Claude Preview", provider: "openrouter" },
+  ],
+});
+
+const pickerMessage = (deliveryId: string, picker = pickerOf()) =>
+  message({
+    chatId: String(DM_CHAT),
+    messageId: deliveryId,
+    modelPicker: picker,
+    source: "command",
+    text: "**anthropic**\n- claude-haiku",
+  });
+
+const DM = { id: DM_CHAT, type: "private" };
+
+/** Presses a button with `data` on the first sent message. */
+const pressData = async (
+  client: FakeTelegramClient,
+  data: string,
+  chat: { id: number; type: string } = DM
+): Promise<void> => {
+  updateId += 1;
+  await client.push({
+    callback_query: {
+      data,
+      from: sender,
+      id: `cb-${updateId}`,
+      message: { chat, message_id: client.sent[0]?.messageId ?? 0 },
+    },
+    update_id: updateId,
+  });
+};
+
+/** Presses the button labeled `label` on the latest keyboard of the picker message. Resolves with its data. */
+const pressButton = async (
+  client: FakeTelegramClient,
+  label: string,
+  chat: { id: number; type: string } = DM
+): Promise<string> => {
+  const keyboard =
+    client.edits.at(-1)?.options?.keyboard ?? client.sent[0]?.options?.keyboard;
+
+  const pressed = keyboard?.flat().find((key) => key.text === label);
+
+  if (pressed === undefined) {
+    throw new Error(`No button labeled ${label}`);
+  }
+
+  await pressData(client, pressed.callbackData, chat);
+
+  return pressed.callbackData;
+};
+
+const labelsOf = (
+  keyboard: readonly (readonly { text: string }[])[] | undefined
+): string[][] => (keyboard ?? []).map((row) => row.map((key) => key.text));
+
+it("shows a model picker with a provider step and pages of models", async () => {
+  const { binding, client } = await harness();
+
+  await binding.deliver(pickerMessage("picker-1"));
+
+  expect(client.sent).toHaveLength(1);
+  expect(client.sent[0]?.text).toBe(
+    `<b>Choose a model</b>\nCurrent: <code>openrouter/${LONG_MODEL_ID}</code>\nChoose a provider.`
+  );
+  expect(labelsOf(client.sent[0]?.options?.keyboard)).toStrictEqual([
+    ["anthropic (2)"],
+    ["✓ openrouter (10)"],
+  ]);
+
+  await pressButton(client, "✓ openrouter (10)");
+  await pressButton(client, "Next");
+  const [, secondPage] = client.edits;
+
+  expect(labelsOf(client.edits[0]?.options?.keyboard)).toStrictEqual([
+    ...Array.from({ length: 8 }, (_, index) => [`Model ${index}`]),
+    ["Next"],
+    ["Back"],
+  ]);
+  expect(secondPage?.text).toContain("<b>openrouter</b>, page 2 of 2");
+  expect(labelsOf(secondPage?.options?.keyboard)).toStrictEqual([
+    ["Model 8"],
+    ["✓ Claude Preview"],
+    ["Previous"],
+    ["Back"],
+  ]);
+
+  await pressButton(client, "Back");
+
+  expect(labelsOf(client.edits[2]?.options?.keyboard)).toStrictEqual([
+    ["anthropic (2)"],
+    ["✓ openrouter (10)"],
+  ]);
+  expect(client.sent).toHaveLength(1);
+
+  const callbackBytes = [client.sent[0], ...client.edits].flatMap((entry) =>
+    (entry?.options?.keyboard ?? [])
+      .flat()
+      .map((key) => Buffer.byteLength(key.callbackData))
+  );
+
+  expect(Math.max(...callbackBytes)).toBeLessThanOrEqual(64);
+});
+
+it("switches the model from a picker press after a restart, once", async () => {
+  const first = await harness();
+  await first.binding.deliver(pickerMessage("picker-2"));
+  await first.binding.stop();
+  harnesses = [];
+
+  const second = await harness({ client: first.client });
+  const { client, commands } = second;
+  await second.binding.deliver(pickerMessage("picker-2"));
+  await pressButton(client, "✓ openrouter (10)");
+  await pressButton(client, "Next");
+  const select = await pressButton(client, "✓ Claude Preview");
+  const selection = client.edits.at(-1);
+  await pressData(client, select);
+
+  expect(client.sent).toHaveLength(1);
+  expect(commands).toStrictEqual([
+    {
+      args: `openrouter/${LONG_MODEL_ID}`,
+      chatId: String(DM_CHAT),
+      name: "model",
+      senderDisplayName: "Ada L",
+    },
+  ]);
+  expect(selection).toStrictEqual({
+    chatId: DM_CHAT,
+    messageId: client.sent[0]?.messageId,
+    options: { keyboard: [], parseMode: "HTML" },
+    text: `Selected <code>openrouter/${LONG_MODEL_ID}</code>`,
+  });
+  expect(client.answers.at(-1)?.text).toBe(
+    "This model picker has expired. Send /model again."
+  );
+});
+
+it("answers a picker press with an unknown token with a notice", async () => {
+  const { client, commands } = await harness();
+  await client.sendMessage({ chatId: DM_CHAT, threadId: undefined }, "old");
+
+  await pressData(client, "mp:AAAAAAAAAAAAAAAA:s:0");
+
+  expect(commands).toHaveLength(0);
+  expect(client.answers.map((answer) => answer.text)).toStrictEqual([
+    "This model picker has expired. Send /model again.",
+  ]);
+});
+
+it("opens on the model step for one provider and ignores presses from another Chat", async () => {
+  const { binding, client, commands } = await harness();
+
+  await binding.deliver(
+    pickerMessage("picker-3", {
+      models: [{ id: "gpt-x", name: "GPT X", provider: "openai" }],
+    })
+  );
+  await pressButton(client, "GPT X", { id: GROUP_CHAT, type: "supergroup" });
+
+  expect(client.sent[0]?.text).toBe("<b>Choose a model</b>\n<b>openai</b>");
+  expect(labelsOf(client.sent[0]?.options?.keyboard)).toStrictEqual([
+    ["GPT X"],
+  ]);
+  expect(commands).toHaveLength(0);
+  expect(client.edits).toHaveLength(0);
+  expect(client.answers.map((answer) => answer.text)).toStrictEqual([
+    "This model picker has expired. Send /model again.",
+  ]);
+});
+
+it("sends the text of a model picker without models", async () => {
+  const { binding, client } = await harness();
+
+  await binding.deliver(pickerMessage("picker-4", { models: [] }));
+
+  expect(
+    client.sent.map((sent) => [sent.text, sent.options?.keyboard])
+  ).toStrictEqual([["<b>anthropic</b>\n• claude-haiku", undefined]]);
 });
 
 it("verifies the secret token of webhook requests", async () => {

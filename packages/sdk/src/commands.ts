@@ -20,8 +20,8 @@ export interface CommandSpec {
 export const BUILTIN_COMMANDS = [
   { description: "Start a new Conversation in this Chat", name: "new" },
   {
-    argument: "<model-id>",
-    description: "Use another model for this Conversation",
+    argument: "[<model-id>]",
+    description: "List the models, or use another model for this Conversation",
     name: "model",
   },
   { description: "Compact the current Conversation", name: "compact" },

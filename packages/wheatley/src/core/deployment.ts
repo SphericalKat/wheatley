@@ -24,7 +24,7 @@ import { SeamError } from "../contracts/errors.js";
 import type { ExtensionCatalog } from "../contracts/extension-catalog.js";
 import { systemClock } from "../contracts/module.js";
 import type { Clock } from "../contracts/module.js";
-import { Agent } from "./agent/agent.js";
+import { Agent, CLI_CHAT } from "./agent/agent.js";
 import type { AgentOptions, AgentStatus } from "./agent/agent.js";
 import { gatedModels } from "./agent/gated-models.js";
 import { builtinOnlyCatalog } from "./builtin-catalog.js";
@@ -37,6 +37,7 @@ import { pendingRestarts } from "./config/pending-restart.js";
 import type { AppliedAgent } from "./config/pending-restart.js";
 import { EventBus } from "./events.js";
 import { LogStore } from "./logger.js";
+import { availableModels } from "./model-catalog.js";
 import { createProviderModels } from "./models.js";
 import { defaultSetTimer, Supervisor } from "./supervisor.js";
 import type { SetTimer } from "./supervisor.js";
@@ -310,6 +311,31 @@ export class Deployment {
       uptimeMs: Math.max(0, now - this.#startedAt),
       version: this.#options.version,
     };
+  };
+
+  /**
+   * `models.list`: the available models of the current config. With a running `agent`, also the model of its CLI Chat
+   * Conversation. Errors: throws `agent_not_found` for an unknown Agent.
+   */
+  readonly listModels = async (
+    agent: string | undefined
+  ): Promise<MethodResult<"models.list">> => {
+    if (agent !== undefined) {
+      this.#requireKnown(agent);
+
+      const instance = this.#supervisor.get(agent)?.instance;
+
+      if (instance !== undefined) {
+        const picker = await instance.modelPicker(CLI_CHAT);
+
+        return { ...picker, models: [...picker.models] };
+      }
+    }
+
+    const createModels = this.#options.models ?? createProviderModels;
+    const models = await createModels(this.#current, this.config.secrets);
+
+    return { models: await availableModels(models) };
   };
 
   readonly startAgent = async (name: string): Promise<AgentState> => {

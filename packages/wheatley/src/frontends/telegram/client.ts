@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 
 import type { TelegramTarget } from "./chat-key.js";
+import { HTTP_BAD_REQUEST } from "./http-status.js";
 
 /*
  * The Telegram Bot API subset that the Telegram Frontend uses. `grammy-client.ts` implements it with grammY, and
@@ -152,6 +153,15 @@ export class TelegramApiError extends Error {
     this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
+
+/** The Bot API error of an edit to the same text and keyboard. */
+export const NOT_MODIFIED = /message is not modified/iu;
+
+/** Returns true if `cause` is a Bot API 400 error whose description matches `pattern`. */
+export const isApiError = (cause: unknown, pattern: RegExp): boolean =>
+  cause instanceof TelegramApiError &&
+  cause.code === HTTP_BAD_REQUEST &&
+  pattern.test(cause.message);
 
 /**
  * The Telegram Bot API as the Frontend uses it.

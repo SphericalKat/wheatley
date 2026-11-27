@@ -6,6 +6,7 @@ import type {
 } from "@wheatley-ai/sdk";
 import { chunkMarkdown } from "@wheatley-ai/sdk";
 
+import type { SlackBlocks } from "./approval-blocks.js";
 import {
   approvalOutcomeText,
   approvalRequestBlocks,
@@ -19,6 +20,7 @@ import { parseChatId } from "./chat-id.js";
 import type { SlackChatTarget } from "./chat-id.js";
 import type { LiveProgress } from "./live-progress.js";
 import { MAX_MARKDOWN_LENGTH } from "./live-progress.js";
+import { MODEL_PICKER_TEXT, modelPickerBlocks } from "./model-picker-blocks.js";
 import { postToChat } from "./slack-client.js";
 import type { SlackWebClient } from "./slack-client.js";
 import type { SlackStateStore } from "./state-store.js";
@@ -56,6 +58,26 @@ const postChunk = async (
   await web.chat.update({
     channel: target.channel,
     markdown_text: chunk,
+    ts: replaceTs,
+  });
+};
+
+const postBlocks = async (
+  web: SlackWebClient,
+  target: SlackChatTarget,
+  blocks: SlackBlocks,
+  replaceTs: string | undefined
+): Promise<void> => {
+  if (replaceTs === undefined) {
+    await postToChat(web, target, { blocks, text: MODEL_PICKER_TEXT });
+
+    return;
+  }
+
+  await web.chat.update({
+    blocks,
+    channel: target.channel,
+    text: MODEL_PICKER_TEXT,
     ts: replaceTs,
   });
 };
@@ -179,7 +201,8 @@ export class SlackOutbound {
   };
 
   /**
-   * Posts the Markdown chunks, then uploads the attachments. If the message finishes a streamed Run, the first chunk
+   * Posts the Markdown chunks, or the Block Kit model picker instead of the text if the message has one that fits,
+   * then uploads the attachments. If the message finishes a streamed Run, the first chunk
    * replaces the draft reply. A retry resumes after the last part that Slack confirmed, and a repeated `messageId`
    * after success does nothing.
    */
@@ -196,14 +219,29 @@ export class SlackOutbound {
 
     const target = parseChatId(delivery.chatId);
 
+    const pickerBlocks =
+      delivery.modelPicker === undefined
+        ? undefined
+        : modelPickerBlocks(delivery.modelPicker);
+
     const chunks =
-      delivery.text.trim() === ""
+      delivery.text.trim() === "" || pickerBlocks !== undefined
         ? []
         : chunkMarkdown(delivery.text, MAX_MARKDOWN_LENGTH);
 
     const progress = await this.#messageProgress(delivery);
 
+    const pickerSteps =
+      pickerBlocks === undefined
+        ? []
+        : [
+            async () => {
+              await postBlocks(web, target, pickerBlocks, progress.draftTs);
+            },
+          ];
+
     const steps = [
+      ...pickerSteps,
       ...chunks.map((chunk, index) => async () => {
         await postChunk(
           web,
