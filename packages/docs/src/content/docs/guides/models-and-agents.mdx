@@ -3,23 +3,19 @@ title: Connect your AI model
 description: Connect Wheatley to Anthropic, OpenAI, Google, OpenRouter, or an OpenAI-compatible server, and run multiple assistants side by side.
 ---
 
-import { Aside, TabItem, Tabs } from "@astrojs/starlight/components";
+import { TabItem, Tabs } from "@astrojs/starlight/components";
 
-Wheatley lets you pick the AI provider and model you want for each assistant. You can use hosted providers or point Wheatley at an OpenAI-compatible proxy, and you can run several independent assistants inside a single Wheatley installation.
-
-<Aside type="tip">
-  After editing `~/.wheatley/config.yaml`, restart the assistant you changed (run `/restart` in `wheatley chat`, restart it from the dashboard, or run `wheatley service restart`). Wheatley does not restart assistants automatically on file save.
-</Aside>
+Wheatley lets you choose the AI provider and model for each assistant. You can use hosted providers or an OpenAI-compatible proxy, and run multiple isolated assistants inside one installation.
 
 ## Pick a model provider
 
 Wheatley supports `anthropic`, `openai`, `google`, `openrouter`, `groq`, `mistral`, `xai`, and `deepseek` out of the box.
 
-Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in `~/.wheatley/config.yaml`.
+Add your API key to `~/.wheatley/secrets.yaml`, configure `~/.wheatley/config.yaml` as shown below, and restart the assistant.
 
 <Tabs syncKey="provider">
   <TabItem label="Anthropic">
-    Add `ANTHROPIC_API_KEY: sk-ant-...` to `secrets.yaml`, then update `config.yaml`:
+    Add `ANTHROPIC_API_KEY: sk-ant-...` to `secrets.yaml`:
 
     ```yaml
     version: 1
@@ -38,7 +34,7 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
   </TabItem>
 
   <TabItem label="OpenAI">
-    Add `OPENAI_API_KEY: sk-...` to `secrets.yaml`, then update `config.yaml`:
+    Add `OPENAI_API_KEY: sk-...` to `secrets.yaml`:
 
     ```yaml
     version: 1
@@ -57,7 +53,7 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
   </TabItem>
 
   <TabItem label="Google">
-    Add `GOOGLE_API_KEY: ...` to `secrets.yaml`, then update `config.yaml`:
+    Add `GOOGLE_API_KEY: ...` to `secrets.yaml`:
 
     ```yaml
     version: 1
@@ -76,7 +72,7 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
   </TabItem>
 
   <TabItem label="OpenRouter">
-    Use any supported provider name (`openrouter`, `groq`, `mistral`, `xai`, or `deepseek`), store its key in `secrets.yaml`, and set a valid model ID for that provider:
+    Use any supported provider name (`openrouter`, `groq`, `mistral`, `xai`, or `deepseek`) with a matching model ID:
 
     ```yaml
     version: 1
@@ -115,11 +111,18 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
   </TabItem>
 </Tabs>
 
-### Adjust reasoning effort (`thinking`)
+### Reasoning effort and concurrency limits
 
-For models that support extended thinking, you can set `model.thinking` to `off`, `low`, `medium`, or `high`:
+- **Reasoning effort**: For models that support extended thinking, set `model.thinking` to `off`, `low`, `medium`, or `high`.
+- **Rate-limit protection**: If multiple assistants share one provider key, set `maxConcurrent` under that provider to cap simultaneous requests.
 
 ```yaml
+providers:
+  anthropic:
+    apiKey:
+      secret: ANTHROPIC_API_KEY
+    maxConcurrent: 4
+
 agents:
   default:
     model:
@@ -128,23 +131,9 @@ agents:
       thinking: medium
 ```
 
-### Limit concurrent provider requests
-
-If several assistants share one API key, set `maxConcurrent` on the provider to avoid hitting rate limits:
-
-```yaml
-providers:
-  anthropic:
-    apiKey:
-      secret: ANTHROPIC_API_KEY
-    maxConcurrent: 4
-```
-
 ## Run multiple assistants
 
-Every entry under `agents:` is completely isolated: it gets its own model, system instructions, memory folder, workspace, permission rules, and chat apps.
-
-For example, you can run a fast daily assistant alongside a deeper research assistant:
+Every entry under `agents:` is completely isolated, with its own model, instructions, memory, workspace, permissions, and chat apps:
 
 ```yaml
 version: 1
@@ -172,18 +161,13 @@ agents:
       id: gpt-5.4-mini
 ```
 
-### Choosing which assistant to talk to
+### Selecting an assistant in the CLI
 
-- If you have an assistant named `default`, `wheatley chat` and `wheatley ask` use it automatically.
-- Otherwise, pass `--agent <name>`:
+If you have an assistant named `default`, `wheatley chat` and `wheatley ask` use it automatically. Otherwise, pass `--agent <name>`:
 
-  ```bash
-  wheatley chat --agent personal
-  wheatley ask --agent research "Compare SQLite WAL and rollback journal modes"
-  ```
+```bash
+wheatley chat --agent personal
+wheatley ask --agent research "Compare SQLite WAL and rollback journal modes"
+```
 
-- Inside an active CLI chat, you can also switch models for the current conversation without editing `config.yaml`:
-
-  ```text
-  /model gpt-5.4-mini
-  ```
+You can also switch models temporarily inside an active CLI chat with `/model <model-id>`.

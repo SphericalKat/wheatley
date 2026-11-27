@@ -5,12 +5,10 @@ description: Install Wheatley on macOS, Linux, or Docker in a few minutes.
 
 import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
-Pick the install method that fits your machine. Once installed, run `wheatley --version` and move on to the [Quick start](/wheatley/getting-started/quick-start/).
-
 ## Before you begin
 
 - **An AI provider API key** (for example, from Anthropic, OpenAI, or Google).
-- **Node.js `26.13.1` or newer** if you install via npm, pnpm, yarn, or bun. If you use the install script, Wheatley downloads a matching Node.js runtime for you automatically.
+- **Node.js `26.13.1` or newer** if you install with npm, pnpm, yarn, or bun. The install script downloads a matching Node.js runtime automatically if needed.
 - **Docker** if you prefer running Wheatley in a container.
 
 ## Choose an install method
@@ -31,17 +29,17 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
       | sh -s -- --version 0.3.0 --no-modify-path
     ```
 
-    Open a new terminal window (or run the `export PATH=...` command printed at the end of the script) so your shell can find `wheatley`.
+    Open a new terminal window (or run the `export PATH=...` line printed by the script) so your shell can find `wheatley`.
 
     ### Where files are installed
 
-    The script keeps application files under standard XDG folders and leaves `~/.wheatley` free for your personal data and config:
+    The script puts program files in standard XDG folders and leaves `~/.wheatley` free for your personal data and config:
 
-    | Location | What lives there |
+    | Location | Contents |
     | --- | --- |
-    | `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | The Wheatley CLI package |
+    | `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/app` | Wheatley CLI package |
     | `${XDG_DATA_HOME:-$HOME/.local/share}/wheatley/runtime` | Managed Node.js `26.13.1` (downloaded only when needed) |
-    | `${XDG_BIN_HOME:-$HOME/.local/bin}` | The `wheatley` command |
+    | `${XDG_BIN_HOME:-$HOME/.local/bin}` | `wheatley` executable |
 
     <Aside type="note" title="Linux notes">
       - If your machine already has Node.js `26.13.1+` and `npm`, the script reuses them. Otherwise it downloads Node.js from `https://nodejs.org/dist`, verifies its SHA-256 checksum, and supports a custom mirror via `WHEATLEY_NODE_MIRROR`.
@@ -76,7 +74,7 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
       </TabItem>
     </Tabs>
 
-    To install a specific version, add `@<version>` at the end (for example, `@wheatley-ai/cli@0.3.0`).
+    Append `@<version>` (for example, `@wheatley-ai/cli@0.3.0`) to install a specific release.
   </TabItem>
 
   <TabItem label="Homebrew">
@@ -90,7 +88,7 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
   </TabItem>
 
   <TabItem label="AUR">
-    Install the `wheatley-cli` package using your AUR helper:
+    Install `wheatley-cli` with your AUR helper:
 
     ```bash
     paru -S wheatley-cli
@@ -102,14 +100,14 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
   </TabItem>
 
   <TabItem label="Docker">
-    The official image (`ghcr.io/sphericalkat/wheatley`) stores all Wheatley data in `/data` and runs `wheatley daemon` automatically.
+    The container image (`ghcr.io/sphericalkat/wheatley`) stores Wheatley data in `/data` and runs `wheatley daemon` automatically.
 
     | Image tag | What you get |
     | --- | --- |
     | `<major>.<minor>.<patch>` | One exact release (for example `0.3.0`) |
-    | `<major>.<minor>` | The newest patch in that minor series |
-    | `<major>` | The newest release in that major series |
-    | `latest` | The newest release |
+    | `<major>.<minor>` | Newest patch in that minor series |
+    | `<major>` | Newest release in that major series |
+    | `latest` | Newest release |
 
     <Aside type="caution">
       While Wheatley is on `0.x`, minor releases can introduce breaking changes. Pin a `<major>.<minor>` or exact version tag if you want predictable upgrades.
@@ -117,7 +115,7 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
 
     <Tabs>
       <TabItem label="Docker Compose">
-        The Compose file in `docker/docker-compose.yml` uses `WHEATLEY_TAG` (default `0`) and binds port `7420` to `127.0.0.1` so the dashboard stays local to your machine.
+        The Compose file in `docker/docker-compose.yml` uses `WHEATLEY_TAG` (default `0`) and binds port `7420` to `127.0.0.1` so the dashboard stays local.
 
         <Steps>
 
@@ -146,13 +144,11 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
            docker compose run --rm wheatley sh -c 'echo "ANTHROPIC_API_KEY: <your key>" >> /data/secrets.yaml'
            ```
 
-        5. Start Wheatley in the background:
+        5. Start Wheatley and open the dashboard at `http://127.0.0.1:7420/`:
 
            ```bash
            docker compose up -d
            ```
-
-        6. Open the web dashboard at `http://127.0.0.1:7420/`.
 
         </Steps>
       </TabItem>
@@ -160,7 +156,7 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
       <TabItem label="docker run">
         <Steps>
 
-        1. Create a persistent Docker volume for your Wheatley data:
+        1. Create a Docker volume for your Wheatley data:
 
            ```bash
            docker volume create wheatley-data
@@ -184,14 +180,12 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
            docker run --rm -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest sh -c 'echo "ANTHROPIC_API_KEY: <your key>" >> /data/secrets.yaml'
            ```
 
-        5. Start the container:
+        5. Start the container and open the dashboard at `http://127.0.0.1:7420/`:
 
            ```bash
            docker run -d --name wheatley --init --restart unless-stopped --stop-timeout 45 \
              -p 127.0.0.1:7420:7420 -v wheatley-data:/data ghcr.io/sphericalkat/wheatley:latest
            ```
-
-        6. Open the web dashboard at `http://127.0.0.1:7420/`.
 
         </Steps>
       </TabItem>
@@ -203,7 +197,7 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
 
     <Steps>
 
-    1. Clone the repository and enter the directory:
+    1. Clone the repository and enter the folder:
 
        ```bash
        git clone https://github.com/SphericalKat/wheatley.git
@@ -229,12 +223,10 @@ Pick the install method that fits your machine. Once installed, run `wheatley --
   </TabItem>
 </Tabs>
 
-## Check your installation
-
-Run:
+## Verify your installation
 
 ```bash
 wheatley --version
 ```
 
-If it prints a version number, you are ready for the [Quick start](/wheatley/getting-started/quick-start/).
+Once it prints a version number, head to the [Quick start](/wheatley/getting-started/quick-start/).
