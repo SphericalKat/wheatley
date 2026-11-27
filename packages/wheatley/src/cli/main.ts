@@ -25,7 +25,7 @@ Commands:
   ask       Send one prompt to an Agent and print the reply
   status    Show the health of the Deployment
   service   Install or control the Wheatley service: install, start, stop, restart, status
-  update    Update Wheatley within its major version (--check, --manager npm|pnpm)
+  update    Update Wheatley within its major version (--check, --method npm|pnpm|yarn|bun|brew|curl)
   restore   List the backups of an Agent, or restore agent.sqlite: restore <agent> [backup]
 
 Options:

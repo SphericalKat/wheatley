@@ -6,16 +6,19 @@ import { Value } from "typebox/value";
 
 import { describeFailure } from "./command-runner.js";
 import type { CommandRunner } from "./command-runner.js";
-import { isDocker } from "./paths.js";
-
-/** The npm package name of the daemon and CLI. */
-export const PACKAGE_NAME = "@wheatley-ai/cli";
+import type { Installation } from "./install-method.js";
+import { fetchPublishedVersions, PACKAGE_NAME } from "./registry.js";
+import type { FetchFn } from "./registry.js";
 
 /** The commands that update a Docker Compose Deployment. Run them in the folder of `docker-compose.yml`. */
 export const DOCKER_UPDATE_COMMANDS = [
   "docker compose pull",
   "docker compose up -d",
 ] as const;
+
+/** The `curl` installer. Run again with `--version`, it replaces the app in its XDG folder. */
+export const INSTALLER_URL =
+  "https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh";
 
 const VERSION =
   /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?<prerelease>-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
@@ -97,156 +100,205 @@ export const selectUpdate = (
   };
 };
 
-/** How this Wheatley was installed. */
-export type InstallMethod = "npm" | "pnpm" | "docker" | "source";
+/** A command that updates this Wheatley in place. */
+export interface CommandAction {
+  readonly kind: "command";
+  readonly command: readonly [string, ...string[]];
+  /**
+   * `true` if the command replaces the package folder that runs now, so that `applyUpgrade` can check its version.
+   * pnpm installs each version into a new folder, and Homebrew and the `curl` installer pick their own folders.
+   */
+  readonly verify: boolean;
+}
 
-export type PackageManager = "npm" | "pnpm";
+/** Instructions for an install that another tool owns. `wheatley update` does not change it. */
+export interface NoticeAction {
+  readonly kind: "notice";
+  readonly lines: readonly string[];
+}
 
-const segment = (...names: string[]): string =>
-  `${path.sep}${names.join(path.sep)}${path.sep}`;
+export type UpgradeAction = CommandAction | NoticeAction;
+
+const command = (
+  verify: boolean,
+  ...parts: readonly [string, ...string[]]
+): CommandAction => ({ command: parts, kind: "command", verify });
+
+const notice = (...lines: string[]): NoticeAction => ({
+  kind: "notice",
+  lines,
+});
 
 /**
- * Detects the install method from the environment and the real path of the installed package folder.
+ * Returns what updates `installation` to `version`. `version` must be a version that `selectUpdate` returned, which
+ * keeps shell metacharacters out of the `curl` installer command.
  *
- * pnpm keeps global packages in a `pnpm/global/` folder and its store in `.pnpm/`. Any other `node_modules/` folder is
- * an npm install. A folder outside `node_modules/` is a source checkout.
+ * Errors: throws for a Docker install or a source checkout, which `planUpdate` handles before the registry query.
  */
-export const detectInstallMethod = (
-  env: NodeJS.ProcessEnv,
-  packageDir: string
-): InstallMethod => {
-  if (isDocker(env)) {
-    return "docker";
+export const upgradeAction = (
+  installation: Installation,
+  version: string
+): UpgradeAction => {
+  const spec = `${PACKAGE_NAME}@${version}`;
+
+  switch (installation.method) {
+    case "npm": {
+      const prefix =
+        installation.prefix === undefined
+          ? []
+          : ["--prefix", installation.prefix];
+
+      return command(
+        true,
+        ...installation.npm,
+        "install",
+        "--global",
+        ...prefix,
+        spec
+      );
+    }
+
+    case "pnpm": {
+      return command(false, "pnpm", "add", "--global", spec);
+    }
+
+    case "yarn": {
+      return command(true, "yarn", "global", "add", spec);
+    }
+
+    case "bun": {
+      return command(true, "bun", "install", "--global", spec);
+    }
+
+    case "brew": {
+      return command(false, "brew", "upgrade", installation.formula);
+    }
+
+    case "curl": {
+      return command(
+        false,
+        "sh",
+        "-c",
+        `curl -fsSL ${INSTALLER_URL} | sh -s -- --version ${version} --no-modify-path`
+      );
+    }
+
+    case "volta": {
+      return notice(
+        "Volta manages this Wheatley. To update it, run:",
+        `  volta install ${spec}`
+      );
+    }
+
+    case "mise": {
+      return notice(
+        "mise manages this Wheatley. To update it, run:",
+        `  mise use -g npm:${spec}`
+      );
+    }
+
+    case "aur": {
+      return notice(
+        "This Wheatley is the AUR package wheatley-cli. Update it with your AUR helper, for example:",
+        "  paru -Syu",
+        "  yay -Syu"
+      );
+    }
+
+    case "docker":
+    case "source": {
+      throw new Error(
+        `wheatley update cannot update a ${installation.method} install`
+      );
+    }
+
+    default: {
+      const unknown: never = installation;
+
+      throw new Error(`Unknown installation: ${JSON.stringify(unknown)}`);
+    }
   }
-
-  const dir = `${packageDir}${path.sep}`;
-
-  if (
-    dir.includes(segment("pnpm", "global")) ||
-    dir.includes(segment(".pnpm"))
-  ) {
-    return "pnpm";
-  }
-
-  return dir.includes(segment("node_modules")) ? "npm" : "source";
 };
 
-/** The global install command that updates Wheatley to `version`. */
-export const installCommand = (
-  manager: PackageManager,
-  version: string
-): readonly [string, ...string[]] =>
-  manager === "pnpm"
-    ? ["pnpm", "add", "--global", `${PACKAGE_NAME}@${version}`]
-    : ["npm", "install", "--global", `${PACKAGE_NAME}@${version}`];
+/** A release in a later major version and what installs it. `wheatley update` only reports it. */
+export interface NewerMajor {
+  readonly version: string;
+  readonly action: UpgradeAction;
+}
 
 export type UpdatePlan =
   | { readonly kind: "docker"; readonly commands: readonly string[] }
   | {
       readonly kind: "up_to_date";
       readonly current: string;
-      readonly newerMajor: string | undefined;
+      readonly newerMajor: NewerMajor | undefined;
     }
   | {
       readonly kind: "update";
       readonly current: string;
       readonly target: string;
-      readonly newerMajor: string | undefined;
-      readonly command: readonly [string, ...string[]];
+      readonly action: UpgradeAction;
+      readonly newerMajor: NewerMajor | undefined;
     };
-
-/** `npm view <package> versions --json` prints a string for one version and an array for more. */
-const VersionListSchema = Type.Union([
-  Type.String(),
-  Type.Array(Type.String()),
-]);
 
 const PackageJsonSchema = Type.Object({ version: Type.String() });
 
-/** Lists the published versions of the package with `npm view`, which works for npm and pnpm installs. */
-const publishedVersions = async (runner: CommandRunner): Promise<string[]> => {
-  const args = ["view", PACKAGE_NAME, "versions", "--json"];
-  const result = await runner.run("npm", args);
-
-  if (result.exitCode !== 0) {
-    throw new Error(describeFailure("npm", args, result));
-  }
-
-  const parsed: unknown = JSON.parse(result.stdout);
-
-  if (!Value.Check(VersionListSchema, parsed)) {
-    throw new Error("npm view returned an unexpected version list");
-  }
-
-  return [parsed].flat();
-};
-
 export interface PlanUpdateInput {
   readonly current: string;
-  readonly method: InstallMethod;
-  /** Overrides the detected package manager. */
-  readonly manager?: PackageManager;
-  readonly runner: CommandRunner;
+  readonly installation: Installation;
+  /** Reads `npm_config_registry` for the registry query. */
+  readonly env: NodeJS.ProcessEnv;
+  readonly fetch: FetchFn;
 }
 
 /**
  * Decides what `wheatley update` does. It never installs anything.
  *
  * - Docker: returns the Docker Compose commands, without a registry query.
- * - npm or pnpm: queries the registry and applies the major-version guard (`selectUpdate`).
+ * - Any other install: queries the registry, applies the major-version guard (`selectUpdate`), and returns the
+ *   `upgradeAction` of the target version.
  *
- * Errors: throws for a source checkout without a `manager` override, if `npm view` fails, or for an invalid current
- * version.
+ * Errors: throws for a source checkout, if the registry query fails, or for an invalid current version.
  */
 export const planUpdate = async (
   input: PlanUpdateInput
 ): Promise<UpdatePlan> => {
-  if (input.method === "docker") {
+  const { installation } = input;
+
+  if (installation.method === "docker") {
     return { commands: DOCKER_UPDATE_COMMANDS, kind: "docker" };
   }
 
-  const manager =
-    input.manager ?? (input.method === "source" ? undefined : input.method);
-
-  if (manager === undefined) {
+  if (installation.method === "source") {
     throw new Error(
-      "This Wheatley runs from a source checkout. Update it with git, or pass --manager npm or --manager pnpm."
+      "This Wheatley runs from a source checkout. Update it with git, or pass --method npm|pnpm|yarn|bun|brew|curl."
     );
   }
 
   const { newerMajor, target } = selectUpdate(
     input.current,
-    await publishedVersions(input.runner)
+    await fetchPublishedVersions(input)
   );
 
+  const major =
+    newerMajor === undefined
+      ? undefined
+      : {
+          action: upgradeAction(installation, newerMajor),
+          version: newerMajor,
+        };
+
   if (target === undefined) {
-    return { current: input.current, kind: "up_to_date", newerMajor };
+    return { current: input.current, kind: "up_to_date", newerMajor: major };
   }
 
   return {
-    command: installCommand(manager, target),
+    action: upgradeAction(installation, target),
     current: input.current,
     kind: "update",
-    newerMajor,
+    newerMajor: major,
     target,
   };
-};
-
-/**
- * Runs the install command of an `update` plan with the standard streams attached.
- *
- * Errors: rejects if the package manager cannot start or exits with a non-zero code.
- */
-export const applyUpdate = async (
-  plan: Extract<UpdatePlan, { kind: "update" }>,
-  runner: CommandRunner
-): Promise<void> => {
-  const [command, ...args] = plan.command;
-  const result = await runner.run(command, args, { inheritStdio: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(describeFailure(command, args, result));
-  }
 };
 
 /** The folder of this package, which holds `package.json`, `bin/`, and `dist/`. */
@@ -265,4 +317,45 @@ export const readPackageVersion = async (
   }
 
   return parsed.version;
+};
+
+export interface ApplyUpgradeOptions {
+  readonly runner: CommandRunner;
+  /** The real path of the package folder that runs now. */
+  readonly packageDir: string;
+  readonly target: string;
+}
+
+/**
+ * Runs an upgrade command with the standard streams attached. If `action.verify` is `true`, it then reads
+ * `package.json` in `packageDir` again, because a package manager can exit with code 0 but update another copy.
+ *
+ * Errors: rejects if the command cannot start, exits with a non-zero code, or leaves the running copy on another
+ * version than `target`.
+ */
+export const applyUpgrade = async (
+  action: CommandAction,
+  options: ApplyUpgradeOptions
+): Promise<void> => {
+  const [program, ...args] = action.command;
+
+  const result = await options.runner.run(program, args, {
+    inheritStdio: true,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(describeFailure(program, args, result));
+  }
+
+  if (!action.verify) {
+    return;
+  }
+
+  const installed = await readPackageVersion(options.packageDir);
+
+  if (installed !== options.target) {
+    throw new Error(
+      `${action.command.join(" ")} finished, but ${options.packageDir} still has Wheatley ${installed}, not ${options.target}. Another copy of Wheatley may be first on PATH, or pass --method to name the package manager that owns this copy.`
+    );
+  }
 };

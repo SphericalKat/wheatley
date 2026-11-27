@@ -1,22 +1,40 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { FakeCommandRunner } from "./command-runner.fake.js";
+import type { Installation } from "./install-method.js";
+import type { FetchFn } from "./registry.js";
 import {
-  applyUpdate,
-  detectInstallMethod,
+  applyUpgrade,
   planUpdate,
   readPackageVersion,
   selectUpdate,
+  upgradeAction,
 } from "./update.js";
 
-const published = (versions: readonly string[]): FakeCommandRunner =>
-  new FakeCommandRunner((command, args) =>
-    command === "npm" && args[0] === "view"
-      ? { stdout: JSON.stringify(versions) }
-      : undefined
-  );
+const published =
+  (versions: readonly string[]): FetchFn =>
+  async () =>
+    await Promise.resolve(
+      Response.json({
+        versions: Object.fromEntries(versions.map((version) => [version, {}])),
+      })
+    );
+
+const offline: FetchFn = async () =>
+  await Promise.reject(new Error("The test made a registry request"));
+
+const at = (installation: Installation): Installation => installation;
+
+const npmInstall = at({
+  method: "npm",
+  npm: ["npm"],
+  packageDir: "/usr/local/lib/node_modules/@wheatley-ai/cli",
+  prefix: undefined,
+});
 
 describe("major-version guard", () => {
   it("picks the newest release of the current major version", () => {
@@ -47,44 +65,153 @@ describe("major-version guard", () => {
   });
 });
 
-describe("update plan", () => {
-  it("installs the newest release of the major version with npm", async () => {
-    const runner = published(["1.0.0", "1.5.0", "2.0.0"]);
+describe("upgrade action", () => {
+  const dir = "/x/node_modules/@wheatley-ai/cli";
 
-    const plan = await planUpdate({ current: "1.0.0", method: "npm", runner });
-
-    expect(plan).toStrictEqual({
-      command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
-      current: "1.0.0",
-      kind: "update",
-      newerMajor: "2.0.0",
-      target: "1.5.0",
+  it("installs the exact version with each Node.js package manager", () => {
+    expect(
+      upgradeAction(
+        at({
+          method: "npm",
+          npm: ["/p/bin/node", "/p/bin/npm"],
+          packageDir: dir,
+          prefix: "/p",
+        }),
+        "1.5.0"
+      )
+    ).toStrictEqual({
+      command: [
+        "/p/bin/node",
+        "/p/bin/npm",
+        "install",
+        "--global",
+        "--prefix",
+        "/p",
+        "@wheatley-ai/cli@1.5.0",
+      ],
+      kind: "command",
+      verify: true,
     });
-    expect(runner.lines).toStrictEqual([
-      "npm view @wheatley-ai/cli versions --json",
-    ]);
+    expect(
+      upgradeAction(at({ method: "pnpm", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      command: ["pnpm", "add", "--global", "@wheatley-ai/cli@1.5.0"],
+      kind: "command",
+      verify: false,
+    });
+    expect(
+      upgradeAction(at({ method: "yarn", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      command: ["yarn", "global", "add", "@wheatley-ai/cli@1.5.0"],
+      kind: "command",
+      verify: true,
+    });
+    expect(
+      upgradeAction(at({ method: "bun", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      command: ["bun", "install", "--global", "@wheatley-ai/cli@1.5.0"],
+      kind: "command",
+      verify: true,
+    });
   });
 
-  it("installs with pnpm for a pnpm install", async () => {
+  it("upgrades the Homebrew formula and re-runs the curl installer", () => {
+    expect(
+      upgradeAction(
+        at({
+          formula: "sphericalkat/tap/wheatley",
+          method: "brew",
+          packageDir: dir,
+        }),
+        "1.5.0"
+      )
+    ).toStrictEqual({
+      command: ["brew", "upgrade", "sphericalkat/tap/wheatley"],
+      kind: "command",
+      verify: false,
+    });
+    expect(
+      upgradeAction(at({ method: "curl", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      command: [
+        "sh",
+        "-c",
+        "curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh -s -- --version 1.5.0 --no-modify-path",
+      ],
+      kind: "command",
+      verify: false,
+    });
+  });
+
+  it("prints instructions for installs that another tool owns", () => {
+    expect(
+      upgradeAction(at({ method: "volta", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      kind: "notice",
+      lines: [
+        "Volta manages this Wheatley. To update it, run:",
+        "  volta install @wheatley-ai/cli@1.5.0",
+      ],
+    });
+    expect(
+      upgradeAction(at({ method: "mise", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      kind: "notice",
+      lines: [
+        "mise manages this Wheatley. To update it, run:",
+        "  mise use -g npm:@wheatley-ai/cli@1.5.0",
+      ],
+    });
+    expect(
+      upgradeAction(at({ method: "aur", packageDir: dir }), "1.5.0")
+    ).toStrictEqual({
+      kind: "notice",
+      lines: [
+        "This Wheatley is the AUR package wheatley-cli. Update it with your AUR helper, for example:",
+        "  paru -Syu",
+        "  yay -Syu",
+      ],
+    });
+  });
+});
+
+describe("update plan", () => {
+  it("updates to the newest release of the major version", async () => {
     const plan = await planUpdate({
       current: "1.0.0",
-      method: "pnpm",
-      runner: published(["1.0.1"]),
+      env: {},
+      fetch: published(["1.0.0", "1.5.0", "2.0.0"]),
+      installation: npmInstall,
     });
 
-    expect(plan.kind === "update" && plan.command).toStrictEqual([
-      "pnpm",
-      "add",
-      "--global",
-      "@wheatley-ai/cli@1.0.1",
-    ]);
+    expect(plan).toStrictEqual({
+      action: {
+        command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
+        kind: "command",
+        verify: true,
+      },
+      current: "1.0.0",
+      kind: "update",
+      newerMajor: {
+        action: {
+          command: ["npm", "install", "--global", "@wheatley-ai/cli@2.0.0"],
+          kind: "command",
+          verify: true,
+        },
+        version: "2.0.0",
+      },
+      target: "1.5.0",
+    });
   });
 
-  it("accepts the single-version string that npm view prints", async () => {
-    const runner = new FakeCommandRunner(() => ({ stdout: '"1.0.0"' }));
-
+  it("reports an up-to-date install", async () => {
     await expect(
-      planUpdate({ current: "1.0.0", method: "npm", runner })
+      planUpdate({
+        current: "1.0.0",
+        env: {},
+        fetch: published(["1.0.0"]),
+        installation: npmInstall,
+      })
     ).resolves.toStrictEqual({
       current: "1.0.0",
       kind: "up_to_date",
@@ -93,61 +220,62 @@ describe("update plan", () => {
   });
 
   it("prints Docker Compose commands without a registry query", async () => {
-    const runner = new FakeCommandRunner();
-
-    const plan = await planUpdate({
-      current: "1.0.0",
-      method: "docker",
-      runner,
-    });
-
-    expect(plan).toStrictEqual({
-      commands: ["docker compose pull", "docker compose up -d"],
-      kind: "docker",
-    });
-    expect(runner.commands).toHaveLength(0);
-  });
-
-  it("refuses a source checkout unless a package manager is named", async () => {
-    await expect(
-      planUpdate({ current: "1.0.0", method: "source", runner: published([]) })
-    ).rejects.toThrow("source checkout");
     await expect(
       planUpdate({
         current: "1.0.0",
-        manager: "pnpm",
-        method: "source",
-        runner: published(["1.0.2"]),
+        env: {},
+        fetch: offline,
+        installation: at({ method: "docker", packageDir: "/app" }),
       })
-    ).resolves.toMatchObject({ kind: "update", target: "1.0.2" });
+    ).resolves.toStrictEqual({
+      commands: ["docker compose pull", "docker compose up -d"],
+      kind: "docker",
+    });
   });
 
-  it("reports a failed registry query", async () => {
-    const runner = new FakeCommandRunner(() => ({
-      exitCode: 1,
-      stderr: "E404 Not Found",
-    }));
-
+  it("refuses a source checkout and names --method", async () => {
     await expect(
-      planUpdate({ current: "1.0.0", method: "npm", runner })
-    ).rejects.toThrow("E404 Not Found");
+      planUpdate({
+        current: "1.0.0",
+        env: {},
+        fetch: offline,
+        installation: at({ method: "source", packageDir: "/src/wheatley" }),
+      })
+    ).rejects.toThrow("--method");
   });
 });
 
-describe("applyUpdate", () => {
-  it("runs the install command with the standard streams attached", async () => {
+const withPackage = async (
+  version: string,
+  body: (dir: string) => Promise<void>
+): Promise<void> => {
+  const dir = await mkdtemp(path.join(tmpdir(), "wheatley-update-"));
+
+  try {
+    await writeFile(
+      path.join(dir, "package.json"),
+      JSON.stringify({ version })
+    );
+    await body(dir);
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+};
+
+describe("applyUpgrade", () => {
+  it("runs the command with the standard streams attached", async () => {
     const runner = new FakeCommandRunner();
 
-    await applyUpdate(
-      {
-        command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
-        current: "1.0.0",
-        kind: "update",
-        newerMajor: undefined,
-        target: "1.5.0",
-      },
-      runner
-    );
+    await withPackage("1.5.0", async (packageDir) => {
+      await applyUpgrade(
+        {
+          command: ["npm", "install", "--global", "@wheatley-ai/cli@1.5.0"],
+          kind: "command",
+          verify: true,
+        },
+        { packageDir, runner, target: "1.5.0" }
+      );
+    });
 
     expect(runner.commands).toStrictEqual([
       {
@@ -157,50 +285,38 @@ describe("applyUpdate", () => {
       },
     ]);
   });
-});
 
-const dir = (...parts: string[]): string => path.join(path.sep, ...parts);
+  it("fails if the running copy keeps the old version", async () => {
+    await withPackage("1.0.0", async (packageDir) => {
+      await expect(
+        applyUpgrade(
+          {
+            command: ["yarn", "global", "add", "@wheatley-ai/cli@1.5.0"],
+            kind: "command",
+            verify: true,
+          },
+          { packageDir, runner: new FakeCommandRunner(), target: "1.5.0" }
+        )
+      ).rejects.toThrow(`${packageDir} still has Wheatley 1.0.0`);
+    });
+  });
 
-describe("install method", () => {
-  it("detects npm, pnpm, Docker, and a source checkout", () => {
-    expect(
-      detectInstallMethod({}, dir("usr", "lib", "node_modules", "wheatley"))
-    ).toBe("npm");
-    expect(
-      detectInstallMethod(
-        {},
-        dir(
-          "home",
-          "k",
-          ".local",
-          "share",
-          "pnpm",
-          "global",
-          "5",
-          "node_modules",
-          "wheatley"
-        )
+  it("reports a failed command", async () => {
+    const runner = new FakeCommandRunner(() => ({
+      exitCode: 1,
+      stderr: "EACCES",
+    }));
+
+    await expect(
+      applyUpgrade(
+        {
+          command: ["brew", "upgrade", "wheatley"],
+          kind: "command",
+          verify: false,
+        },
+        { packageDir: "/missing", runner, target: "1.5.0" }
       )
-    ).toBe("pnpm");
-    expect(
-      detectInstallMethod(
-        {},
-        dir(
-          "x",
-          "node_modules",
-          ".pnpm",
-          "wheatley@1.0.0",
-          "node_modules",
-          "wheatley"
-        )
-      )
-    ).toBe("pnpm");
-    expect(
-      detectInstallMethod({ WHEATLEY_DOCKER: "1" }, dir("opt", "wheatley"))
-    ).toBe("docker");
-    expect(
-      detectInstallMethod({}, dir("src", "wheatley", "packages", "wheatley"))
-    ).toBe("source");
+    ).rejects.toThrow("brew upgrade wheatley exited with code 1: EACCES");
   });
 
   it("reads the version of this package", async () => {

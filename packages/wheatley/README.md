@@ -181,7 +181,9 @@ wheatley update --check
 wheatley update
 ```
 
-`wheatley update` stays inside your current major version. To move to a new major version, run `npm install -g @wheatley-ai/cli@latest`. Then restart the daemon, for example with `wheatley service restart`.
+`wheatley update` stays inside your current major version. It finds out how you installed Wheatley and uses the same tool: npm, pnpm, yarn, bun, Homebrew, or the `curl` installer. To override the detection, pass `--method npm|pnpm|yarn|bun|brew|curl`. For a Volta, mise, AUR, or Docker install, it prints the update instructions and changes nothing.
+
+To move to a new major version, run `npm install -g @wheatley-ai/cli@latest`. Then restart the daemon, for example with `wheatley service restart`.
 
 ## Security
 

@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -11,7 +12,7 @@ import { backupAgentDatabase } from "./backup.js";
 import { createOpsCommands } from "./cli.js";
 import type { CliIo, OpsCliDeps } from "./cli.js";
 import { FakeCommandRunner } from "./command-runner.fake.js";
-import { readPackageVersion } from "./update.js";
+import type { FetchFn } from "./registry.js";
 
 const clock: Clock = { now: () => Date.parse("2026-11-26T09:30:00.000Z") };
 
@@ -38,8 +39,24 @@ const captureIo = (): CapturedIo => {
 
 let home = "";
 
+/** The default package folder of `deps`: a checkout outside `node_modules`. */
+const SOURCE_CHECKOUT = ["src", "wheatley", "packages", "wheatley"] as const;
+
+/** Creates a package folder in `<home>/<parts>` with `package.json` at `version`, and returns its path. */
+const installedPackage = async (
+  version: string,
+  ...parts: string[]
+): Promise<string> => {
+  const dir = path.join(home, ...parts);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, "package.json"), JSON.stringify({ version }));
+
+  return dir;
+};
+
 beforeEach(async () => {
-  home = await mkdtemp(path.join(tmpdir(), "wheatley-cli-"));
+  home = await realpath(await mkdtemp(path.join(tmpdir(), "wheatley-cli-")));
+  await installedPackage("1.0.0", ...SOURCE_CHECKOUT);
 });
 
 afterEach(async () => {
@@ -50,8 +67,11 @@ const deps = (overrides: Partial<OpsCliDeps> = {}): OpsCliDeps => ({
   clock,
   env: { WHEATLEY_HOME: home },
   execPath: process.execPath,
+  fetch: async () =>
+    await Promise.reject(new Error("The test made a registry request")),
   homeDir: home,
   isDaemonRunning: async () => await Promise.resolve(false),
+  packageDir: path.join(home, ...SOURCE_CHECKOUT),
   platform: "linux",
   runner: new FakeCommandRunner(),
   uid: 1000,
@@ -195,6 +215,15 @@ describe("wheatley service", () => {
   });
 });
 
+const registry =
+  (versions: readonly string[]): FetchFn =>
+  async () =>
+    await Promise.resolve(
+      Response.json({
+        versions: Object.fromEntries(versions.map((version) => [version, {}])),
+      })
+    );
+
 describe("wheatley update", () => {
   it("prints the Docker Compose commands in Docker", async () => {
     const io = captureIo();
@@ -209,39 +238,138 @@ describe("wheatley update", () => {
   });
 
   it("checks within the major version and only reports a new major version", async () => {
-    const current = await readPackageVersion();
-    const [major = "0", minor = "0", patch = "0"] = current.split(".");
-    const sameMajor = `${major}.${minor}.${Number(patch) + 1}`;
-    const nextMajor = `${Number(major) + 1}.0.0`;
+    const packageDir = await installedPackage(
+      "1.0.0",
+      "lib",
+      "node_modules",
+      "@wheatley-ai",
+      "cli"
+    );
 
-    const runner = new FakeCommandRunner(() => ({
-      stdout: JSON.stringify([current, sameMajor, nextMajor]),
-    }));
-
+    const runner = new FakeCommandRunner();
     const io = captureIo();
 
-    const code = await createOpsCommands(deps({ runner })).update(
-      ["--check", "--manager", "npm"],
-      io
-    );
+    const code = await createOpsCommands(
+      deps({
+        fetch: registry(["1.0.0", "1.0.1", "2.0.0"]),
+        packageDir,
+        runner,
+      })
+    ).update(["--check", "--method", "npm"], io);
 
     expect(code).toBe(0);
-    expect(io.stdout[0]).toBe(
-      `Update available: ${current} -> ${sameMajor}. Run: wheatley update`
-    );
-    expect(io.stdout[1]).toContain(
-      `npm install --global @wheatley-ai/cli@${nextMajor}`
-    );
-    expect(runner.lines).toStrictEqual([
-      "npm view @wheatley-ai/cli versions --json",
+    expect(io.stdout).toStrictEqual([
+      "Update available: 1.0.0 -> 1.0.1. Run: wheatley update",
+      `Wheatley 2.0.0 is a new major version. wheatley update stays within the current major version. Read the release notes, then run: npm install --global --prefix ${home} @wheatley-ai/cli@2.0.0`,
     ]);
+    expect(runner.commands).toHaveLength(0);
   });
 
-  it("rejects an unknown package manager", async () => {
+  it("updates a detected bun install and checks the new version", async () => {
+    const packageDir = await installedPackage(
+      "1.0.0",
+      ".bun",
+      "install",
+      "global",
+      "node_modules",
+      "@wheatley-ai",
+      "cli"
+    );
+
+    const runner = new FakeCommandRunner((command, args) => {
+      if (command === "bun" && args[0] === "install") {
+        writeFileSync(
+          path.join(packageDir, "package.json"),
+          JSON.stringify({ version: "1.2.0" })
+        );
+      }
+
+      return command === "bun"
+        ? { stdout: "@wheatley-ai/cli@1.0.0" }
+        : { exitCode: 1 };
+    });
+
     const io = captureIo();
 
-    await expect(
-      createOpsCommands(deps()).update(["--manager", "yarn"], io)
-    ).resolves.toBe(2);
+    const code = await createOpsCommands(
+      deps({ fetch: registry(["1.0.0", "1.2.0"]), packageDir, runner })
+    ).update([], io);
+
+    expect(io.stderr).toStrictEqual([]);
+    expect(code).toBe(0);
+    expect(runner.lines).toContain(
+      "bun install --global @wheatley-ai/cli@1.2.0"
+    );
+    expect(io.stdout.at(-1)).toBe(
+      "Updated Wheatley to 1.2.0. If the daemon runs as a service, run: wheatley service restart"
+    );
+  });
+
+  it("fails if the package manager leaves the running copy on the old version", async () => {
+    const packageDir = await installedPackage(
+      "1.0.0",
+      "opt",
+      "node_modules",
+      "@wheatley-ai",
+      "cli"
+    );
+
+    const io = captureIo();
+
+    const code = await createOpsCommands(
+      deps({ fetch: registry(["1.2.0"]), packageDir })
+    ).update(["--method", "yarn"], io);
+
+    expect(code).toBe(1);
+    expect(io.stderr[0]).toContain(`${packageDir} still has Wheatley 1.0.0`);
+  });
+
+  it("prints instructions for a Volta install and changes nothing", async () => {
+    const packageDir = await installedPackage(
+      "1.0.0",
+      ".volta",
+      "tools",
+      "image",
+      "packages",
+      "@wheatley-ai",
+      "cli",
+      "lib",
+      "node_modules",
+      "@wheatley-ai",
+      "cli"
+    );
+
+    const runner = new FakeCommandRunner();
+    const io = captureIo();
+
+    const code = await createOpsCommands(
+      deps({ fetch: registry(["1.0.3"]), packageDir, runner })
+    ).update([], io);
+
+    expect(code).toBe(0);
+    expect(io.stdout).toStrictEqual([
+      "Wheatley 1.0.3 is available. This Wheatley runs 1.0.0.",
+      "Volta manages this Wheatley. To update it, run:",
+      "  volta install @wheatley-ai/cli@1.0.3",
+    ]);
+    expect(runner.commands).toHaveLength(0);
+  });
+
+  it("refuses a source checkout", async () => {
+    const io = captureIo();
+
+    await expect(createOpsCommands(deps()).update([], io)).resolves.toBe(1);
+    expect(io.stderr[0]).toContain("source checkout");
+  });
+
+  it("rejects an unknown method and the removed --manager flag", async () => {
+    const io = captureIo();
+    const commands = createOpsCommands(deps());
+
+    await expect(commands.update(["--method", "apt"], io)).resolves.toBe(2);
+    await expect(commands.update(["--manager", "npm"], io)).resolves.toBe(2);
+    expect(io.stderr).toContain(
+      "Usage: wheatley update [--check] [--method npm|pnpm|yarn|bun|brew|curl]"
+    );
   });
 });
