@@ -1,6 +1,6 @@
 # Wheatley
 
-Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript. One Deployment hosts one or more Agents. Each Agent has its own model, Permission Policy, Memory, Triggers, and Conversations. You talk to an Agent from the CLI or from the web dashboard. Terms such as Deployment, Agent, Chat, Conversation, Run, and Approval follow [`GLOSSARY.md`](GLOSSARY.md).
+Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript. One Deployment hosts one or more Agents. Each Agent has its own model, Permission Policy, Memory, Triggers, and Conversations. You talk to an Agent from the CLI or from the web dashboard.
 
 ![Wheatley CLI thinking demo](docs/assets/wheatley-thinking.gif)
 
@@ -94,19 +94,13 @@ The image is based on `node:26-trixie-slim`. The container keeps the Deployment 
 
 Before version `1.0.0`, a minor version can contain breaking changes.
 
-1. If the image is private, log in to the GitHub Container Registry with a token that has the `read:packages` scope:
-
-   ```bash
-   docker login ghcr.io
-   ```
-
-2. Pull the latest image:
+1. Pull the latest image:
 
    ```bash
    docker pull ghcr.io/sphericalkat/wheatley:latest
    ```
 
-3. Continue with [Docker Compose](#run-with-docker-compose) or [`docker run`](#run-with-docker-run).
+2. Continue with [Docker Compose](#run-with-docker-compose) or [`docker run`](#run-with-docker-run).
 
 ### Run with Docker Compose
 
@@ -229,21 +223,6 @@ The Deployment home stays in the `wheatley-data` volume.
    ```
 
 The examples below use `wheatley`. In a source checkout, use `node packages/wheatley/bin/wheatley.js` instead.
-
-### Install from a tarball
-
-1. Build from source, as shown above.
-2. Pack the package in the repository root. The `prepack` script builds it again:
-
-   ```bash
-   pnpm --filter @wheatley-ai/cli pack
-   ```
-
-3. Install the tarball:
-
-   ```bash
-   npm install --global ./wheatley-ai-cli-<version>.tgz
-   ```
 
 ## Quick start
 
@@ -495,8 +474,6 @@ The Agent can also list and delete Triggers with `list_triggers` and `cancel_tri
 
 The Webhook Ingress answers `202 Accepted`. The Run appends the request body to the Trigger prompt. The limit for a request body is 256 KiB.
 
-The dashboard does not show the Trigger ID or the webhook URL. The Runs view shows the Trigger ID only for Runs that a Trigger started.
-
 ## Memory
 
 Each Agent keeps Memory in `agents/<name>/memory/`. The main file is `MEMORY.md`. The Agent reads `MEMORY.md` at the start of each new Conversation. The Agent writes Memory with the `memory_*` Tools.
@@ -625,13 +602,6 @@ Run these commands from the repository root:
 | `pnpm test`      | Run the Vitest test suite.                   |
 
 If your shell defaults to an older Node.js version, switch to the version in `.node-version` first.
-
-## Known limitations
-
-- A Unix socket path has a length limit of about 100 bytes. If the home path is too long, the daemon fails with `listen EINVAL` on `daemon.sock`. Keep the home path short.
-- The dashboard does not show the Trigger ID or the webhook URL of a Trigger.
-- Webhooks support only static Bearer tokens. HMAC signatures are not supported.
-- The Control Server has no authentication.
 
 ## License
 
