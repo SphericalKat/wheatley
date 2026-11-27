@@ -1,5 +1,7 @@
 # Ship v1 via npm/pnpm and Docker Compose without SEA binaries
 
+ADR 0013 supersedes this decision. It adds `yarn`, `bun`, a `curl` installer, Homebrew, and AUR as channels and keeps Node.js 26 without SEA binaries.
+
 Wheatley v1 distributes as a global `npm`/`pnpm` package (`wheatley`) and as a `node:26-trixie-slim` Docker image with Docker Compose. The repository uses a `pnpm` workspace monorepo with `packages/wheatley` (CLI, daemon, and bundled static dashboard assets), `packages/sdk` (`@wheatley-ai/sdk`), private `packages/protocol`, and private `packages/dashboard`. Wheatley v1 does not ship standalone Node.js Single Executable Application (SEA) binaries.
 
 ## Considered Options

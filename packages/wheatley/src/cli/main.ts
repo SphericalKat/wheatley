@@ -25,11 +25,12 @@ Commands:
   ask       Send one prompt to an Agent and print the reply
   status    Show the health of the Deployment
   service   Install or control the Wheatley service: install, start, stop, restart, status
-  update    Update Wheatley within its major version (--check, --manager npm|pnpm)
+  update    Update Wheatley within its major version (--check, --method npm|pnpm|yarn|bun|brew|curl)
   restore   List the backups of an Agent, or restore agent.sqlite: restore <agent> [backup]
 
 Options:
   -h, --help         Show this help
+  --version          Show the Wheatley version
   --home <dir>       The Deployment home (default: $WHEATLEY_HOME or ~/.wheatley)
   --url <ws-url>     Connect over TCP instead of the Unix socket in the home folder
   --agent <name>     The Agent of chat and ask
@@ -205,9 +206,16 @@ export const runCli = async (
     return 0;
   }
 
+  const version = await packageVersion();
+
+  if (values.version === true) {
+    io.stdout(`${version}\n`);
+
+    return 0;
+  }
+
   const [command, ...rest] = positionals;
   const home = resolveHome(values.home, io.env);
-  const version = await packageVersion();
   const client: ClientFlags = { agent: values.agent, home, url: values.url };
 
   switch (command) {
@@ -285,6 +293,7 @@ const parseCliArgs = (argv: readonly string[]) =>
       port: { type: "string" },
       provider: { type: "string" },
       url: { type: "string" },
+      version: { type: "boolean" },
     },
     strict: true,
   });
