@@ -38,7 +38,6 @@ For safety, all MCP server tools ask for your approval by default until you allo
               API_TOKEN:
                 secret: MY_MCP_TOKEN
     ```
-
   </TabItem>
 
   <TabItem label="Remote server (HTTP)">
@@ -55,7 +54,6 @@ For safety, all MCP server tools ask for your approval by default until you allo
               Authorization:
                 secret: LINEAR_AUTH_HEADER
     ```
-
   </TabItem>
 </Tabs>
 
@@ -85,52 +83,53 @@ agents:
 If you want to build your own tools or a custom chat frontend in TypeScript, use `@wheatley-ai/sdk`.
 
 <Steps>
-  1. **Create an ESM package and install the SDK**
 
-     ```bash
-     npm install @wheatley-ai/sdk
-     ```
+1. **Create an ESM package and install the SDK**
 
-2.  **Export your plugin as the default export**
+   ```bash
+   npm install @wheatley-ai/sdk
+   ```
 
-    ```ts
-    import { definePlugin } from "@wheatley-ai/sdk";
+2. **Export your plugin as the default export**
 
-    export default definePlugin({
-      apiVersion: 1,
-      name: "hello",
-      version: "1.0.0",
-      setup: () => ({
-        tools: [
-          {
-            name: "greet",
-            description: "Greets the user",
-            inputSchema: { type: "object", properties: {} },
-            execute: async () => ({
-              content: [{ type: "text", text: "Hello" }],
-            }),
-          },
-        ],
-      }),
-    });
-    ```
+   ```ts
+   import { definePlugin } from "@wheatley-ai/sdk";
 
-3.  **Install the plugin into Wheatley's extensions folder**
+   export default definePlugin({
+     apiVersion: 1,
+     name: "hello",
+     version: "1.0.0",
+     setup: () => ({
+       tools: [
+         {
+           name: "greet",
+           description: "Greets the user",
+           inputSchema: { type: "object", properties: {} },
+           execute: async () => ({
+             content: [{ type: "text", text: "Hello" }],
+           }),
+         },
+       ],
+     }),
+   });
+   ```
 
-    ```bash
-    npm install --prefix ~/.wheatley/extensions <plugin-package>
-    ```
+3. **Install the plugin into Wheatley's extensions folder**
 
-4.  **Enable the plugin in `config.yaml` and restart your assistant**
+   ```bash
+   npm install --prefix ~/.wheatley/extensions <plugin-package>
+   ```
 
-         ```yaml
-         agents:
-           default:
-             plugins:
-               - source: <plugin-package>
-         ```
+4. **Enable the plugin in `config.yaml` and restart your assistant**
 
-    </Steps>
+   ```yaml
+   agents:
+     default:
+       plugins:
+         - source: <plugin-package>
+   ```
+
+</Steps>
 
 `source` also accepts a local folder path. Paths starting with `./` or `../` resolve relative to `~/.wheatley`, and paths starting with `~/` resolve relative to your home directory.
 

@@ -3,72 +3,71 @@ title: Quick start
 description: Set up your Wheatley home folder, add an API key, and have your first conversation.
 ---
 
-import { Steps } from "@astrojs/starlight/components";
+import { Aside, Steps } from "@astrojs/starlight/components";
 
 In a few minutes, you will have Wheatley running locally with both a terminal chat and a web dashboard.
 
 <Steps>
-  1. **Create your Wheatley home folder**
 
-     Run `wheatley init`. By default, Wheatley stores its config and data in `~/.wheatley` (or `$WHEATLEY_HOME` if you set that environment variable):
+1. **Create your Wheatley home folder**
 
-     ```bash
-     wheatley init
-     ```
+   Run `wheatley init`. By default, Wheatley stores its config and data in `~/.wheatley` (or `$WHEATLEY_HOME` if you set that environment variable):
 
-     Want to start with a different provider right away? Pass `--provider` and `--model`:
+   ```bash
+   wheatley init
+   ```
 
-     ```bash
-     wheatley init --provider openai --model gpt-5.4-mini
-     ```
+   <Aside type="tip" title="Using another provider">
+     Want to start with a different provider right away? Pass `--provider` and `--model`, for example `wheatley init --provider openai --model gpt-5.4-mini`.
+   </Aside>
 
-2.  **Add your API key**
+2. **Add your API key**
 
-    Open `~/.wheatley/secrets.yaml` and add the key for your chosen provider. For the default Anthropic setup:
+   Open `~/.wheatley/secrets.yaml` and add the key for your chosen provider. For the default Anthropic setup:
 
-    ```yaml
-    ANTHROPIC_API_KEY: sk-ant-...
-    ```
+   ```yaml
+   ANTHROPIC_API_KEY: sk-ant-...
+   ```
 
-    You can also set `ANTHROPIC_API_KEY` as a regular environment variable. Environment variables always override `secrets.yaml`.
+   You can also set `ANTHROPIC_API_KEY` as a regular environment variable. Environment variables always override `secrets.yaml`.
 
-3.  **Start Wheatley**
+3. **Start Wheatley**
 
-    Start the background daemon in your terminal so you can see its logs while testing:
+   Start the background daemon in your terminal so you can see its logs while testing:
 
-    ```bash
-    wheatley daemon
-    ```
+   ```bash
+   wheatley daemon
+   ```
 
-4.  **Check that everything is healthy**
+4. **Check that everything is healthy**
 
-    Open a second terminal and run:
+   Open a second terminal and run:
 
-    ```bash
-    wheatley status
-    ```
+   ```bash
+   wheatley status
+   ```
 
-    You will see your assistant listed as healthy and ready.
+   You will see your assistant listed as healthy and ready.
 
-5.  **Send your first message**
+5. **Send your first message**
 
-    Ask a one-off question right from the shell:
+   Ask a one-off question right from the shell:
 
-    ```bash
-    wheatley ask "What can you help me with?"
-    ```
+   ```bash
+   wheatley ask "What can you help me with?"
+   ```
 
-    Or open the full interactive terminal chat:
+   Or open the full interactive terminal chat:
 
-    ```bash
-    wheatley chat
-    ```
+   ```bash
+   wheatley chat
+   ```
 
-6.  **Open the web dashboard**
+6. **Open the web dashboard**
 
-         While `wheatley daemon` is running, visit `http://127.0.0.1:7420/` in your browser to chat, review tool approvals, inspect memory, manage secrets, and edit config visually.
+   While `wheatley daemon` is running, visit `http://127.0.0.1:7420/` in your browser to chat, review tool approvals, inspect memory, manage secrets, and edit config visually.
 
-    </Steps>
+</Steps>
 
 ## What `wheatley init` creates
 
@@ -87,7 +86,9 @@ In a few minutes, you will have Wheatley running locally with both a terminal ch
 | `--provider <name>` | `anthropic` | AI provider (`anthropic`, `openai`, `google`, and more) |
 | `--model <id>` | `claude-sonnet-5-5` | Model ID to use |
 
-:::note If you start the daemon before adding an API key, Wheatley still starts, but marks your assistant as `degraded`. Run `wheatley status` to see which secret is missing. :::
+<Aside type="note">
+  If you start the daemon before adding an API key, Wheatley still starts, but marks your assistant as `degraded`. Run `wheatley status` to see which secret is missing.
+</Aside>
 
 ## Keep Wheatley running in the background
 

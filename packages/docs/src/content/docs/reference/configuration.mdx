@@ -3,6 +3,8 @@ title: Configuration
 description: Reference for config.yaml, secrets.yaml, permission rules, and network settings.
 ---
 
+import { Aside } from "@astrojs/starlight/components";
+
 Wheatley splits its configuration into two files inside your home folder (`~/.wheatley` by default):
 
 - **`config.yaml`**: Settings for providers, assistants, chat apps, permissions, and extensions. Safe to back up or version-control because it never contains raw keys.
@@ -10,7 +12,9 @@ Wheatley splits its configuration into two files inside your home folder (`~/.wh
 
 Inside `config.yaml`, secrets are always referenced by name (`{ secret: "ANTHROPIC_API_KEY" }`). If an environment variable with the same name is set, it overrides `secrets.yaml`.
 
-:::note After editing `config.yaml`, restart the changed assistant (or restart the daemon if you changed `daemon` or `webhooks`). :::
+<Aside type="note">
+  After editing `config.yaml`, restart the changed assistant (or restart the daemon if you changed `daemon` or `webhooks`).
+</Aside>
 
 ## Full example `config.yaml`
 

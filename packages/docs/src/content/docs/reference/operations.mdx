@@ -3,7 +3,7 @@ title: Day-to-day operations
 description: Run Wheatley automatically on login, upgrade to new releases, and restore from automatic backups.
 ---
 
-import { Steps } from "@astrojs/starlight/components";
+import { Aside, Steps } from "@astrojs/starlight/components";
 
 ## Run Wheatley as a background service
 
@@ -46,37 +46,40 @@ wheatley update
 | Volta / mise / AUR / Docker | Prints the native upgrade command for you to run |
 | Source checkout | Stops and reminds you to update via `git` (or pass `--method`) |
 
-:::note Major version upgrades (for example `0.x` to `1.0`) are never installed automatically — Wheatley prints the upgrade command so you can review breaking changes first. After upgrading, restart the daemon (`wheatley service restart`). :::
+<Aside type="note">
+  Major version upgrades (for example `0.x` to `1.0`) are never installed automatically — Wheatley prints the upgrade command so you can review breaking changes first. After upgrading, restart the daemon (`wheatley service restart`).
+</Aside>
 
 ## Restore an assistant backup
 
 Wheatley automatically backs up each assistant's SQLite database (`agents/<name>/agent.sqlite`) before every database migration and before every restore, keeping the five newest backups in `agents/<name>/backups/`.
 
 <Steps>
-  1. **List available backups**
 
-     ```bash
-     wheatley restore default
-     ```
+1. **List available backups**
 
-2.  **Stop the daemon**
+   ```bash
+   wheatley restore default
+   ```
 
-    `wheatley restore` refuses to run while Wheatley is active:
+2. **Stop the daemon**
 
-    ```bash
-    wheatley service stop
-    ```
+   `wheatley restore` refuses to run while Wheatley is active:
 
-3.  **Restore the backup you want**
+   ```bash
+   wheatley service stop
+   ```
 
-    ```bash
-    wheatley restore default <backup-file>
-    ```
+3. **Restore the backup you want**
 
-4.  **Start the daemon again**
+   ```bash
+   wheatley restore default <backup-file>
+   ```
 
-         ```bash
-         wheatley service start
-         ```
+4. **Start the daemon again**
 
-    </Steps>
+   ```bash
+   wheatley service start
+   ```
+
+</Steps>

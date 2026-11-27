@@ -3,6 +3,8 @@ title: CLI chat and dashboard
 description: Use wheatley ask, wheatley chat, tool approvals, and the local web dashboard.
 ---
 
+import { Aside } from "@astrojs/starlight/components";
+
 You can talk to your Wheatley assistants from the command line or from your browser — both stay in sync with the same conversations and approvals.
 
 ## Quick one-shot questions (`wheatley ask`)
@@ -19,7 +21,9 @@ You can also pipe input into `wheatley ask`:
 git diff | wheatley ask "Explain these changes in three bullet points"
 ```
 
-:::note When input is piped (not an interactive terminal), `wheatley ask` automatically denies any tool call that requires manual approval so scripts never hang waiting for a prompt. :::
+<Aside type="note">
+  When input is piped (not an interactive terminal), `wheatley ask` automatically denies any tool call that requires manual approval so scripts never hang waiting for a prompt.
+</Aside>
 
 ## Interactive terminal chat (`wheatley chat`)
 
@@ -73,4 +77,6 @@ Open `http://127.0.0.1:7420/` in your browser while the daemon is running.
 - **Deployment views**: Overview, Inbox (pending approvals), Logs, and Secrets.
 - **Per-assistant views**: Chat, Runs, Memory, Triggers and Extensions, and Config.
 
-:::caution[Keep the dashboard local] Wheatley's local web dashboard does not have built-in login authentication. Keep `daemon.host` bound to `127.0.0.1` (or access it over an SSH tunnel or private VPN such as Tailscale). Browser connections from other origins are blocked unless you list them in `daemon.allowedOrigins`. :::
+<Aside type="caution" title="Keep the dashboard local">
+  Wheatley's local web dashboard does not have built-in login authentication. Keep `daemon.host` bound to `127.0.0.1` (or access it over an SSH tunnel or private VPN such as Tailscale). Browser connections from other origins are blocked unless you list them in `daemon.allowedOrigins`.
+</Aside>

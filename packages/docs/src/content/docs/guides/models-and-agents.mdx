@@ -3,11 +3,13 @@ title: Connect your AI model
 description: Connect Wheatley to Anthropic, OpenAI, Google, OpenRouter, or an OpenAI-compatible server, and run multiple assistants side by side.
 ---
 
-import { TabItem, Tabs } from "@astrojs/starlight/components";
+import { Aside, TabItem, Tabs } from "@astrojs/starlight/components";
 
 Wheatley lets you pick the AI provider and model you want for each assistant. You can use hosted providers or point Wheatley at an OpenAI-compatible proxy, and you can run several independent assistants inside a single Wheatley installation.
 
-:::tip After editing `~/.wheatley/config.yaml`, restart the assistant you changed (run `/restart` in `wheatley chat`, restart it from the dashboard, or run `wheatley service restart`). Wheatley does not restart assistants automatically on file save. :::
+<Aside type="tip">
+  After editing `~/.wheatley/config.yaml`, restart the assistant you changed (run `/restart` in `wheatley chat`, restart it from the dashboard, or run `wheatley service restart`). Wheatley does not restart assistants automatically on file save.
+</Aside>
 
 ## Pick a model provider
 
@@ -33,7 +35,6 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
           provider: anthropic
           id: claude-sonnet-5-5
     ```
-
   </TabItem>
 
   <TabItem label="OpenAI">
@@ -53,7 +54,6 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
           provider: openai
           id: gpt-5.4-mini
     ```
-
   </TabItem>
 
   <TabItem label="Google">
@@ -73,11 +73,10 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
           provider: google
           id: gemini-2.5-pro
     ```
-
   </TabItem>
 
-  <TabItem label="OpenRouter / Groq / others">
-    Use the provider name (`openrouter`, `groq`, `mistral`, `xai`, or `deepseek`), store its key in `secrets.yaml`, and set a valid model ID for that provider:
+  <TabItem label="OpenRouter">
+    Use any supported provider name (`openrouter`, `groq`, `mistral`, `xai`, or `deepseek`), store its key in `secrets.yaml`, and set a valid model ID for that provider:
 
     ```yaml
     version: 1
@@ -93,10 +92,9 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
           provider: openrouter
           id: anthropic/claude-sonnet-4
     ```
-
   </TabItem>
 
-  <TabItem label="OpenAI-compatible proxy">
+  <TabItem label="Custom proxy">
     To route requests through an OpenAI-compatible gateway (such as LiteLLM or a self-hosted proxy), set `baseUrl` on the `openai` provider and pick an OpenAI model ID recognized by Wheatley:
 
     ```yaml
@@ -114,7 +112,6 @@ Put the API key in `~/.wheatley/secrets.yaml`, then reference the secret name in
           provider: openai
           id: gpt-5.4-mini
     ```
-
   </TabItem>
 </Tabs>
 
