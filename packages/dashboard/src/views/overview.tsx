@@ -1,7 +1,7 @@
+import { Link } from "@tanstack/react-router";
 import type { AgentHealth } from "@wheatley-ai/protocol";
 
 import { useServices, useStore } from "../hooks.js";
-import { formatRoute } from "../router.js";
 import { CreateAgentButton } from "./agent-admin.js";
 import {
   ActionButton,
@@ -88,12 +88,13 @@ const AgentCard = ({ agent }: { readonly agent: AgentHealth }) => {
       }
       title={
         <span className="flex items-center gap-2">
-          <a
+          <Link
             className="hover:underline"
-            href={formatRoute({ agent: agent.name, view: "chat" })}
+            params={{ agent: agent.name }}
+            to="/agents/$agent/chat"
           >
             {agent.name}
-          </a>
+          </Link>
           <StateBadge state={agent.state} />
           {agent.pendingRestart ? (
             <Badge color="amber">restart pending</Badge>
