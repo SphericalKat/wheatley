@@ -7,6 +7,7 @@ import type {
   AgentDataDisposal,
   ConfigChange,
 } from "../models/config-editor.js";
+import { ModelSuggestions } from "./model-picker.js";
 import {
   ActionButton,
   ConfirmButton,
@@ -96,6 +97,7 @@ export const CreateAgentButton = () => {
   const save = useSaveOrThrow();
   const navigate = useNavigate();
   const providersId = useId();
+  const modelsId = useId();
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
@@ -150,21 +152,23 @@ export const CreateAgentButton = () => {
             }}
             value={provider}
           />
-          <datalist id={providersId}>
-            {providers.map((entry) => (
-              <option key={entry} value={entry} />
-            ))}
-          </datalist>
         </Field>
         <Field label="Model ID">
           <input
             className={inputClass}
+            list={modelsId}
             onChange={(event) => {
               setModel(event.target.value);
             }}
             value={model}
           />
         </Field>
+        <ModelSuggestions
+          extraProviders={providers}
+          modelsId={modelsId}
+          provider={provider}
+          providersId={providersId}
+        />
       </div>
     </ConfirmButton>
   );

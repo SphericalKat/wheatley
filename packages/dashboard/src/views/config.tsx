@@ -13,7 +13,7 @@ import type {
   PermissionAction,
   PermissionRule,
 } from "@wheatley-ai/protocol";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { useServices, useStore } from "../hooks.js";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../models/config-editor.js";
 import type { RestartMode } from "../models/config-editor.js";
 import { DeleteAgentButton, RenameAgentButton } from "./agent-admin.js";
+import { ModelSuggestions } from "./model-picker.js";
 import {
   ActionButton,
   Badge,
@@ -277,6 +278,8 @@ const AgentSettings = ({
   const { saving } = useStore(config.state);
   const [draft, setDraft] = useState<AgentConfig | null>(null);
   const [issues, setIssues] = useState<readonly ConfigIssue[]>([]);
+  const providersId = useId();
+  const modelsId = useId();
   const current = draft ?? source;
   const memory = current.memory ?? {};
 
@@ -333,6 +336,7 @@ const AgentSettings = ({
         <Field label="Provider">
           <input
             className={inputClass}
+            list={providersId}
             onChange={(event) => {
               edit({
                 ...current,
@@ -345,6 +349,7 @@ const AgentSettings = ({
         <Field label="Model ID">
           <input
             className={inputClass}
+            list={modelsId}
             onChange={(event) => {
               edit({
                 ...current,
@@ -354,6 +359,11 @@ const AgentSettings = ({
             value={current.model.id}
           />
         </Field>
+        <ModelSuggestions
+          modelsId={modelsId}
+          provider={current.model.provider}
+          providersId={providersId}
+        />
         <Field label="Thinking">
           <select
             className={inputClass}

@@ -6,6 +6,7 @@ import { useEvent, useServices, useStore } from "../hooks.js";
 import { approvalKey, chatApprovals } from "../models/inbox.js";
 import { errorMessage } from "../store.js";
 import { ApprovalCard } from "./approval-card.js";
+import { ModelPicker } from "./model-picker.js";
 import {
   ActionButton,
   Badge,
@@ -292,6 +293,7 @@ export const ChatView = ({ agent }: { readonly agent: string }) => {
   return (
     <div className="flex h-full flex-col gap-3">
       <PageHeader
+        actions={<ModelPicker agent={agent} key={agent} />}
         subtitle="The CLI Chat of this Agent. `wheatley chat` shows the same messages."
         title={`Chat · ${agent}`}
       />

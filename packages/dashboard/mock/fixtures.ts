@@ -6,6 +6,7 @@ import type {
   DeploymentConfig,
   FailedDelivery,
   LogRecord,
+  ModelRef,
   PendingApproval,
   PendingRestart,
   RunSummary,
@@ -56,6 +57,8 @@ export interface FixtureState {
   runs: RunSummary[];
   timelines: Map<string, RunTimelineItem[]>;
   conversations: Map<string, string>;
+  /** The model of each Agent's CLI Chat Conversation after `/model`. Without an entry, the configured model. */
+  chatModels: Map<string, ModelRef>;
   chat: Map<string, ChatMessage[]>;
   memory: Map<string, Map<string, FixtureMemoryFile>>;
   memoryMaxChars: number;
@@ -193,6 +196,7 @@ export const createFixtureState = (now: number): FixtureState => {
       ],
       ["work", []],
     ]),
+    chatModels: new Map(),
     config,
     consolidation: new Map([
       [
