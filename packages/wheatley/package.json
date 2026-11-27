@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "@types/react": "19.3.1",
+    "@types/react": "19.3.3",
     "@types/ws": "8.18.2",
     "@wheatley-ai/dashboard": "workspace:*",
     "@wheatley-ai/protocol": "workspace:*",
