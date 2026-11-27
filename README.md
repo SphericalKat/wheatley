@@ -2,6 +2,8 @@
 
 Wheatley is a self-hosted, always-on personal AI assistant written in TypeScript. One Deployment hosts one or more Agents. Each Agent has its own model, Permission Policy, Memory, Triggers, and Conversations. You talk to an Agent from the CLI or from the web dashboard. Terms such as Deployment, Agent, Chat, Conversation, Run, and Approval follow [`GLOSSARY.md`](GLOSSARY.md).
 
+![Wheatley CLI thinking demo](docs/assets/wheatley-thinking.gif)
+
 ## Requirements
 
 - Node.js `26.13.1` or newer (`.node-version`). The install script downloads Node.js automatically if your machine does not have a compatible version.
