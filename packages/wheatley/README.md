@@ -8,31 +8,39 @@ This package installs the `wheatley` command. The daemon, the CLI, and the dashb
 
 ## Install
 
-On macOS or on Linux with glibc, run the `curl` installer:
+### Install script (macOS and Linux)
+
+Works on macOS (`arm64`, `x64`) and glibc Linux (`x64`, `arm64`):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh | sh
 ```
 
-The installer puts the package in `${XDG_DATA_HOME:-~/.local/share}/wheatley/app` and the `wheatley` command in `${XDG_BIN_HOME:-~/.local/bin}`. If the host has no Node.js 26.13.1 or newer, it downloads Node.js into `${XDG_DATA_HOME:-~/.local/share}/wheatley/runtime`. On Linux, that Node.js needs `libatomic` (`apt-get install libatomic1` on Debian or Ubuntu). To install one release, add `--version <version>`. To prevent changes to your shell profile, add `--no-modify-path`. To update, run the installer again.
+Files go under `${XDG_DATA_HOME:-~/.local/share}/wheatley/` and the binary goes in `${XDG_BIN_HOME:-~/.local/bin}/wheatley`, keeping `~/.wheatley` for config and data. If your machine does not have Node.js `26.13.1` or newer, the script downloads Node.js automatically into `wheatley/runtime` (Linux requires `libatomic1`). Pass `--version <version>` to pin a release or `--no-modify-path` to skip shell profile edits.
 
-To install with npm, you need Node.js 26.13.1 or newer:
+### npm, pnpm, yarn, or bun
+
+Requires Node.js `26.13.1` or newer:
 
 ```sh
 npm install -g @wheatley-ai/cli
+# or
+pnpm add -g @wheatley-ai/cli
+# or
+yarn global add @wheatley-ai/cli
+# or
+bun install -g @wheatley-ai/cli
 ```
 
-pnpm works too: `pnpm add -g @wheatley-ai/cli`.
-
-Homebrew installs Node.js as a dependency of the formula:
+### Homebrew
 
 ```sh
 brew install sphericalkat/tap/wheatley
 ```
 
-To update a Homebrew install, run `brew upgrade sphericalkat/tap/wheatley`.
+Homebrew installs Node.js as a dependency.
 
-On Arch Linux, install the AUR package [`wheatley-cli`](https://aur.archlinux.org/packages/wheatley-cli):
+### Arch Linux (AUR)
 
 ```sh
 paru -S wheatley-cli
@@ -205,11 +213,9 @@ wheatley update --check
 wheatley update
 ```
 
-`wheatley update` stays inside your current major version. It finds out how you installed Wheatley and uses the same tool: npm, pnpm, yarn, bun, Homebrew, or the `curl` installer. To override the detection, pass `--method npm|pnpm|yarn|bun|brew|curl`. For a Volta, mise, AUR, or Docker install, it prints the update instructions and changes nothing.
+`wheatley update` detects how you installed Wheatley (`npm`, `pnpm`, `yarn`, `bun`, Homebrew, or the `curl` script) and upgrades within your current major version. Pass `--method <name>` to override detection. For Volta, mise, AUR, and Docker installs, it prints the native update command without touching files.
 
-To move to a new major version, run `npm install -g @wheatley-ai/cli@latest`. Then restart the daemon, for example with `wheatley service restart`.
-
-If you installed the AUR package, update with your AUR helper instead, for example `paru -Syu wheatley-cli`. pacman owns those files, so do not use `wheatley update` there.
+Major version upgrades are never installed automatically. Run the command `wheatley update` prints for your install method, then restart the daemon (for example `wheatley service restart`).
 
 ## Security
 
