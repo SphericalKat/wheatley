@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import semver from "semver";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -20,42 +21,19 @@ export const DOCKER_UPDATE_COMMANDS = [
 export const INSTALLER_URL =
   "https://raw.githubusercontent.com/SphericalKat/wheatley/main/scripts/install.sh";
 
-const VERSION =
-  /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?<prerelease>-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const BUILD_METADATA = /\+.*$/u;
 
-interface Version {
-  readonly text: string;
-  readonly major: number;
-  readonly minor: number;
-  readonly patch: number;
-  readonly prerelease: boolean;
-}
+/**
+ * Accepts only canonical semantic versions. `semver.valid` also accepts a `v` prefix and white space, and drops build
+ * metadata from its result, so the text without build metadata must equal the normalized version.
+ */
+const isVersion = (text: string): boolean =>
+  semver.valid(text) === text.replace(BUILD_METADATA, "");
 
-const parseVersion = (text: string): Version | undefined => {
-  const groups = VERSION.exec(text)?.groups;
+const isStable = (text: string): boolean => semver.prerelease(text) === null;
 
-  if (groups === undefined) {
-    return undefined;
-  }
-
-  return {
-    major: Number(groups.major),
-    minor: Number(groups.minor),
-    patch: Number(groups.patch),
-    prerelease: groups.prerelease !== undefined,
-    text,
-  };
-};
-
-/** Orders by major, minor, and patch. A release sorts after a prerelease of the same numbers. */
-const compareVersions = (a: Version, b: Version): number =>
-  a.major - b.major ||
-  a.minor - b.minor ||
-  a.patch - b.patch ||
-  Number(b.prerelease) - Number(a.prerelease);
-
-const newest = (versions: readonly Version[]): Version | undefined =>
-  versions.toSorted(compareVersions).at(-1);
+const newest = (versions: readonly string[]): string | undefined =>
+  versions.toSorted(semver.rcompare).at(0);
 
 /** The result of the major-version guard. */
 export interface UpdateSelection {
@@ -75,28 +53,25 @@ export const selectUpdate = (
   current: string,
   available: readonly string[]
 ): UpdateSelection => {
-  const installed = parseVersion(current);
-
-  if (installed === undefined) {
+  if (!isVersion(current)) {
     throw new Error(
       `The installed version is not a semantic version: ${current}`
     );
   }
 
-  const releases = available
-    .flatMap((text) => parseVersion(text) ?? [])
-    .filter(
-      (version) =>
-        !version.prerelease && compareVersions(version, installed) > 0
-    );
+  const installedMajor = semver.major(current);
+
+  const releases = available.filter(
+    (text) => isVersion(text) && isStable(text) && semver.gt(text, current)
+  );
 
   return {
     newerMajor: newest(
-      releases.filter((version) => version.major > installed.major)
-    )?.text,
+      releases.filter((text) => semver.major(text) > installedMajor)
+    ),
     target: newest(
-      releases.filter((version) => version.major === installed.major)
-    )?.text,
+      releases.filter((text) => semver.major(text) === installedMajor)
+    ),
   };
 };
 
