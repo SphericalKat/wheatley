@@ -288,6 +288,9 @@ importers:
       '@slack/web-api':
         specifier: 8.5.0
         version: 8.5.0
+      commander:
+        specifier: 15.1.0
+        version: 15.1.0
       croner:
         specifier: 11.0.1
         version: 11.0.1
