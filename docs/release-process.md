@@ -35,4 +35,4 @@ The AUR and Homebrew jobs need these repository settings:
 | `AUR_EMAIL` | Variable | The email address for the commit and `Maintainer` |
 | `HOMEBREW_TAP_TOKEN` | Secret | Token with write access to `SphericalKat/homebrew-tap` |
 
-The CI copies of `PKGBUILD` and `.SRCINFO` replace the files in the AUR. The files in `packaging/aur` keep the version of the last manual edit.
+The CI copies of `PKGBUILD` and `.SRCINFO` replace the files in the AUR. `packaging/aur/PKGBUILD` keeps the version of the last manual edit, and the workflow generates `.SRCINFO` during each release.
