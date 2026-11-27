@@ -72,6 +72,39 @@ agents:
         - draft-release-notes
 ```
 
+## Enable the bundled web search plugin
+
+Wheatley ships with a `web-search` plugin. You do not need to install a package. Add it to an assistant's `plugins` list by its name, then restart the assistant:
+
+```yaml
+agents:
+  default:
+    plugins:
+      - source: web-search
+```
+
+The plugin gives your assistant two tools:
+
+- `web-search:search` searches the web and returns Markdown results with titles, links, publication dates, and excerpts.
+- `web-search:fetch` downloads one `http://` or `https://` page and returns it as Markdown, plain text, or HTML. It follows up to 10 redirects and reads at most 5 MB. It can also reach `localhost` and private network addresses.
+
+Search works without API keys. It uses one of five providers: Exa, Firecrawl, Parallel, Tavily, or TinyFish. By default, the plugin picks one provider at random and uses it until the provider rate-limits a request. It then pauses that provider and tries another one.
+
+To always use one provider, set `provider` in the plugin's `config` block. The values are `random` (the default), `exa`, `firecrawl`, `parallel`, `tavily`, and `tinyfish`:
+
+```yaml
+agents:
+  default:
+    plugins:
+      - source: web-search
+        config:
+          provider: tavily
+```
+
+Keyless access has lower rate limits. To use your own account with a provider, add its API key to `secrets.yaml` under one of these names: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `PARALLEL_API_KEY`, `TAVILY_API_KEY`, or `TINYFISH_API_KEY`.
+
+A `source` of `web-search` always loads the bundled plugin, even if `~/.wheatley/extensions` contains an npm package with the same name.
+
 ## Write a custom plugin
 
 To build custom tools or a custom chat frontend in TypeScript, use `@wheatley-ai/sdk`.

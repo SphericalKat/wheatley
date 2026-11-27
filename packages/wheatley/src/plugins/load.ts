@@ -31,8 +31,18 @@ const isLocalPath = (source: string): boolean =>
   RELATIVE_PREFIXES.some((prefix) => source.startsWith(prefix));
 
 /**
- * Resolves a Plugin `source` from `config.yaml` to the URL that `import()` loads.
+ * The Bundled Plugins (ADR 0015): bare `source` names that resolve to a workspace package that ships with Wheatley.
+ * The build vendors each package into `dist/node_modules/`.
+ */
+const BUNDLED_PLUGINS: ReadonlyMap<string, string> = new Map([
+  ["web-search", "@wheatley-ai/plugin-web-search"],
+]);
+
+/**
+ * Resolves a Plugin `source` from `config.yaml` to the specifier that `import()` loads.
  *
+ * - The name of a Bundled Plugin, for example `web-search`, loads the package that ships with Wheatley. An npm package
+ *   of the same name in `<homeDir>/extensions/` does not shadow it.
  * - An absolute path loads as is.
  * - A path that starts with `~/` resolves against the user's home directory.
  * - A path that starts with `./` or `../` resolves against `homeDir`.
@@ -42,7 +52,17 @@ const isLocalPath = (source: string): boolean =>
  *
  * Errors: throws if an npm package does not resolve, for example because it is not installed.
  */
-export const resolvePluginUrl = (source: string, homeDir: string): string => {
+export const resolvePluginSpecifier = (
+  source: string,
+  homeDir: string
+): string => {
+  const bundled = BUNDLED_PLUGINS.get(source);
+
+  // `import()` resolves the bare package name from this module, which finds the vendored copy.
+  if (bundled !== undefined) {
+    return bundled;
+  }
+
   if (!isLocalPath(source)) {
     const parent = `${pathToFileURL(path.join(homeDir, EXTENSIONS_DIR)).href}/`;
 
@@ -71,7 +91,7 @@ export const importPlugin = async (
   source: string,
   homeDir: string
 ): Promise<PluginDefinition> => {
-  const module: unknown = await import(resolvePluginUrl(source, homeDir));
+  const module: unknown = await import(resolvePluginSpecifier(source, homeDir));
 
   if (!hasDefaultExport(module)) {
     throw new TypeError("The module has no default export");

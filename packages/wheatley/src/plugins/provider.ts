@@ -454,7 +454,7 @@ const runTool = async (
  *
  * Loading:
  * - Each entry with `enabled: false` reports `disabled` under its `source` and does not import.
- * - The provider imports every other entry (see `resolvePluginUrl`) and validates the default export against the
+ * - The provider imports every other entry (see `resolvePluginSpecifier`) and validates the default export against the
  *   `Plugin` contract, including the integer `apiVersion: 1`. Imports run in parallel.
  * - It validates the entry's `config` block (`{}` if absent) against `configSchema`, creates the data folder
  *   `<agentDir>/plugins/<name>/`, and calls `setup` with a time limit. Setups run in parallel.

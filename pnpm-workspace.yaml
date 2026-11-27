@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - packages/plugins/*
 allowBuilds:
   # The protobufjs postinstall script only prints a version notice.
   protobufjs: false
