@@ -66,6 +66,80 @@ jobs:
             npm publish "$tarball"
           done
 
+  aur:
+    name: Publish to the AUR
+    # The PKGBUILD downloads the tarball from registry.npmjs.org, so the npm job must finish first.
+    needs: [release-please, npm]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel@sha256:949ecb1661609ab7e8f6854ba03efd62792e7a796313738e94b040c095c20d91
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: packaging/aur
+    env:
+      TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+      AUR_USERNAME: ${{ vars.AUR_USERNAME }}
+      AUR_EMAIL: ${{ vars.AUR_EMAIL }}
+    steps:
+      - name: Install the build tools
+        working-directory: /
+        run: pacman -Syu --noconfirm --needed git nodejs npm openssh
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Set the version, checksum, and maintainer in the PKGBUILD
+        run: |
+          version="${TAG_NAME#v}"
+          tarball="cli-${version}.tgz"
+          curl --fail --silent --show-error --location --retry 10 --retry-delay 30 --retry-all-errors \
+            --output "$tarball" "https://registry.npmjs.org/@wheatley-ai/cli/-/${tarball}"
+          checksum="$(sha256sum "$tarball" | cut -d ' ' -f 1)"
+          sed -i \
+            -e "s|^# Maintainer: .*|# Maintainer: ${AUR_USERNAME} <${AUR_EMAIL}>|" \
+            -e "s|^pkgver=.*|pkgver=${version}|" \
+            -e "s|^pkgrel=.*|pkgrel=1|" \
+            -e "s|^sha256sums=.*|sha256sums=('${checksum}')|" \
+            PKGBUILD
+
+      # makepkg refuses to run as root.
+      - name: Build the package and regenerate .SRCINFO
+        run: |
+          useradd --create-home builder
+          chown -R builder .
+          su builder -c 'makepkg --noconfirm'
+          su builder -c 'makepkg --printsrcinfo' > .SRCINFO
+
+      - name: Push to the AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          ssh_dir="$RUNNER_TEMP/aur-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/id"
+          chmod 600 "$ssh_dir/id"
+          # The ed25519 host key of aur.archlinux.org, fingerprint SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
+          echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/id -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+
+          repo="$RUNNER_TEMP/aur-repo"
+          git clone ssh://aur@aur.archlinux.org/wheatley-cli.git "$repo"
+          cp PKGBUILD .SRCINFO "$repo/"
+          cd "$repo"
+          git config user.name "$AUR_USERNAME"
+          git config user.email "$AUR_EMAIL"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR package is already at ${TAG_NAME#v}."
+            exit 0
+          fi
+          git commit --message "Update to ${TAG_NAME#v}"
+          git push origin HEAD:master
+
   docker:
     name: Publish to GitHub Container Registry
     needs: release-please

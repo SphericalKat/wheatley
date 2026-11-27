@@ -16,6 +16,14 @@ npm install -g @wheatley-ai/cli
 
 pnpm works too: `pnpm add -g @wheatley-ai/cli`.
 
+On Arch Linux, install the AUR package [`wheatley-cli`](https://aur.archlinux.org/packages/wheatley-cli):
+
+```sh
+paru -S wheatley-cli
+# or
+yay -S wheatley-cli
+```
+
 ## Quick start
 
 Create the config files. By default they go in `~/.wheatley`. Set `WHEATLEY_HOME` or pass `--home` to put them somewhere else.
@@ -182,6 +190,8 @@ wheatley update
 ```
 
 `wheatley update` stays inside your current major version. To move to a new major version, run `npm install -g @wheatley-ai/cli@latest`. Then restart the daemon, for example with `wheatley service restart`.
+
+If you installed the AUR package, update with your AUR helper instead, for example `paru -Syu wheatley-cli`. pacman owns those files, so do not use `wheatley update` there.
 
 ## Security
 

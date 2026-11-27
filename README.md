@@ -16,6 +16,7 @@ Each release publishes these artifacts:
 - The npm package [`@wheatley-ai/cli`](https://www.npmjs.com/package/@wheatley-ai/cli). It contains the daemon, the CLI, and the dashboard.
 - The npm package [`@wheatley-ai/sdk`](https://www.npmjs.com/package/@wheatley-ai/sdk). It contains the Plugin and Frontend contracts.
 - The Docker image `ghcr.io/sphericalkat/wheatley`.
+- The AUR package [`wheatley-cli`](https://aur.archlinux.org/packages/wheatley-cli), for Arch Linux.
 - A GitHub release with a `v<version>` tag and the changelog.
 
 ### Install from npm
@@ -41,6 +42,26 @@ Each release publishes these artifacts:
 3. Continue with the [Quick start](#quick-start).
 
 The package puts the `wheatley` command on your `PATH`. To install one version, add it to the package name, for example `@wheatley-ai/cli@0.1.0`.
+
+### Install from the AUR
+
+On Arch Linux, the AUR package `wheatley-cli` installs the npm release in `/usr/lib/node_modules` and puts `wheatley` in `/usr/bin`. The package depends on the `nodejs` package of Arch Linux.
+
+1. Install the package with an AUR helper:
+
+   ```bash
+   paru -S wheatley-cli
+   ```
+
+   With `yay`:
+
+   ```bash
+   yay -S wheatley-cli
+   ```
+
+2. Continue with the [Quick start](#quick-start).
+
+To update, run `paru -Syu` or `yay -Syu`. Do not use `wheatley update` for an AUR install, because pacman owns the installed files.
 
 ### Run with Docker
 
@@ -492,6 +513,8 @@ wheatley update --manager pnpm
 
 `wheatley update` refuses to run in a source checkout. Use `git` there. In Docker, `wheatley update` prints the Docker Compose commands.
 
+For an AUR install, update with your AUR helper, for example `paru -Syu wheatley-cli`. Do not use `wheatley update` there, because pacman owns the installed files.
+
 After an update, restart the daemon, for example with `wheatley service restart`.
 
 ### Restore an Agent database
@@ -588,6 +611,7 @@ The `Release` workflow in `.github/workflows/release.yml` uses [release-please](
 4. The workflow creates the `v<version>` tag and the GitHub release.
 5. The workflow publishes `@wheatley-ai/sdk` and `@wheatley-ai/cli` to npm.
 6. The workflow pushes the `linux/amd64` and `linux/arm64` image to `ghcr.io/sphericalkat/wheatley`.
+7. After the npm publish, the workflow sets the version and checksum in `packaging/aur/PKGBUILD`, builds the package, and pushes `PKGBUILD` and `.SRCINFO` to the AUR package `wheatley-cli`.
 
 Before version `1.0.0`, a `feat` commit raises the minor version, and a `fix` commit raises the patch version.
 
@@ -601,6 +625,16 @@ The workflow publishes to npm with [trusted publishing](https://docs.npmjs.com/t
 | Environment          | (empty)        |
 
 The repository must have **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** turned on.
+
+The AUR job needs these repository settings:
+
+| Setting | Kind | Value |
+| --- | --- | --- |
+| `AUR_SSH_PRIVATE_KEY` | Secret | The private SSH key of the AUR account |
+| `AUR_USERNAME` | Variable | The AUR account name, for the commit and `Maintainer` |
+| `AUR_EMAIL` | Variable | The email address for the commit and `Maintainer` |
+
+The CI copies of `PKGBUILD` and `.SRCINFO` replace the files in the AUR. The files in `packaging/aur` keep the version of the last manual edit.
 
 ## Known limitations
 
