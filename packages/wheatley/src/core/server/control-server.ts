@@ -1,12 +1,10 @@
 import { once } from "node:events";
 import { chmod, rm } from "node:fs/promises";
-import { Server } from "node:http";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import { isIPv4 } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
-import { createAdaptorServer } from "@hono/node-server";
 import type { Logger } from "@wheatley-ai/sdk";
 import { Hono } from "hono";
 import { WebSocketServer } from "ws";
@@ -16,6 +14,7 @@ import { errorMessage } from "../error-message.js";
 import type { EventBus } from "../events.js";
 import type { Router } from "../rpc/router.js";
 import { Connection } from "./connection.js";
+import { createHttpServer } from "./http-server.js";
 import { mountStaticFiles } from "./static-files.js";
 
 /** The WebSocket path of the JSON-RPC protocol (ADR 0005). */
@@ -149,17 +148,7 @@ export class ControlServer {
   };
 
   readonly #createHttpServer = (checkOrigin: boolean): Server => {
-    const server = createAdaptorServer({
-      fetch: this.#app.fetch,
-      // The default replaces the global `Request` and `Response` for the whole process.
-      overrideGlobalObjects: false,
-    });
-
-    if (!(server instanceof Server)) {
-      throw new TypeError(
-        "The Control Server listener is not an HTTP/1.1 server"
-      );
-    }
+    const server = createHttpServer(this.#app.fetch, "Control Server");
 
     server.on("upgrade", (request, socket, head) => {
       this.#upgrade(request, socket, head, checkOrigin);
@@ -186,8 +175,9 @@ export class ControlServer {
     );
     app.notFound((c) => c.body("Not found\n", 404, PLAIN_TEXT));
     app.onError((failure, c) => {
-      this.#options.log.warn("A dashboard file could not be served", {
+      this.#options.log.warn("A Control Server HTTP request failed", {
         error: errorMessage(failure),
+        path: c.req.path,
       });
 
       return c.body("Not found\n", 404, PLAIN_TEXT);

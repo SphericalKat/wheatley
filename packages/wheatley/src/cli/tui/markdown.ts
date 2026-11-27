@@ -8,13 +8,22 @@ import {
   blockTokens,
   inlineTokens,
   lexMarkdown,
+  taskBox,
+  walkInlineTokens,
 } from "../../core/markdown-tokens.js";
 import type { BlockToken, InlineToken } from "../../core/markdown-tokens.js";
 
 const RULE_WIDTH = 40;
 const LEADING_SPACES = /^ */u;
+
+/** Literal bracketed text, which a reference definition later in the reply can still turn into a link. */
+const BRACKETED = /\[[^\]]*\]/u;
+
+/** The source of a reference link or image, such as `[docs][1]` or `[docs]`. An inline link ends with `)` instead. */
+const REFERENCE_LINK = /^!?\[[\s\S]*\]$/u;
 const H1 = 1;
 const H2 = 2;
+const TASK_BOXES = { checked: "[x] ", unchecked: "[ ] " } as const;
 
 /**
  * One rendered Markdown line, ready to wrap. Only `body` wraps. The first row starts with `lead`, for example a bullet
@@ -229,8 +238,7 @@ const renderListItem = (
   item: Tokens.ListItem,
   marker: string
 ): MarkdownLine[] => {
-  const box = item.checked === true ? "[x] " : "[ ] ";
-  const check = item.task ? box : "";
+  const check = taskBox(item, TASK_BOXES);
   const lead = `${styleText("cyan", marker)} ${check}`;
   const lines = renderBlocks(item.tokens);
 
@@ -340,36 +348,70 @@ export interface MarkdownStream {
 
 const isSpace = (token: BlockToken): boolean => token.type === "space";
 
-/** Renders a streamed reply block by block, so tables, lists, quotes, and code fences render as whole blocks. */
+/**
+ * True if a reference definition later in the reply, for example `[1]: url`, can still change `token`: it shows
+ * bracketed text that a definition can turn into a link, or a reference link whose definition can still grow.
+ */
+const mayChangeWithDefinition = (token: BlockToken): boolean => {
+  let found = false;
+
+  walkInlineTokens([token], (inline) => {
+    const isLiteral = inline.type === "text" && inline.tokens === undefined;
+    const isLink = inline.type === "link" || inline.type === "image";
+
+    found ||=
+      (isLiteral && BRACKETED.test(inline.text)) ||
+      (isLink && REFERENCE_LINK.test(inline.raw));
+  });
+
+  return found;
+};
+
+/**
+ * Renders a streamed reply block by block, so tables, lists, quotes, and code fences render as whole blocks. Each
+ * render lexes the whole text, so reference links resolve against every definition so far. A block with bracketed text
+ * waits in the live lines until the end, because a later definition can still change it.
+ */
 export const createMarkdownStream = (): MarkdownStream => {
-  let pending = "";
+  let text = "";
+  /** The number of top-level tokens of `text` that `write` returned. */
+  let printed = 0;
+
+  const unprinted = (): MarkdownLine[] =>
+    lexMarkdown(text).slice(printed).flatMap(renderBlock);
 
   return {
     end: () => {
-      const lines = renderMarkdown(pending);
+      const lines = unprinted();
 
-      pending = "";
+      text = "";
+      printed = 0;
 
       return lines;
     },
-    live: () => (pending === "" ? [] : renderMarkdown(pending)),
+    live: unprinted,
     write: (delta) => {
-      pending += delta;
+      text += delta;
 
-      const tokens = lexMarkdown(pending);
+      const tokens = lexMarkdown(text);
       // Blank lines after the last block do not complete it. More list items or quote lines can still follow them.
       const last = tokens.findLastIndex((token) => !isSpace(token));
 
-      if (last <= 0) {
+      const held = tokens.findIndex(
+        (token, index) => index >= printed && mayChangeWithDefinition(token)
+      );
+
+      const complete = held === -1 ? last : Math.min(last, held);
+
+      if (complete <= printed) {
         return [];
       }
 
-      pending = tokens
-        .slice(last)
-        .map((token) => token.raw)
-        .join("");
+      const lines = tokens.slice(printed, complete).flatMap(renderBlock);
 
-      return tokens.slice(0, last).flatMap(renderBlock);
+      printed = complete;
+
+      return lines;
     },
   };
 };

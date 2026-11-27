@@ -172,6 +172,26 @@ it("answers / with a plain text note without a dashboard folder", async () => {
   expect(other.status).toBe(404);
 });
 
+it("serves a dashboard folder that appears after the daemon starts", async () => {
+  const started = await start({ staticDir: path.join(home.dir, "dashboard") });
+
+  const before = await fetch(`${httpUrl(started)}/`);
+
+  await writeDashboard();
+
+  const page = await fetch(`${httpUrl(started)}/`);
+  const route = await fetch(`${httpUrl(started)}/agents/foo/chat`);
+
+  expect(before.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+  await expect(before.text()).resolves.toBe(
+    "Wheatley daemon. Connect with JSON-RPC over WebSocket at /ws.\n"
+  );
+  expect(page.status).toBe(200);
+  await expect(page.text()).resolves.toBe(INDEX_HTML);
+  expect(route.status).toBe(200);
+  await expect(route.text()).resolves.toBe(INDEX_HTML);
+});
+
 it("listens on an owner-only Unix socket that serves the dashboard too", async () => {
   const socketPath = path.join(home.dir, "wheatley.sock");
 

@@ -415,9 +415,10 @@ describe("wheatley status and init", () => {
     }
   });
 
-  it("exits 2 for an unknown command, a missing --home value, and an invalid port", async () => {
+  it("exits 2 with the error and the usage for an unknown command, a missing --home value, and an invalid port", async () => {
     for (const [argv, message] of [
       [["launch"], "error: unknown command 'launch'"],
+      [["help"], "error: unknown command 'help'"],
       [["status", "--home"], "error: option '--home <dir>' argument missing"],
       [["daemon", "--port", "eighty"], "Invalid port: eighty"],
     ] as const) {
@@ -426,6 +427,8 @@ describe("wheatley status and init", () => {
       // oxlint-disable-next-line no-await-in-loop -- Each command runs on its own.
       await expect(runCli(argv, terminal.io)).resolves.toBe(2);
       expect(terminal.stderr()).toContain(message);
+      expect(terminal.stderr()).toContain("Usage: wheatley");
+      expect(terminal.stdout()).toBe("");
     }
   });
 

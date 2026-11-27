@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // Without a `document`, TanStack Router loads routes as a server render and does not follow redirects.
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
+import type { AgentHealth } from "@wheatley-ai/protocol";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, onTestFinished, test, vi } from "vitest";
@@ -114,7 +115,7 @@ const renderAt = (url: string) => {
     client.close();
   });
 
-  return { container, router };
+  return { container, router, services };
 };
 
 test("opens the Overview for a URL with a broken percent escape", async () => {
@@ -145,4 +146,108 @@ test("moves to the view of a sidebar link in the same page", async () => {
     expect(link?.getAttribute("aria-current")).toBe("page");
   });
   expect(router.history.length).toBe(2);
+});
+
+/** The health of a running Agent without extensions. */
+const runningAgent = (name: string): AgentHealth => ({
+  activeRuns: 0,
+  frontends: [],
+  lastError: null,
+  mcpServers: [],
+  name,
+  pendingRestart: false,
+  plugins: [],
+  restartBackoffMs: null,
+  skillWarnings: [],
+  state: "running",
+});
+
+test("keeps the view and changes the Agent in the URL when the Agent switcher selects another Agent", async () => {
+  const { router, services } = renderAt("/agents/home/runs");
+
+  services.deployment.state.update((current) => ({
+    ...current,
+    loading: false,
+    status: {
+      agents: [runningAgent("home"), runningAgent("work")],
+      concurrency: [],
+      protocolVersion: 1,
+      startedAt: "2026-11-27T00:00:00.000Z",
+      uptimeMs: 0,
+      version: "test",
+    },
+  }));
+
+  const trigger = await vi.waitFor(() => {
+    const found = document.querySelector<HTMLElement>('[role="combobox"]');
+
+    expect(found?.textContent).toContain("home");
+
+    return found;
+  });
+
+  trigger?.click();
+
+  const option = await vi.waitFor(() => {
+    const found = [
+      ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+    ].find((element) => element.textContent === "work");
+
+    expect(found).toBeDefined();
+
+    return found;
+  });
+
+  option?.click();
+
+  await vi.waitFor(() => {
+    expect(shown(router)).toEqual({
+      params: { agent: "work" },
+      path: "/agents/work/runs",
+      route: "/agents/$agent/runs",
+    });
+  });
+  expect(router.history.length).toBe(2);
+});
+
+test("shows the view of each history entry on back and forward", async () => {
+  const { container, router } = renderAt("/overview");
+
+  // The router follows the history only after the dashboard mounts.
+  await vi.waitFor(() => {
+    expect(container.querySelector("nav")).not.toBeNull();
+  });
+  await router.navigate({ to: "/logs" });
+  await router.navigate({
+    params: { agent: "home" },
+    to: "/agents/$agent/runs",
+  });
+
+  router.history.back();
+  await vi.waitFor(() => {
+    expect(shown(router)).toEqual({
+      params: {},
+      path: "/logs",
+      route: "/logs",
+    });
+  });
+
+  router.history.back();
+  await vi.waitFor(() => {
+    expect(shown(router)).toEqual({
+      params: {},
+      path: "/overview",
+      route: "/overview",
+    });
+  });
+
+  router.history.forward();
+  router.history.forward();
+  await vi.waitFor(() => {
+    expect(shown(router)).toEqual({
+      params: { agent: "home" },
+      path: "/agents/home/runs",
+      route: "/agents/$agent/runs",
+    });
+  });
 });

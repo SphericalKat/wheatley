@@ -1,9 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
-import { Server } from "node:http";
+import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { createAdaptorServer } from "@hono/node-server";
 import type {
   Logger,
   WebhookResponse,
@@ -11,8 +10,10 @@ import type {
   WebhookRouteHandler,
 } from "@wheatley-ai/sdk";
 import { Hono } from "hono";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { SeamError } from "../contracts/errors.js";
 import type { Clock } from "../contracts/module.js";
@@ -22,6 +23,7 @@ import type {
   WebhookIngress,
   WebhookIngressDeps,
 } from "../contracts/webhook-ingress.js";
+import { createHttpServer } from "../core/server/http-server.js";
 import { errorText } from "./errors.js";
 
 /** A request must arrive in full within this time. */
@@ -80,11 +82,37 @@ interface ReadRequest {
   readonly body: Uint8Array;
 }
 
-const readRequest = async (c: Context): Promise<ReadRequest> => ({
-  body: new Uint8Array(await c.req.arrayBuffer()),
+/**
+ * The environment of the Ingress app. `handle` passes the body it got as the `body` binding, so the app does not read
+ * it again. The `body` variable holds the request body for the routes.
+ */
+interface IngressEnv {
+  readonly Bindings: { readonly body?: Uint8Array };
+  readonly Variables: { readonly body: Uint8Array };
+}
+
+const readRequest = (c: Context<IngressEnv>): ReadRequest => ({
+  body: c.get("body"),
   headers: Object.fromEntries(c.req.raw.headers),
   path: new URL(c.req.url).pathname,
   query: c.req.query(),
+});
+
+const noop = async (): Promise<void> => {
+  await Promise.resolve();
+};
+
+/** An error that answers `code` with an empty body and closes the connection. */
+const closingError = (code: ContentfulStatusCode): HTTPException =>
+  new HTTPException(code, {
+    res: new Response(null, { headers: { connection: "close" }, status: code }),
+  });
+
+const limitBody: MiddlewareHandler<IngressEnv> = bodyLimit({
+  maxSize: MAX_WEBHOOK_BODY_BYTES,
+  onError: () => {
+    throw closingError(413);
+  },
 });
 
 /**
@@ -97,7 +125,7 @@ const readRequest = async (c: Context): Promise<ReadRequest> => ({
 export class HttpWebhookIngress implements WebhookIngress {
   readonly #options: HttpWebhookIngressOptions;
   readonly #routes = new Map<string, WebhookRouteHandler>();
-  readonly #app: Hono;
+  readonly #app: Hono<IngressEnv>;
   #server: Server | undefined;
 
   constructor(options: HttpWebhookIngressOptions) {
@@ -150,14 +178,9 @@ export class HttpWebhookIngress implements WebhookIngress {
       url.searchParams.set(name, value);
     }
 
-    const hasBody = request.method !== "GET" && request.method !== "HEAD";
-
     const response = await this.#app.fetch(
-      new Request(url, {
-        body: hasBody ? new Uint8Array(request.body) : undefined,
-        headers: request.headers,
-        method: request.method,
-      })
+      new Request(url, { headers: request.headers, method: request.method }),
+      { body: request.body }
     );
 
     return await fromResponse(response);
@@ -172,17 +195,7 @@ export class HttpWebhookIngress implements WebhookIngress {
 
   /** Starts the listener on `host` and `port`. Rejects if the port is in use. */
   readonly listen = async (host: string, port: number): Promise<void> => {
-    const server = createAdaptorServer({
-      fetch: this.#app.fetch,
-      // The default replaces the global `Request` and `Response` for the whole process.
-      overrideGlobalObjects: false,
-    });
-
-    if (!(server instanceof Server)) {
-      throw new TypeError(
-        "The Webhook Ingress listener is not an HTTP/1.1 server"
-      );
-    }
+    const server = createHttpServer(this.#app.fetch, "Webhook Ingress");
 
     server.requestTimeout = REQUEST_TIMEOUT_MS;
 
@@ -206,27 +219,24 @@ export class HttpWebhookIngress implements WebhookIngress {
     await closed;
   };
 
-  readonly #createApp = (): Hono => {
-    const app = new Hono();
+  readonly #createApp = (): Hono<IngressEnv> => {
+    const app = new Hono<IngressEnv>();
 
-    app.post(
-      "*",
-      bodyLimit({
-        maxSize: MAX_WEBHOOK_BODY_BYTES,
-        onError: (c) => c.body(null, 413, { connection: "close" }),
-      })
-    );
+    app.post("*", async (c, proceed) => {
+      c.set("body", c.env.body ?? (await this.#readBody(c)));
+      await proceed();
+    });
     app.post("/webhooks/:agent/:triggerId", async (c) =>
       toResponse(
         await this.#trigger(
           c.req.param("agent"),
           c.req.param("triggerId"),
-          await readRequest(c)
+          readRequest(c)
         )
       )
     );
     app.post("/frontends/:agent/:bindingId/*", async (c) => {
-      const request = await readRequest(c);
+      const request = readRequest(c);
 
       return toResponse(
         await this.#frontend(
@@ -238,6 +248,10 @@ export class HttpWebhookIngress implements WebhookIngress {
     });
     app.all("*", (c) => c.body(null, c.req.method === "POST" ? 404 : 405));
     app.onError((failure, c) => {
+      if (failure instanceof HTTPException) {
+        return failure.getResponse();
+      }
+
       this.#options.log.error("A webhook request failed", {
         error: errorText(failure),
         path: c.req.path,
@@ -247,6 +261,30 @@ export class HttpWebhookIngress implements WebhookIngress {
     });
 
     return app;
+  };
+
+  /**
+   * Reads the body of a listener request. Throws an `HTTPException` that answers `413` past the cap, or `400` for a
+   * body that cannot be read, for example after the client aborts. Handler failures answer `500` in `onError`.
+   */
+  readonly #readBody = async (
+    c: Context<IngressEnv, string>
+  ): Promise<Uint8Array> => {
+    try {
+      await limitBody(c, noop);
+
+      return new Uint8Array(await c.req.arrayBuffer());
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+
+      this.#options.log.warn("A webhook request was not read", {
+        error: errorText(error),
+      });
+
+      throw closingError(400);
+    }
   };
 
   readonly #trigger = async (

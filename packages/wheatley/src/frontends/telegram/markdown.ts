@@ -9,12 +9,14 @@ import {
   blockTokens,
   inlineTokens,
   lexMarkdown,
+  taskBox,
 } from "../../core/markdown-tokens.js";
 import type { BlockToken, InlineToken } from "../../core/markdown-tokens.js";
 
 const LINK_SCHEMES: readonly string[] = ["http:", "https:", "tg:", "mailto:"];
 const LIST_INDENT = "  ";
 const RULE = "———";
+const TASK_BOXES = { checked: "☑ ", unchecked: "☐ " } as const;
 
 /** Escapes the three characters that Telegram HTML requires escaped, plus `"` for attribute values. */
 export const escapeHtml = (text: string): string =>
@@ -114,8 +116,7 @@ const formatList = (token: Tokens.List, context: BlockContext): string => {
   return token.items
     .map((item) => {
       const marker = token.ordered ? sourceMarker(item) : "•";
-      const box = item.checked === true ? "☑ " : "☐ ";
-      const check = item.task ? box : "";
+      const check = taskBox(item, TASK_BOXES);
       const content = formatBlocks(item.tokens, inner);
 
       return `${indent}${marker} ${check}${content}`;
