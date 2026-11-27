@@ -39,6 +39,7 @@ paru -S wheatley-cli
 # or
 yay -S wheatley-cli
 ```
+
 ## Quick start
 
 Create the config files. By default they go in `~/.wheatley`. Set `WHEATLEY_HOME` or pass `--home` to put them somewhere else.
