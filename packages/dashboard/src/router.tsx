@@ -75,40 +75,23 @@ const remountForAgent = ({
   readonly params: { readonly agent: string };
 }): string => params.agent;
 
-const chatRoute = createRoute({
-  component: agentPage(ChatView),
-  getParentRoute: () => agentRoute,
-  path: "chat",
-  remountDeps: remountForAgent,
-});
+/** The Agent views by URL segment, in sidebar order. */
+const AGENT_VIEWS = [
+  ["chat", ChatView],
+  ["runs", RunsView],
+  ["memory", MemoryView],
+  ["triggers", TriggersView],
+  ["config", ConfigView],
+] as const;
 
-const runsRoute = createRoute({
-  component: agentPage(RunsView),
-  getParentRoute: () => agentRoute,
-  path: "runs",
-  remountDeps: remountForAgent,
-});
-
-const memoryRoute = createRoute({
-  component: agentPage(MemoryView),
-  getParentRoute: () => agentRoute,
-  path: "memory",
-  remountDeps: remountForAgent,
-});
-
-const triggersRoute = createRoute({
-  component: agentPage(TriggersView),
-  getParentRoute: () => agentRoute,
-  path: "triggers",
-  remountDeps: remountForAgent,
-});
-
-const configRoute = createRoute({
-  component: agentPage(ConfigView),
-  getParentRoute: () => agentRoute,
-  path: "config",
-  remountDeps: remountForAgent,
-});
+const agentViewRoutes = AGENT_VIEWS.map(([path, View]) =>
+  createRoute({
+    component: agentPage(View),
+    getParentRoute: () => agentRoute,
+    path,
+    remountDeps: remountForAgent,
+  })
+);
 
 /** Every URL that no other route matches, including `/`, opens the Overview. */
 const fallbackRoute = createRoute({
@@ -123,14 +106,7 @@ const routeTree = rootRoute.addChildren([
   inboxRoute,
   logsRoute,
   secretsRoute,
-  agentRoute.addChildren([
-    agentIndexRoute,
-    chatRoute,
-    runsRoute,
-    memoryRoute,
-    triggersRoute,
-    configRoute,
-  ]),
+  agentRoute.addChildren([agentIndexRoute, ...agentViewRoutes]),
 ]);
 
 /** Creates the dashboard router. The browser passes its history, and tests pass a memory history. */
