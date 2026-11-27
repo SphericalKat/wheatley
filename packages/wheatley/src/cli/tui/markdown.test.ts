@@ -2,8 +2,16 @@ import { stripVTControlCharacters, styleText } from "node:util";
 
 import { expect, it } from "vitest";
 
-import { lineText, renderMarkdown, wrapLines } from "./markdown.js";
+import {
+  createMarkdownStream,
+  lineText,
+  renderMarkdown,
+  wrapLines,
+} from "./markdown.js";
 import type { MarkdownLine } from "./markdown.js";
+
+/** Splits a reply into deltas of up to four characters. */
+const DELTAS = /[\s\S]{1,4}/gu;
 
 const plain = (text: string): string => stripVTControlCharacters(text);
 
@@ -154,4 +162,25 @@ it("styles emphasis that spans a line break on both lines", () => {
 
   expect(first?.body).toBe(styleText("bold", "bold"));
   expect(second?.body).toBe(styleText("bold", "still bold"));
+});
+
+it("resolves a reference link in a streamed reply whose definition arrives later", () => {
+  const reply =
+    "See [the docs][1].\n\nMore text.\n\n[1]: https://example.com/x\n";
+
+  const stream = createMarkdownStream();
+  const printed: MarkdownLine[] = [];
+
+  for (const delta of reply.match(DELTAS) ?? []) {
+    printed.push(...stream.write(delta));
+  }
+
+  printed.push(...stream.end());
+
+  expect(shown(printed).split("\n")).toStrictEqual([
+    "See the docs (https://example.com/x).",
+    "",
+    "More text.",
+    "",
+  ]);
 });

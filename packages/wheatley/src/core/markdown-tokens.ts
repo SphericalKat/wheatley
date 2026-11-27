@@ -1,5 +1,5 @@
 import { Marked } from "marked";
-import type { MarkedToken, Token } from "marked";
+import type { MarkedToken, Token, Tokens } from "marked";
 
 /**
  * GitHub Flavored Markdown, with `breaks` so a single newline in a reply stays a line break. The instance is private,
@@ -67,6 +67,34 @@ export const inlineTokens = (
 export const blockTokens = (tokens: readonly Token[]): BlockToken[] =>
   tokens.filter(isBlock);
 
+/** Calls `visit` for each inline token inside `tokens`, at any depth. */
+export const walkInlineTokens = (
+  tokens: readonly Token[],
+  visit: (token: InlineToken) => void
+): void => {
+  // The callback is synchronous, so the returned values hold no promises.
+  void parser.walkTokens([...tokens], (token) => {
+    if (isInline(token)) {
+      visit(token);
+    }
+  });
+};
+
 /** Splits Markdown into its top-level block tokens. The `raw` texts of the tokens join to the input, with `\n` line ends. */
 export const lexMarkdown = (markdown: string): BlockToken[] =>
   blockTokens(parser.lexer(markdown));
+
+/** The box texts of a task list item, for example `[x] ` and `[ ] `. */
+export interface TaskBoxes {
+  readonly checked: string;
+  readonly unchecked: string;
+}
+
+/** The box text of a task list item, such as `- [x] done`, or an empty string for another list item. */
+export const taskBox = (item: Tokens.ListItem, boxes: TaskBoxes): string => {
+  if (!item.task) {
+    return "";
+  }
+
+  return item.checked === true ? boxes.checked : boxes.unchecked;
+};
