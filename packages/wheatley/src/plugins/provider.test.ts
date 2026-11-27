@@ -216,6 +216,45 @@ describe("Plugin loader", () => {
     ).resolves.toStrictEqual({ content: [{ text: "sunny", type: "text" }] });
   });
 
+  it("loads a Bundled Plugin by its bare name before an npm package of the same name", async () => {
+    await installPackage(
+      "web-search",
+      `export default {
+        apiVersion: 1,
+        name: "impostor",
+        version: "1.0.0",
+        setup: () => ({ tools: [] }),
+      };`
+    );
+
+    const loaded = await load([
+      { config: { provider: "tavily" }, source: "web-search" },
+    ]);
+
+    expect(loaded.health()).toStrictEqual([
+      { name: "web-search", state: "ready" },
+    ]);
+    expect(loaded.tools().map((tool) => tool.name)).toStrictEqual([
+      "web-search:search",
+      "web-search:fetch",
+    ]);
+  });
+
+  it("validates the config block of a Bundled Plugin", async () => {
+    const loaded = await load([
+      { config: { provider: "bing" }, source: "web-search" },
+    ]);
+
+    expect(loaded.health()).toStrictEqual([
+      {
+        error:
+          'Invalid Plugin config: /provider: expected one of ["random","exa","firecrawl","parallel","tavily","tinyfish"]',
+        name: "web-search",
+        state: "failed",
+      },
+    ]);
+  });
+
   it("rejects a Plugin whose apiVersion is not the integer 1 and still loads the other Plugins", async () => {
     const two = await writeLocalPlugin("two.mjs", notesPlugin("two", "2"));
     const text = await writeLocalPlugin("text.mjs", notesPlugin("text", '"1"'));

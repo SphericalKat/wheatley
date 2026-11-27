@@ -4,8 +4,12 @@
 import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-/** The workspace packages that `dist/` imports at runtime. */
-const VENDORED = ["@wheatley-ai/protocol", "@wheatley-ai/sdk"] as const;
+/** The workspace packages that `dist/` imports at runtime, including the Bundled Plugins (ADR 0015). */
+const VENDORED = [
+  "@wheatley-ai/plugin-web-search",
+  "@wheatley-ai/protocol",
+  "@wheatley-ai/sdk",
+] as const;
 
 interface Manifest {
   readonly name: string;
@@ -81,4 +85,4 @@ await rm(target, { force: true, recursive: true });
 
 await Promise.all(VENDORED.map(vendor));
 
-process.stdout.write(`Vendored ${VENDORED.join(" and ")} into ${target}\n`);
+process.stdout.write(`Vendored ${VENDORED.join(", ")} into ${target}\n`);
