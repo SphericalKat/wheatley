@@ -52,6 +52,23 @@ export const matchesLogFilter = (
   return levelMatches && agentMatches && moduleMatches;
 };
 
+/** Merges the tail with the records that arrived during its load, by `seq`, and keeps the newest. */
+const mergeRecords = (
+  tail: readonly LogRecord[],
+  arrived: readonly LogRecord[]
+): readonly LogRecord[] => {
+  const known = new Set(tail.map((record) => record.seq));
+  const extra = arrived.filter((record) => !known.has(record.seq));
+
+  if (extra.length === 0) {
+    return tail;
+  }
+
+  return [...tail, ...extra]
+    .toSorted((left, right) => left.seq - right.seq)
+    .slice(-LOG_TAIL_LIMIT);
+};
+
 /** Creates the Logs model and loads it once the client is ready. */
 export const createLogTail = (client: RpcClient): LogTail => {
   const state = createStore<LogTailState>({
@@ -62,12 +79,16 @@ export const createLogTail = (client: RpcClient): LogTail => {
   });
 
   let generation = 0;
+  // Records that arrived since the latest load started. The tail was read before them.
+  let arrived: LogRecord[] = [];
 
   const load = async (): Promise<void> => {
     generation += 1;
 
     const requested = generation;
     const { filter } = state.get();
+
+    arrived = [];
 
     state.update((current) => ({ ...current, loading: true }));
 
@@ -82,7 +103,7 @@ export const createLogTail = (client: RpcClient): LogTail => {
           ...current,
           error: null,
           loading: false,
-          records,
+          records: mergeRecords(records, arrived),
         }));
       }
     } catch (error) {
@@ -101,6 +122,10 @@ export const createLogTail = (client: RpcClient): LogTail => {
       void load();
     }),
     client.on("log.record", ({ record }) => {
+      if (matchesLogFilter(record, state.get().filter)) {
+        arrived.push(record);
+      }
+
       state.update((current) => {
         const known = current.records.some((entry) => entry.seq === record.seq);
 

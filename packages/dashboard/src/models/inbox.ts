@@ -94,6 +94,46 @@ const byFailedAtDescending = (
 const isNotFound = (cause: unknown): boolean =>
   cause instanceof RpcError && cause.code === RpcErrorCode.NotFound;
 
+/**
+ * The changes made to the lists while one refresh was in flight. A `null` value removes the item. The refresh replays
+ * them on top of the loaded lists, because the server read them before the changes.
+ */
+interface RefreshJournal {
+  readonly approvals: Map<string, PendingApproval | null>;
+  readonly deliveries: Map<string, FailedDelivery | null>;
+}
+
+const upsertSorted = <T>(
+  items: readonly T[],
+  item: T,
+  sameItem: (entry: T) => boolean,
+  compare: (left: T, right: T) => number
+): readonly T[] =>
+  [...items.filter((entry) => !sameItem(entry)), item].toSorted(compare);
+
+const applyJournal = <T>(
+  loaded: readonly T[],
+  journal: ReadonlyMap<string, T | null>,
+  keyOf: (item: T) => string,
+  compare: (left: T, right: T) => number
+): readonly T[] => {
+  const merged = new Map<string, T>();
+
+  for (const item of loaded) {
+    merged.set(keyOf(item), item);
+  }
+
+  for (const [key, change] of journal) {
+    if (change === null) {
+      merged.delete(key);
+    } else {
+      merged.set(key, change);
+    }
+  }
+
+  return [...merged.values()].toSorted(compare);
+};
+
 /** Creates the Inbox model and loads it once the client is ready. */
 export const createInbox = (client: RpcClient): Inbox => {
   const state = createStore<InboxState>({
@@ -106,7 +146,29 @@ export const createInbox = (client: RpcClient): Inbox => {
     notice: null,
   });
 
+  const journals = new Set<RefreshJournal>();
+
+  const upsertApproval = (approval: PendingApproval): void => {
+    for (const journal of journals) {
+      journal.approvals.set(approvalKey(approval), approval);
+    }
+
+    state.update((current) => ({
+      ...current,
+      approvals: upsertSorted(
+        current.approvals,
+        approval,
+        (entry) => approvalKey(entry) === approvalKey(approval),
+        byCreatedAt
+      ),
+    }));
+  };
+
   const removeApproval = (agent: string, approvalId: string): void => {
+    for (const journal of journals) {
+      journal.approvals.set(approvalKey({ agent, approvalId }), null);
+    }
+
     state.update((current) => ({
       ...current,
       approvals: current.approvals.filter(
@@ -115,7 +177,27 @@ export const createInbox = (client: RpcClient): Inbox => {
     }));
   };
 
+  const upsertDelivery = (delivery: FailedDelivery): void => {
+    for (const journal of journals) {
+      journal.deliveries.set(deliveryKey(delivery), delivery);
+    }
+
+    state.update((current) => ({
+      ...current,
+      deliveries: upsertSorted(
+        current.deliveries,
+        delivery,
+        (entry) => deliveryKey(entry) === deliveryKey(delivery),
+        byFailedAtDescending
+      ),
+    }));
+  };
+
   const removeDelivery = (agent: string, deliveryId: string): void => {
+    for (const journal of journals) {
+      journal.deliveries.set(deliveryKey({ agent, deliveryId }), null);
+    }
+
     state.update((current) => ({
       ...current,
       deliveries: current.deliveries.filter(
@@ -135,6 +217,13 @@ export const createInbox = (client: RpcClient): Inbox => {
   const refresh = async (): Promise<void> => {
     state.update((current) => ({ ...current, loading: true }));
 
+    const journal: RefreshJournal = {
+      approvals: new Map(),
+      deliveries: new Map(),
+    };
+
+    journals.add(journal);
+
     try {
       const [{ approvals }, { deliveries }] = await Promise.all([
         client.call("approvals.list", {}),
@@ -143,8 +232,18 @@ export const createInbox = (client: RpcClient): Inbox => {
 
       state.update((current) => ({
         ...current,
-        approvals: approvals.toSorted(byCreatedAt),
-        deliveries: deliveries.toSorted(byFailedAtDescending),
+        approvals: applyJournal(
+          approvals,
+          journal.approvals,
+          approvalKey,
+          byCreatedAt
+        ),
+        deliveries: applyJournal(
+          deliveries,
+          journal.deliveries,
+          deliveryKey,
+          byFailedAtDescending
+        ),
         error: null,
         loading: false,
       }));
@@ -154,6 +253,8 @@ export const createInbox = (client: RpcClient): Inbox => {
         error: errorMessage(error),
         loading: false,
       }));
+    } finally {
+      journals.delete(journal);
     }
   };
 
@@ -183,29 +284,13 @@ export const createInbox = (client: RpcClient): Inbox => {
       void refresh();
     }),
     client.on("approval.requested", ({ approval }) => {
-      state.update((current) => ({
-        ...current,
-        approvals: [
-          ...current.approvals.filter(
-            (entry) => approvalKey(entry) !== approvalKey(approval)
-          ),
-          approval,
-        ].toSorted(byCreatedAt),
-      }));
+      upsertApproval(approval);
     }),
     client.on("approval.resolved", ({ agent, approvalId }) => {
       removeApproval(agent, approvalId);
     }),
     client.on("delivery.failed", ({ delivery }) => {
-      state.update((current) => ({
-        ...current,
-        deliveries: [
-          ...current.deliveries.filter(
-            (entry) => deliveryKey(entry) !== deliveryKey(delivery)
-          ),
-          delivery,
-        ].toSorted(byFailedAtDescending),
-      }));
+      upsertDelivery(delivery);
     }),
     client.on("delivery.cleared", ({ agent, deliveryId }) => {
       removeDelivery(agent, deliveryId);

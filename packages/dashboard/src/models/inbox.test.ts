@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { startHarness } from "../../mock/harness.js";
 import type { Harness } from "../../mock/harness.js";
+import { holdClient } from "./hold-client.js";
 import {
   approvalKey,
   chatApprovals,
@@ -255,4 +256,67 @@ test("reloads the Inbox after a reconnect", async () => {
   await vi.waitFor(() => {
     expect(inbox.state.get().approvals).toEqual([]);
   });
+});
+
+test("keeps an Approval and a failed delivery that arrive during a refresh", async () => {
+  const reference = await loadedInbox();
+
+  const held = holdClient(await harness.connect(), [
+    "approvals.list",
+    "deliveries.listFailed",
+  ]);
+
+  const inbox = createInbox(held.client);
+  const approval = { ...firstApproval(reference), approvalId: "approval-new" };
+
+  const delivery = {
+    ...firstDelivery(reference),
+    deliveryId: "delivery-new",
+  };
+
+  held.emit("approval.requested", { agent: approval.agent, approval });
+  held.emit("delivery.failed", { agent: delivery.agent, delivery });
+  held.release();
+
+  await vi.waitFor(() => {
+    expect(inbox.state.get().loading).toBe(false);
+  });
+
+  expect(
+    inbox.state.get().approvals.map((entry) => entry.approvalId)
+  ).toContain("approval-new");
+  expect(
+    inbox.state.get().deliveries.map((entry) => entry.deliveryId)
+  ).toContain("delivery-new");
+});
+
+test("does not bring back an Approval or delivery that ended during a refresh", async () => {
+  const reference = await loadedInbox();
+  const approval = firstApproval(reference);
+  const delivery = firstDelivery(reference);
+
+  const held = holdClient(await harness.connect(), [
+    "approvals.list",
+    "deliveries.listFailed",
+  ]);
+
+  const inbox = createInbox(held.client);
+
+  held.emit("approval.resolved", {
+    agent: approval.agent,
+    approvalId: approval.approvalId,
+    decision: "allow_once",
+  });
+  held.emit("delivery.cleared", {
+    agent: delivery.agent,
+    deliveryId: delivery.deliveryId,
+    reason: "dismissed",
+  });
+  held.release();
+
+  await vi.waitFor(() => {
+    expect(inbox.state.get().loading).toBe(false);
+  });
+
+  expect(inbox.state.get()).toMatchObject({ approvals: [], deliveries: [] });
 });
