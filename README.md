@@ -499,19 +499,35 @@ wheatley service status
 
 ### Update
 
-`wheatley update` updates an npm or pnpm install of `@wheatley-ai/cli` within its major version:
+`wheatley update` updates Wheatley to the newest release of its major version:
 
 ```bash
 wheatley update --check
 wheatley update
-wheatley update --manager pnpm
+wheatley update --method pnpm
 ```
 
+`wheatley update` reads the published versions from the npm registry over HTTP. If `npm_config_registry` is set, it uses that registry.
+
+`wheatley update` finds out how you installed Wheatley. `--method` overrides the detection. It accepts `npm`, `pnpm`, `yarn`, `bun`, `brew`, or `curl`.
+
+| Install method | What `wheatley update` does |
+| --- | --- |
+| npm | Runs `npm install --global @wheatley-ai/cli@<version>`. For an npm prefix from `fnm` or `nvm`, it uses the `npm` and `--prefix` of that prefix. |
+| pnpm | Runs `pnpm add --global @wheatley-ai/cli@<version>` |
+| yarn | Runs `yarn global add @wheatley-ai/cli@<version>` |
+| bun | Runs `bun install --global @wheatley-ai/cli@<version>` |
+| Homebrew | Runs `brew upgrade sphericalkat/tap/wheatley`, or `brew upgrade wheatley` for a core formula |
+| `curl` installer | Runs the installer again with `--version <version> --no-modify-path` |
+| Volta | Prints `volta install @wheatley-ai/cli@<version>` |
+| mise | Prints `mise use -g npm:@wheatley-ai/cli@<version>` |
+| AUR | Prints an instruction to update `wheatley-cli` with your AUR helper, for example `paru -Syu` |
+| Docker | Prints the Docker Compose commands |
+| Source checkout | Fails. Use `git`, or pass `--method`. |
+
+After an npm, yarn, or bun update, `wheatley update` reads the version of the running copy again. If the running copy still has the old version, the command fails.
+
 `wheatley update` does not install a new major version. It prints the install command for that version instead. To install the latest release of any version, run `npm install --global @wheatley-ai/cli@latest`.
-
-For a Homebrew install, use `brew upgrade sphericalkat/tap/wheatley` instead of `wheatley update`.
-
-`wheatley update` refuses to run in a source checkout. Use `git` there. In Docker, `wheatley update` prints the Docker Compose commands.
 
 After an update, restart the daemon, for example with `wheatley service restart`.
 

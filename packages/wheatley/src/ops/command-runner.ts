@@ -14,6 +14,8 @@ export interface CommandResult {
 export interface CommandOptions {
   /** Connects the command to the standard streams of this process, for example for `npm install` progress. */
   readonly inheritStdio?: boolean;
+  /** The working folder of the command. The default is the working folder of this process. */
+  readonly cwd?: string;
 }
 
 /**
@@ -37,6 +39,7 @@ export interface CommandRunner {
 export const processRunner: CommandRunner = {
   run: async (command, args, options) => {
     const child = spawn(command, args, {
+      cwd: options?.cwd,
       stdio:
         options?.inheritStdio === true ? "inherit" : ["ignore", "pipe", "pipe"],
     });
