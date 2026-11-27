@@ -16,7 +16,7 @@ npm install -g @wheatley-ai/cli
 
 pnpm works too: `pnpm add -g @wheatley-ai/cli`.
 
-With Homebrew, Node.js comes with the formula:
+Homebrew installs Node.js as a dependency of the formula:
 
 ```sh
 brew install sphericalkat/tap/wheatley

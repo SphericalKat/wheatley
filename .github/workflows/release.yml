@@ -91,16 +91,16 @@ jobs:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           version="${TAG_NAME#v}"
+          formula="$(sed -e "s/@VERSION@/${version}/g" packaging/homebrew/wheatley.rb)"
+          url="$(sed -n 's/^  url "\(.*\)"$/\1/p' <<< "$formula")"
           tarball="$RUNNER_TEMP/wheatley-ai-cli-${version}.tgz"
           # The registry can serve a new tarball some time after npm publish returns.
           curl --fail --silent --show-error --location \
             --retry 10 --retry-delay 15 --retry-all-errors \
-            --output "$tarball" \
-            "https://registry.npmjs.org/@wheatley-ai/cli/-/cli-${version}.tgz"
+            --output "$tarball" "$url"
           sha256="$(sha256sum "$tarball" | cut -d ' ' -f 1)"
           mkdir -p homebrew-tap/Formula
-          sed -e "s/@VERSION@/${version}/g" -e "s/@SHA256@/${sha256}/g" \
-            packaging/homebrew/wheatley.rb > homebrew-tap/Formula/wheatley.rb
+          sed -e "s/@SHA256@/${sha256}/g" <<< "$formula" > homebrew-tap/Formula/wheatley.rb
           echo "VERSION=${version}" >> "$GITHUB_ENV"
 
       - name: Push the formula to SphericalKat/homebrew-tap

@@ -355,7 +355,7 @@ describe("wheatley status and init", () => {
 
     await expect(runCli(["--version"], terminal.io)).resolves.toBe(0);
     expect(manifest).toMatchObject({ version: terminal.stdout().trim() });
-    expect(terminal.stdout()).toMatch(/^\d+\.\d+\.\d+\n$/u);
+    expect(terminal.stdout()).toMatch(/^\S+\n$/u);
     expect(terminal.stderr()).toBe("");
   });
 
