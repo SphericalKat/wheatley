@@ -55,7 +55,16 @@ describe("systemd unit", () => {
       'ExecStart="/opt/node 26/bin/node" /opt/wheatley/bin/wheatley.js daemon\n'
     );
     expect(unit).toContain('Environment="WHEATLEY_HOME=/srv/50%%"\n');
-    expect(unit).toContain('WorkingDirectory="/home/kat/.wheatley"\n');
+    expect(unit).toContain("WorkingDirectory=/home/kat/.wheatley\n");
+  });
+
+  it("writes WorkingDirectory unquoted and escapes percent specifiers", () => {
+    const unit = renderSystemdUnit({
+      ...spec,
+      workingDirectory: "/home/kat 50%/.wheatley",
+    });
+
+    expect(unit).toContain("WorkingDirectory=/home/kat 50%%/.wheatley\n");
   });
 
   it("extends the grace period so that a longer drain is never killed", () => {
