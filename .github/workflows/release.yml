@@ -168,9 +168,10 @@ jobs:
           formula="$(sed -e "s/@VERSION@/${version}/g" packaging/homebrew/wheatley.rb)"
           url="$(sed -n 's/^  url "\(.*\)"$/\1/p' <<< "$formula")"
           tarball="$RUNNER_TEMP/wheatley-ai-cli-${version}.tgz"
-          # The registry can serve a new tarball some time after npm publish returns.
+          # The registry can return 404 for a new tarball for several minutes after npm publish returns.
+          # For v0.3.0 the delay was about 5 minutes, so curl retries for up to 20 minutes.
           curl --fail --silent --show-error --location \
-            --retry 10 --retry-delay 15 --retry-all-errors \
+            --retry 80 --retry-delay 15 --retry-max-time 1200 --retry-all-errors \
             --output "$tarball" "$url"
           sha256="$(sha256sum "$tarball" | cut -d ' ' -f 1)"
           mkdir -p homebrew-tap/Formula
