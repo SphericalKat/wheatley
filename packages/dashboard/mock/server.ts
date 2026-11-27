@@ -38,7 +38,11 @@ import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { parse } from "yaml";
 
-import { configToYaml, createFixtureState } from "./fixtures.js";
+import {
+  configToYaml,
+  createFixtureState,
+  FIXTURE_MODELS,
+} from "./fixtures.js";
 import type { FixtureMemoryFile, FixtureState } from "./fixtures.js";
 
 type Handler<M extends MethodName> = (
@@ -994,6 +998,20 @@ export const createMockDaemon = (
       emit("memory.changed", { agent, change: "written", name });
 
       return { file: { chars: next.length, name, updatedAt } };
+    },
+    "models.list": ({ agent }) => {
+      const models = [...FIXTURE_MODELS];
+
+      if (agent === undefined) {
+        return { models };
+      }
+
+      const { model } = agentConfig(agent);
+      const running = state.runtime.get(agent)?.state === "running";
+
+      return running
+        ? { current: { id: model.id, provider: model.provider }, models }
+        : { models };
     },
     "runs.get": ({ agent, runId }) => {
       const run = state.runs.find(

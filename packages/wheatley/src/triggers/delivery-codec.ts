@@ -22,12 +22,29 @@ const StoredAttachmentSchema = Type.Union([
 
 type StoredAttachment = Static<typeof StoredAttachmentSchema>;
 
+const StoredModelRefSchema = Type.Object({
+  id: Type.String(),
+  provider: Type.String(),
+});
+
+const StoredModelPickerSchema = Type.Object({
+  current: Type.Optional(StoredModelRefSchema),
+  models: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      provider: Type.String(),
+    })
+  ),
+});
+
 const StoredDeliverySchema = Type.Union([
   Type.Object({
     attachments: Type.Optional(Type.Array(StoredAttachmentSchema)),
     chatId: Type.String(),
     kind: Type.Literal("message"),
     messageId: Type.String(),
+    modelPicker: Type.Optional(StoredModelPickerSchema),
     runId: Type.Optional(Type.String()),
     source: Type.Union([
       Type.Literal("reply"),

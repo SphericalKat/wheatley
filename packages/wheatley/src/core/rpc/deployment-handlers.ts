@@ -5,7 +5,7 @@ import type { Deployment } from "../deployment.js";
 export const DEFAULT_LOG_TAIL = 200;
 
 /**
- * The Deployment-wide JSON-RPC handlers: Agent lifecycle (`agents.*`), config (`config.*`), secrets (`secrets.*`),
+ * The Deployment-wide JSON-RPC handlers: Agent lifecycle (`agents.*`), config (`config.*`), models (`models.list`), secrets (`secrets.*`),
  * `system.status`, and `logs.tail`. The Control Server handles `system.hello` and `events.*` per connection.
  */
 export const createDeploymentRpc = (deployment: Deployment): RpcHandlerMap => ({
@@ -67,6 +67,7 @@ export const createDeploymentRpc = (deployment: Deployment): RpcHandlerMap => ({
       }),
     };
   },
+  "models.list": async (params) => await deployment.listModels(params.agent),
   "secrets.delete": async (params) => ({
     deleted: await deployment.config.secrets.delete(params.name),
   }),

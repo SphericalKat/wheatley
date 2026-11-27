@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGENT_DB_FILE, CLI_CHAT, HARNESS_FILE } from "./agent/agent.js";
 import { Deployment } from "./deployment.js";
 import type { DeploymentOptions } from "./deployment.js";
+import { createDeploymentRpc } from "./rpc/deployment-handlers.js";
 import type { SetTimer } from "./supervisor.js";
 import {
   builtinCatalog,
@@ -141,6 +142,40 @@ describe("Deployment", () => {
       ["alpha", "running"],
       ["beta", "running"],
     ]);
+  });
+
+  it("lists models with models.list, with the current model of a running Agent", async () => {
+    await writeFile(
+      path.join(home.dir, "config.yaml"),
+      configYaml(["alpha"], 4)
+    );
+    const opened = await openDeployment();
+    const rpc = createDeploymentRpc(opened);
+    const list = rpc["models.list"];
+    const ctx = { connectionId: "c1", signal: new AbortController().signal };
+
+    const models = [
+      {
+        id: llm.modelId,
+        name: llm.faux.getModel().name,
+        provider: FAKE_PROVIDER,
+      },
+    ];
+
+    await expect(list?.({}, ctx)).resolves.toStrictEqual({ models });
+    await expect(list?.({ agent: "alpha" }, ctx)).resolves.toStrictEqual({
+      current: { id: llm.modelId, provider: FAKE_PROVIDER },
+      models,
+    });
+    await expect(list?.({ agent: "missing" }, ctx)).rejects.toMatchObject({
+      code: "agent_not_found",
+    });
+
+    await opened.stopAgent("alpha");
+
+    await expect(list?.({ agent: "alpha" }, ctx)).resolves.toStrictEqual({
+      models,
+    });
   });
 
   it("holds model requests of every Agent to the provider's maxConcurrent", async () => {

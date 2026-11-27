@@ -8,6 +8,7 @@ import {
   AgentStateSchema,
   ApprovalResolutionSchema,
   AttachmentUploadSchema,
+  AvailableModelSchema,
   BindingStatusSchema,
   ChatMessageSchema,
   CommandNameSchema,
@@ -25,6 +26,7 @@ import {
   MemoryNameSchema,
   MemorySearchHitSchema,
   MemorySearchScopeSchema,
+  ModelRefSchema,
   PendingApprovalSchema,
   PendingRestartSchema,
   RunSummarySchema,
@@ -304,6 +306,18 @@ export const methods = {
       name: MemoryNameSchema,
     }),
     Type.Object({ file: MemoryFileSchema })
+  ),
+
+  /**
+   * Lists the chat models of every provider with a configured credential, sorted by provider, then by model ID. With a
+   * running `agent`, `current` is the model of its CLI Chat Conversation.
+   */
+  "models.list": method(
+    params({ agent: Type.Optional(AgentNameSchema) }),
+    Type.Object({
+      current: Type.Optional(ModelRefSchema),
+      models: Type.Array(AvailableModelSchema),
+    })
   ),
 
   "runs.get": method(

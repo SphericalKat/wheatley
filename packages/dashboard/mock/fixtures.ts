@@ -1,4 +1,5 @@
 import type {
+  AvailableModel,
   AgentState,
   ChatMessage,
   ConsolidationLogEntry,
@@ -115,6 +116,19 @@ const fixtureConfig = (): DeploymentConfig => ({
   providers: { anthropic: { apiKey: { secret: "ANTHROPIC_API_KEY" } } },
   version: 1,
 });
+
+/** The models that `models.list` returns, sorted by provider, then by model ID. */
+export const FIXTURE_MODELS: readonly AvailableModel[] = [
+  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "anthropic" },
+  { id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic" },
+  {
+    id: "claude-sonnet-4-5",
+    name: "Claude Sonnet 4.5",
+    provider: "anthropic",
+  },
+  { id: "gpt-5", name: "GPT-5", provider: "openai" },
+  { id: "gpt-5-mini", name: "GPT-5 mini", provider: "openai" },
+];
 
 /** Creates the seed state of the mock daemon at time `now` (epoch milliseconds). */
 export const createFixtureState = (now: number): FixtureState => {

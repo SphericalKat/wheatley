@@ -46,6 +46,30 @@ export interface ApprovalResolution {
 /** Where an outbound `message` comes from. */
 export type MessageSource = "reply" | "command" | "trigger";
 
+/** One model of a provider, for example `anthropic` and `claude-sonnet-5-5`. */
+export interface ModelRef {
+  readonly provider: string;
+  readonly id: string;
+}
+
+/** A model that a Sender can choose, with its display name. */
+export interface AvailableModel extends ModelRef {
+  readonly name: string;
+}
+
+/**
+ * The models of a `/model` reply without an argument. Native chat Frontends can render it as a platform picker.
+ *
+ * `models` is sorted by provider, then by model ID. A selection calls `FrontendSink.command` with name `model` and
+ * args `<provider>/<id>`.
+ */
+export interface ModelPicker {
+  /** The model of the Chat's current Conversation, if known. */
+  readonly current?: ModelRef;
+  /** The models of every provider with a configured credential. Empty if no provider has one. */
+  readonly models: readonly AvailableModel[];
+}
+
 /** A final Agent message for a Chat. */
 export interface MessageDelivery {
   readonly kind: "message";
@@ -58,6 +82,8 @@ export interface MessageDelivery {
   readonly source: MessageSource;
   /** The Run that produced the reply. Streaming adapters use it to finalize their draft instead of a second message. */
   readonly runId?: string;
+  /** Present on the reply to `/model` without an argument. `text` holds the same list as Markdown. */
+  readonly modelPicker?: ModelPicker;
 }
 
 /** A tool call that waits for an Approval in this Chat. */

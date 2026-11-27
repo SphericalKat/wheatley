@@ -109,6 +109,23 @@ export const AgentHealthSchema = Type.Object({
 
 export type AgentHealth = Static<typeof AgentHealthSchema>;
 
+/** One model of a provider, for example `anthropic` and `claude-sonnet-5-5`. */
+export const ModelRefSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  provider: Type.String({ minLength: 1 }),
+});
+
+export type ModelRef = Static<typeof ModelRefSchema>;
+
+/** A model that a user can choose, with its display name. */
+export const AvailableModelSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  name: Type.String(),
+  provider: Type.String({ minLength: 1 }),
+});
+
+export type AvailableModel = Static<typeof AvailableModelSchema>;
+
 /** Use of one Concurrency Gate key, which is one provider credential. */
 export const GatePressureSchema = Type.Object({
   credential: Type.String(),

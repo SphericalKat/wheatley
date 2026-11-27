@@ -419,16 +419,18 @@ If standard input or output is not a terminal, for example a pipe, `wheatley cha
 
 These commands work in a Chat:
 
-| Command             | Action                                               |
-| ------------------- | ---------------------------------------------------- |
-| `/new`              | Start a new Conversation in this Chat.               |
-| `/model <model-id>` | Use another model for this Conversation.             |
-| `/compact`          | Compact the current Conversation.                    |
-| `/stop`             | Stop the active Run in this Chat.                    |
-| `/goal <objective>` | Start a long-running autonomous Run.                 |
-| `/status`           | Show the Conversation, Run, model, and Agent health. |
-| `/restart`          | Restart this Agent.                                  |
-| `/exit`             | End the Chat.                                        |
+| Command | Action |
+| --- | --- |
+| `/new` | Start a new Conversation in this Chat. |
+| `/model [<model-id>]` | List the models, or use another model for this Conversation. |
+| `/compact` | Compact the current Conversation. |
+| `/stop` | Stop the active Run in this Chat. |
+| `/goal <objective>` | Start a long-running autonomous Run. |
+| `/status` | Show the Conversation, Run, model, and Agent health. |
+| `/restart` | Restart this Agent. |
+| `/exit` | End the Chat. |
+
+`/model` without an argument lists the models of every provider with a credential, grouped by provider, and marks the current model. `/model <id>` and `/model <provider>/<id>` switch the model.
 
 If a Tool needs an Approval, the Chat shows the Tool name and its input. Answer with one of these values:
 

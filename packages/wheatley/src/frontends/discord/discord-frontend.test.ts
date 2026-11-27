@@ -646,7 +646,7 @@ it("registers the built-in commands as global Slash Commands", async () => {
     registration?.data.find((command) => command.name === "model")?.options
   ).toStrictEqual([
     {
-      description: "<model-id>",
+      description: "[<model-id>]",
       name: "model-id",
       required: false,
       type: ApplicationCommandOptionType.String,
